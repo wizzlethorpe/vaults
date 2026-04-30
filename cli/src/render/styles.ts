@@ -102,29 +102,57 @@ article pre code { background: none; padding: 0; }
 article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px solid var(--rule); color: var(--muted); }
 article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
 
-/* Sitemap nav (in left sidebar). Override the pill styling that
-   article a.internal uses — the sidebar wants quiet text links. */
+/* Sitemap nav (in left sidebar). Tree-view layout: every row has the same
+   left "gutter" reserved for a chevron, so folder text and page text line up
+   even though only folders draw the chevron. */
 .sidebar .sitemap-list, .sidebar .sitemap-list ul { list-style: none; padding: 0; margin: 0; }
-.sidebar .sitemap-list a, .sidebar .sitemap-list a.internal, .sidebar .sitemap-list a.internal-link {
-  display: block; padding: 0.15rem 0.4rem;
-  background: transparent; color: var(--muted); border-radius: 3px;
-  text-decoration: none; line-height: 1.4;
-}
-.sidebar .sitemap-list a:hover { background: var(--wikilink-bg); color: var(--accent); }
-.sidebar .sitemap-list a[aria-current="page"] { color: var(--accent); font-weight: 600; background: var(--wikilink-bg); }
+.sidebar .sitemap-list li { margin: 0; }
 
-.sitemap-folder > details > summary {
-  list-style: none; padding: 0.15rem 0.4rem; cursor: pointer;
-  color: var(--muted); font-weight: 500; user-select: none;
-  display: flex; align-items: center; gap: 0.4rem;
+.sidebar .sitemap-list a,
+.sidebar .sitemap-list a.internal,
+.sidebar .sitemap-list a.internal-link,
+.sidebar .sitemap-folder > details > summary {
+  display: block;
+  padding: 0.2rem 0.5rem 0.2rem 1.4rem;  /* 1.4rem reserves the chevron gutter */
+  background: transparent;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: 3px;
+  line-height: 1.45;
+  position: relative;
 }
-.sitemap-folder > details > summary::-webkit-details-marker { display: none; }
-.sitemap-folder > details > summary::before {
-  content: '\\25B8'; font-size: 0.7em; transition: transform 0.15s; flex-shrink: 0; color: var(--muted);
+.sidebar .sitemap-list a:hover,
+.sidebar .sitemap-folder > details > summary:hover {
+  background: var(--wikilink-bg); color: var(--accent);
 }
-.sitemap-folder > details[open] > summary::before { transform: rotate(90deg); }
-.sitemap-folder > details > summary:hover { color: var(--fg); }
-.sitemap-folder > details > ul { padding-left: 0.85rem; margin-top: 0.15rem; }
+.sidebar .sitemap-list a[aria-current="page"] {
+  color: var(--accent); font-weight: 600; background: var(--wikilink-bg);
+}
+
+.sidebar .sitemap-folder > details > summary {
+  cursor: pointer; user-select: none; font-weight: 500;
+  list-style: none;  /* hide native disclosure marker (Firefox) */
+}
+.sidebar .sitemap-folder > details > summary::-webkit-details-marker { display: none; }
+.sidebar .sitemap-folder > details > summary::before {
+  content: '\\25B8';                  /* ▸ */
+  position: absolute;
+  left: 0.5rem;
+  top: 50%;
+  font-size: 0.7em;
+  color: var(--muted);
+  transform: translateY(-50%);
+  transition: transform 0.15s ease;
+}
+.sidebar .sitemap-folder > details[open] > summary::before {
+  transform: translateY(-50%) rotate(90deg);
+}
+
+/* Children of a folder indent uniformly — chevron position is preserved
+   relative to the nested ul so descendants form a clean tree. */
+.sidebar .sitemap-folder > details > .sitemap-list {
+  padding-left: 0.75rem;
+}
 
 /* Auto-generated folder index pages */
 .folder-count { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.9rem; }
