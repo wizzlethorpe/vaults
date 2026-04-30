@@ -21,16 +21,17 @@ export function wikiLinkPlugin(opts: { context: RenderContext }): Plugin<[], Roo
 
           const page = opts.context.pages.get(slug);
           const href = page != null
-            ? `/${page.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/")}${anchor ? `#${anchor}` : ""}`
+            ? "/" + page.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/") + (anchor ? `#${anchor}` : "")
             : "#";
+
+          // Match forgotten-folk's class scheme: `internal` for resolved, `internal new` for unresolved.
+          const className = page != null ? ["internal"] : ["internal", "new"];
 
           const node: Link = {
             type: "link",
             url: href,
             children: [{ type: "text", value: display } satisfies Text],
-            data: page == null
-              ? { hProperties: { className: ["broken"] } }
-              : {},
+            data: { hProperties: { className } },
           };
           return node;
         },

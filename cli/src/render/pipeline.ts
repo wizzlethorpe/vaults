@@ -11,6 +11,7 @@ import matter from "gray-matter";
 import type { RenderContext } from "./types.js";
 import { wikiLinkPlugin } from "./wikilink.js";
 import { embedPlugin } from "./embed.js";
+import { calloutPlugin } from "./callouts.js";
 
 const sanitizeSchema = {
   ...defaultSchema,
@@ -20,6 +21,7 @@ const sanitizeSchema = {
     "*": [...(defaultSchema.attributes?.["*"] ?? []), "className"],
     img: ["src", "alt", "width", "height", "loading"],
     a: ["href", "title", "className", "id"],
+    div: ["className", "data*"],
   },
 };
 
@@ -27,6 +29,8 @@ export interface RenderResult {
   html: string;
   title: string;
   frontmatter: Record<string, unknown>;
+  /** Raw outbound link slugs (resolved or not). */
+  outlinks: string[];
 }
 
 export async function renderMarkdown(
@@ -40,8 +44,9 @@ export async function renderMarkdown(
   const file = await unified()
     .use(remarkParse)
     .use(remarkGfm)
-    .use(wikiLinkPlugin({ context }))
+    .use(calloutPlugin())
     .use(embedPlugin({ context }))
+    .use(wikiLinkPlugin({ context }))
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
     .use(rehypeSlug)
@@ -54,7 +59,7 @@ export async function renderMarkdown(
     || extractH1(parsed.content)
     || fallbackTitle;
 
-  return { html: String(file), title, frontmatter: fm };
+  return { html: String(file), title, frontmatter: fm, outlinks: [] };
 }
 
 function extractH1(markdown: string): string | null {

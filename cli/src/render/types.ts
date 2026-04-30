@@ -17,4 +17,10 @@ export interface RenderContext {
   pages: Map<string, PageMeta>;
   /** slugified filename → image metadata. Used to resolve ![[image]] embeds. */
   images: Map<string, ImageEntry>;
+  /** slug → raw markdown source. Used for ![[Page]] transclusion. */
+  markdownContent: Map<string, string>;
+  /** Internal: slugs of ancestor pages in the current embed chain (cycle detection). */
+  embedAncestors?: ReadonlySet<string>;
+  /** Internal: current embed depth. */
+  embedDepth?: number;
 }

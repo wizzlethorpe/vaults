@@ -2,10 +2,12 @@ import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises
 import { dirname, join } from "node:path";
 import { availableParallelism } from "node:os";
 import { scanVault, type ScannedFile } from "./scan.js";
-import { compressImage, contentTypeFor, COMPRESSIBLE_EXT_RE } from "./images.js";
+import { compressImage, COMPRESSIBLE_EXT_RE } from "./images.js";
 import { renderMarkdown } from "./render/pipeline.js";
 import { renderLayout } from "./render/layout.js";
 import { slugify } from "./render/slug.js";
+import { buildPreview } from "./render/preview.js";
+import { DEFAULT_CSS } from "./render/styles.js";
 import type { ImageEntry, PageMeta, RenderContext } from "./render/types.js";
 import { formatDuration, pMap, Progress } from "./util.js";
 
@@ -51,13 +53,39 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     (f) => !/\.md$/i.test(f.path) && !COMPRESSIBLE_EXT_RE.test(f.path),
   );
 
-  // Build the page index for wikilink resolution
-  const pageMetas: PageMeta[] = [];
-  for (const f of markdownFiles) {
-    const title = await pageTitle(f);
-    pageMetas.push({ path: f.path, title });
+  // Pre-load all markdown content (used for titles, transclusion, previews).
+  const sources = new Map<string, string>();
+  await pMap(markdownFiles, concurrency, async (f) => {
+    sources.set(f.path, await readFile(f.absolute, "utf8"));
+  });
+
+  // Build the page index (slug → meta) for wikilink resolution
+  const pageMetas: PageMeta[] = markdownFiles.map((f) => ({
+    path: f.path,
+    title: pageTitle(sources.get(f.path)!, f.path),
+  }));
+
+  // Identify folders that don't have an index.md and synthesize one
+  const folderIndexes = generateFolderIndexes(pageMetas);
+  for (const fi of folderIndexes) {
+    pageMetas.push({ path: fi.path, title: fi.title });
+    sources.set(fi.path, fi.markdown);
   }
-  const pageIndex = new Map(pageMetas.map((p) => [slugify(p.path.split("/").pop()!), p]));
+
+  // Page index supports BOTH basename lookups ([[Aghash]]) and full-path lookups
+  // ([[NPCs/Aghash]], [[NPCs/index]]). Multiple folder indexes share basename "index"
+  // so the full-path key is what disambiguates them.
+  const pageIndex = new Map<string, PageMeta>();
+  const markdownContent = new Map<string, string>();
+  for (const p of pageMetas) {
+    const basenameSlug = slugify(p.path.split("/").pop()!);
+    const pathSlug = slugify(p.path.replace(/\.md$/i, ""));
+    // Don't let folder-index basename collisions overwrite earlier basename entries
+    if (!pageIndex.has(basenameSlug)) pageIndex.set(basenameSlug, p);
+    pageIndex.set(pathSlug, p);
+    markdownContent.set(basenameSlug, sources.get(p.path)!);
+    markdownContent.set(pathSlug, sources.get(p.path)!);
+  }
 
   // Compress images (with cache + parallelism)
   const imageIndex = new Map<string, ImageEntry>();
@@ -65,7 +93,6 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     const cacheDir = join(opts.vaultPath, ".vault-cache", "images", `q${opts.imageQuality}`);
     await mkdir(cacheDir, { recursive: true });
     let cacheHits = 0;
-
     const progress = new Progress("Images");
     progress.update(0, imageFiles.length);
 
@@ -87,56 +114,128 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     progress.done(`${imageFiles.length} processed (${cacheHits} cached, ${imageFiles.length - cacheHits} compressed)`);
   }
 
-  const context: RenderContext = { pages: pageIndex, images: imageIndex };
+  const context: RenderContext = { pages: pageIndex, images: imageIndex, markdownContent };
 
-  // Render markdown pages (parallel)
-  if (markdownFiles.length > 0) {
+  // Render markdown pages + write preview JSON (parallel)
+  if (pageMetas.length > 0) {
     const progress = new Progress("Pages");
-    progress.update(0, markdownFiles.length);
+    progress.update(0, pageMetas.length);
 
-    await pMap(markdownFiles, concurrency, async (f) => {
-      const source = await readFile(f.absolute, "utf8");
-      const result = await renderMarkdown(source, context, basenameNoExt(f.path));
+    await pMap(pageMetas, concurrency, async (p) => {
+      const source = sources.get(p.path)!;
+      const result = await renderMarkdown(source, context, basenameNoExt(p.path));
       const html = renderLayout({
         title: result.title,
-        pagePath: f.path,
+        pagePath: p.path,
         bodyHtml: result.html,
         pages: pageMetas,
         vaultName: opts.vaultName,
       });
-      const dest = join(opts.outputDir, f.path.replace(/\.md$/i, ".html"));
+      const outputBase = p.path.replace(/\.md$/i, "");
+      const dest = join(opts.outputDir, outputBase + ".html");
       await mkdir(dirname(dest), { recursive: true });
       await writeFile(dest, html);
+
+      // Per-page preview JSON for hover popovers
+      const preview = buildPreview(source, result.title);
+      await writeFile(join(opts.outputDir, outputBase + ".preview.json"), JSON.stringify(preview));
     }, (done, total) => progress.update(done, total));
 
-    progress.done(`${markdownFiles.length} rendered`);
+    progress.done(`${pageMetas.length} rendered (${markdownFiles.length} from source, ${folderIndexes.length} folder indexes)`);
   }
 
-  // Copy passthrough files (PDFs, audio, etc.) — parallel
+  // Copy passthrough files
   if (otherFiles.length > 0) {
     const progress = new Progress("Other");
     progress.update(0, otherFiles.length);
-
     await pMap(otherFiles, concurrency, async (f) => {
       const dest = join(opts.outputDir, f.path);
       await mkdir(dirname(dest), { recursive: true });
       await copyFile(f.absolute, dest);
     }, (done, total) => progress.update(done, total));
-
     progress.done(`${otherFiles.length} copied`);
   }
+
+  // Write search index
+  const searchIndex = pageMetas.map((p) => ({
+    title: p.title,
+    path: p.path,
+    href: "/" + p.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/"),
+    folder: p.path.includes("/") ? p.path.split("/").slice(0, -1).join("/") : "",
+  }));
+  await writeFile(join(opts.outputDir, "_search-index.json"), JSON.stringify(searchIndex));
 
   await writeFile(join(opts.outputDir, "styles.css"), DEFAULT_CSS);
 
   console.log(`Built in ${formatDuration(Date.now() - start)}.`);
-
   return {
     files,
     withinLimit,
-    pageCount: markdownFiles.length,
+    pageCount: pageMetas.length,
     imageCount: imageFiles.length,
     otherCount: otherFiles.length,
   };
+}
+
+interface FolderIndex {
+  path: string;          // synthetic, e.g. "NPCs/index.md"
+  title: string;
+  markdown: string;       // generated source — gets rendered like any other page
+}
+
+/**
+ * Build synthesised index.md for any folder (including the root) that has
+ * pages but no existing index.md. Each generated index lists its direct
+ * children (subfolders + pages) as wikilinks.
+ */
+function generateFolderIndexes(existing: PageMeta[]): FolderIndex[] {
+  const existingPaths = new Set(existing.map((p) => p.path));
+
+  // Collect folder → direct children
+  const folders = new Map<string, { folders: Set<string>; pages: PageMeta[] }>();
+  // Root entry
+  folders.set("", { folders: new Set(), pages: [] });
+
+  for (const page of existing) {
+    const parts = page.path.split("/");
+    if (parts.length === 1) {
+      folders.get("")!.pages.push(page);
+      continue;
+    }
+    // Each ancestor folder learns about its immediate child
+    for (let i = 0; i < parts.length - 1; i++) {
+      const folder = parts.slice(0, i + 1).join("/");
+      if (!folders.has(folder)) folders.set(folder, { folders: new Set(), pages: [] });
+      const parent = i === 0 ? "" : parts.slice(0, i).join("/");
+      folders.get(parent)!.folders.add(parts[i]!);
+    }
+    const directParent = parts.slice(0, -1).join("/");
+    folders.get(directParent)!.pages.push(page);
+  }
+
+  const out: FolderIndex[] = [];
+  for (const [folder, { folders: subfolders, pages }] of folders) {
+    const indexPath = folder === "" ? "index.md" : `${folder}/index.md`;
+    if (existingPaths.has(indexPath)) continue;
+
+    const title = folder === "" ? "" : folder.split("/").pop()!;
+    const lines: string[] = [];
+    if (subfolders.size > 0) {
+      lines.push("");
+      const sorted = [...subfolders].sort((a, b) => a.localeCompare(b));
+      for (const sub of sorted) lines.push(`- [[${folder ? folder + "/" : ""}${sub}/index|${sub}]]`);
+    }
+    if (pages.length > 0) {
+      lines.push("");
+      const sorted = [...pages].sort((a, b) => a.title.localeCompare(b.title));
+      for (const p of sorted) lines.push(`- [[${p.path.replace(/\.md$/i, "")}|${p.title}]]`);
+    }
+    if (subfolders.size === 0 && pages.length === 0) continue;
+
+    const heading = title ? `# ${title}\n` : "";
+    out.push({ path: indexPath, title: title || "Home", markdown: `${heading}${lines.join("\n")}\n` });
+  }
+  return out;
 }
 
 async function compressImageCached(
@@ -148,61 +247,25 @@ async function compressImageCached(
   const outputPath = file.path.replace(COMPRESSIBLE_EXT_RE, ".webp");
   const cacheKey = `${file.hash}.webp`;
   const cachePath = join(cacheDir, cacheKey);
-
   try {
     await stat(cachePath);
     onHit();
     return { body: await readFile(cachePath), outputPath };
-  } catch {
-    // Cache miss — compress and store
-  }
+  } catch { /* miss */ }
 
   const compressed = await compressImage(file.absolute, file.path, quality);
   await writeFile(cachePath, compressed.body);
   return { body: compressed.body, outputPath: compressed.outputPath };
 }
 
-async function pageTitle(file: ScannedFile): Promise<string> {
-  const raw = await readFile(file.absolute, "utf8");
-  const fmTitle = /^---[\s\S]*?\ntitle:\s*(.+?)\s*\n[\s\S]*?\n---/.exec(raw);
+function pageTitle(source: string, path: string): string {
+  const fmTitle = /^---[\s\S]*?\ntitle:\s*(.+?)\s*\n[\s\S]*?\n---/.exec(source);
   if (fmTitle?.[1]) return fmTitle[1].replace(/^["']|["']$/g, "");
-  const h1 = /^#\s+(.+)$/m.exec(raw);
+  const h1 = /^#\s+(.+)$/m.exec(source);
   if (h1?.[1]) return h1[1].trim();
-  return basenameNoExt(file.path);
+  return basenameNoExt(path);
 }
 
 function basenameNoExt(path: string): string {
   return path.split("/").pop()!.replace(/\.md$/i, "");
 }
-
-const DEFAULT_CSS = `:root {
-  --bg: #fafaf9; --fg: #2a2a2a; --muted: #888; --link: #0066cc; --accent: #6b46c1;
-  --border: #e5e5e5; --code-bg: #f4f4f4;
-}
-* { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.6; color: var(--fg); background: var(--bg); }
-.site-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); }
-.site-name { font-weight: 600; color: var(--fg); text-decoration: none; }
-.layout { display: grid; grid-template-columns: 220px 1fr; gap: 2rem; max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
-.sidebar-left { font-size: 0.85rem; }
-.sitemap { list-style: none; padding: 0; margin: 0; }
-.sitemap a { display: block; padding: 0.15rem 0.4rem; color: var(--muted); text-decoration: none; border-radius: 3px; }
-.sitemap a:hover { color: var(--fg); background: rgba(107,70,193,0.05); }
-.sitemap a[aria-current="page"] { color: var(--accent); font-weight: 600; }
-.sitemap-folder summary { padding: 0.15rem 0.4rem; cursor: pointer; color: var(--muted); font-weight: 500; }
-.sitemap-folder ul { padding-left: 0.85rem; }
-.content { min-width: 0; }
-.breadcrumbs { font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem; }
-.breadcrumbs a { color: var(--muted); text-decoration: none; }
-.breadcrumbs a:hover { color: var(--link); }
-.bc-sep { padding: 0 0.4rem; }
-.page-title { margin: 0 0 1.5rem; font-size: 1.8rem; }
-.content a { color: var(--link); }
-.content a.broken { color: #c0392b; text-decoration: underline wavy; }
-.content img { max-width: 100%; border-radius: 4px; }
-.content code { background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; }
-.content pre { background: var(--code-bg); padding: 1rem; border-radius: 6px; overflow-x: auto; }
-.content pre code { background: none; padding: 0; }
-.content blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px solid var(--border); color: var(--muted); }
-@media (max-width: 720px) { .layout { grid-template-columns: 1fr; } .sidebar-left { display: none; } }
-`;
