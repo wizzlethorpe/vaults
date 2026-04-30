@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { push } from "./commands/push.js";
 import { build } from "./commands/build.js";
 import { preview } from "./commands/preview.js";
+import { init } from "./commands/init.js";
 
 const program = new Command();
 
@@ -10,6 +11,13 @@ program
   .name("vaults")
   .description("Sync an Obsidian vault to a Cloudflare-hosted wiki")
   .version("0.1.0");
+
+program
+  .command("init")
+  .description("Initialise a vault with a settings.md file")
+  .argument("[vault-path]", "Path to the Obsidian vault", process.cwd())
+  .option("-f, --force", "Overwrite an existing settings.md")
+  .action(wrap(init));
 
 program
   .command("build")

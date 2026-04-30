@@ -89,7 +89,7 @@ function renderSitemap(pages: PageMeta[], currentPath: string): string {
   for (const p of roots) html += sitemapItem(p, currentPath);
   for (const [folder, children] of [...folders].sort((a, b) => a[0].localeCompare(b[0]))) {
     const open = children.some((p) => p.path === currentPath) ? " open" : "";
-    html += `<li class="sitemap-folder"><details${open}><summary>${esc(folder)}</summary><ul>`;
+    html += `<li class="sitemap-folder"><details${open}><summary>${esc(folder)}</summary><ul class="sitemap-list">`;
     for (const p of children) html += sitemapItem(p, currentPath);
     html += "</ul></details></li>";
   }

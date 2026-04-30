@@ -22,12 +22,13 @@ body { margin: 0; background: var(--bg); color: var(--fg); line-height: 1.6; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-a.internal {
+/* Pill styling only for wikilinks inside article body. */
+article a.internal {
   background: var(--wikilink-bg); padding: 0.05em 0.35em; border-radius: 3px;
   text-decoration: none; transition: background 0.12s ease; color: var(--accent);
 }
-a.internal:hover { background: var(--wikilink-bg-hover); text-decoration: none; }
-a.internal.new { opacity: 0.7; font-style: italic; }
+article a.internal:hover { background: var(--wikilink-bg-hover); text-decoration: none; }
+article a.internal.new, article a.internal.is-unresolved { opacity: 0.7; font-style: italic; }
 
 .site-nav {
   border-bottom: 1px solid var(--rule); padding: 0.75rem 1.5rem;
@@ -101,12 +102,29 @@ article pre code { background: none; padding: 0; }
 article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px solid var(--rule); color: var(--muted); }
 article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
 
-/* Sitemap nav (in left sidebar) */
-.sitemap-list { list-style: none; padding: 0; margin: 0; }
-.sitemap-list a { display: block; padding: 0.15rem 0; }
-.sitemap-list a[aria-current="page"] { color: var(--accent); font-weight: 600; }
-.sitemap-folder summary { padding: 0.15rem 0; cursor: pointer; color: var(--muted); font-weight: 500; list-style: revert; }
-.sitemap-folder ul { padding-left: 0.85rem; margin-top: 0.15rem; }
+/* Sitemap nav (in left sidebar). Override the pill styling that
+   article a.internal uses — the sidebar wants quiet text links. */
+.sidebar .sitemap-list, .sidebar .sitemap-list ul { list-style: none; padding: 0; margin: 0; }
+.sidebar .sitemap-list a, .sidebar .sitemap-list a.internal, .sidebar .sitemap-list a.internal-link {
+  display: block; padding: 0.15rem 0.4rem;
+  background: transparent; color: var(--muted); border-radius: 3px;
+  text-decoration: none; line-height: 1.4;
+}
+.sidebar .sitemap-list a:hover { background: var(--wikilink-bg); color: var(--accent); }
+.sidebar .sitemap-list a[aria-current="page"] { color: var(--accent); font-weight: 600; background: var(--wikilink-bg); }
+
+.sitemap-folder > details > summary {
+  list-style: none; padding: 0.15rem 0.4rem; cursor: pointer;
+  color: var(--muted); font-weight: 500; user-select: none;
+  display: flex; align-items: center; gap: 0.4rem;
+}
+.sitemap-folder > details > summary::-webkit-details-marker { display: none; }
+.sitemap-folder > details > summary::before {
+  content: '\\25B8'; font-size: 0.7em; transition: transform 0.15s; flex-shrink: 0; color: var(--muted);
+}
+.sitemap-folder > details[open] > summary::before { transform: rotate(90deg); }
+.sitemap-folder > details > summary:hover { color: var(--fg); }
+.sitemap-folder > details > ul { padding-left: 0.85rem; margin-top: 0.15rem; }
 
 /* Auto-generated folder index pages */
 .folder-count { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.9rem; }

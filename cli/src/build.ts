@@ -9,6 +9,7 @@ import { slugify } from "./render/slug.js";
 import { buildPreview } from "./render/preview.js";
 import { DEFAULT_CSS } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
+import { loadSettings, SETTINGS_FILE } from "./settings.js";
 import type { ImageEntry, PageMeta, RenderContext } from "./render/types.js";
 import { formatDuration, pMap, Progress } from "./util.js";
 
@@ -32,9 +33,25 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   const start = Date.now();
   const concurrency = Math.max(2, availableParallelism());
 
+  // settings.md (frontmatter-only file in the vault root) overrides the build
+  // options for the few settings it covers. CLI flags still win — they were
+  // passed in BuildOptions explicitly. We only READ here; rewriting the file
+  // is the caller's job (push does it during sync, init creates it fresh).
+  const settings = await loadSettings(opts.vaultPath);
+  for (const w of settings.warnings) console.warn(`  ${w}`);
+  const effective: BuildOptions = {
+    ...opts,
+    vaultName: opts.vaultName === "Vault" ? settings.values.vault_name : opts.vaultName,
+    imageQuality: opts.imageQuality === 85 ? settings.values.image_quality : opts.imageQuality,
+    maxFileBytes: opts.maxFileBytes === 25 * 1024 * 1024 ? settings.values.max_file_bytes : opts.maxFileBytes,
+  };
+  opts = effective;
+
   console.log(`Scanning ${opts.vaultPath}...`);
   const scanStart = Date.now();
-  const files = await scanVault(opts.vaultPath);
+  const allFiles = await scanVault(opts.vaultPath);
+  // settings.md is CLI config, not content — keep it out of rendering and sync.
+  const files = allFiles.filter((f) => f.path !== SETTINGS_FILE);
   console.log(`  found ${files.length} files in ${formatDuration(Date.now() - scanStart)}`);
 
   const withinLimit = files.filter((f) => {
