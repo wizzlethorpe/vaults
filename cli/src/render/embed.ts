@@ -100,7 +100,7 @@ function transcludePage(
       children: [{
         type: "link",
         url: targetHref,
-        data: { hProperties: { className: ["internal"] } },
+        data: { hProperties: { className: ["internal", "internal-link"] } },
         children: [{ type: "text", value: sourceLink }],
       }],
     } as Paragraph,

@@ -24,8 +24,12 @@ export function wikiLinkPlugin(opts: { context: RenderContext }): Plugin<[], Roo
             ? "/" + page.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/") + (anchor ? `#${anchor}` : "")
             : "#";
 
-          // Match forgotten-folk's class scheme: `internal` for resolved, `internal new` for unresolved.
-          const className = page != null ? ["internal"] : ["internal", "new"];
+          // Mirror Obsidian's DOM: `internal-link` is the canonical class community
+          // snippets target. We also keep `internal` (and `new` for unresolved) for
+          // our default CSS.
+          const className = page != null
+            ? ["internal", "internal-link"]
+            : ["internal", "internal-link", "is-unresolved", "new"];
 
           const node: Link = {
             type: "link",

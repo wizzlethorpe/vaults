@@ -19,6 +19,7 @@ export function renderLayout(input: LayoutInput): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(input.title)} — ${esc(input.vaultName)}</title>
 <link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/user.css">
 </head>
 <body>
 <header class="site-nav">
@@ -33,7 +34,7 @@ export function renderLayout(input: LayoutInput): string {
     ${sitemap}
   </aside>
   <main>
-    <article>
+    <article class="markdown-preview-view markdown-rendered">
       ${breadcrumbs}
       <h1>${esc(input.title)}</h1>
       ${input.bodyHtml}
@@ -99,7 +100,7 @@ function renderSitemap(pages: PageMeta[], currentPath: string): string {
 function sitemapItem(p: PageMeta, currentPath: string): string {
   const href = "/" + p.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/");
   const cur = p.path === currentPath ? ' aria-current="page"' : "";
-  return `<li><a href="${attr(href)}"${cur} class="internal">${esc(p.title)}</a></li>`;
+  return `<li><a href="${attr(href)}"${cur} class="internal internal-link">${esc(p.title)}</a></li>`;
 }
 
 function esc(s: string): string {

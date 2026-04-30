@@ -36,9 +36,15 @@ export function calloutPlugin(): Plugin<[], Root> {
         if ((first as Paragraph).children.length === 0) node.children.shift();
       }
 
+      // Both className and data-callout are emitted: our default CSS keys off
+      // the class, while Obsidian-style snippets target [data-callout="…"].
+      const lower = type!.toLowerCase();
       node.data = {
         hName: "div",
-        hProperties: { className: ["callout", `callout-${type!.toLowerCase()}`] },
+        hProperties: {
+          className: ["callout", `callout-${lower}`],
+          dataCallout: lower,
+        },
       };
 
       node.children.unshift({

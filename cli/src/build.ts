@@ -8,6 +8,7 @@ import { renderLayout } from "./render/layout.js";
 import { slugify } from "./render/slug.js";
 import { buildPreview } from "./render/preview.js";
 import { DEFAULT_CSS } from "./render/styles.js";
+import { loadObsidianSnippets } from "./obsidian.js";
 import type { ImageEntry, PageMeta, RenderContext } from "./render/types.js";
 import { formatDuration, pMap, Progress } from "./util.js";
 
@@ -166,6 +167,12 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   await writeFile(join(opts.outputDir, "_search-index.json"), JSON.stringify(searchIndex));
 
   await writeFile(join(opts.outputDir, "styles.css"), DEFAULT_CSS);
+
+  // Pull in user-authored Obsidian CSS snippets (.obsidian/snippets/*.css).
+  // Filtered by .obsidian/appearance.json's enabledCssSnippets if present.
+  const userCss = await loadObsidianSnippets(opts.vaultPath);
+  await writeFile(join(opts.outputDir, "user.css"), userCss);
+  if (userCss) console.log(`  loaded user.css from .obsidian/snippets/`);
 
   console.log(`Built in ${formatDuration(Date.now() - start)}.`);
   return {
