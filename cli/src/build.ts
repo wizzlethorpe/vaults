@@ -1,11 +1,13 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { availableParallelism } from "node:os";
 import { scanVault, type ScannedFile } from "./scan.js";
 import { compressImage, contentTypeFor, COMPRESSIBLE_EXT_RE } from "./images.js";
 import { renderMarkdown } from "./render/pipeline.js";
 import { renderLayout } from "./render/layout.js";
 import { slugify } from "./render/slug.js";
 import type { ImageEntry, PageMeta, RenderContext } from "./render/types.js";
+import { formatDuration, pMap, Progress } from "./util.js";
 
 export interface BuildOptions {
   vaultPath: string;
@@ -23,12 +25,14 @@ export interface BuildResult {
   otherCount: number;
 }
 
-/**
- * Renders the entire vault to a local output directory. Used by `build`,
- * `preview`, and `push`.
- */
 export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
+  const start = Date.now();
+  const concurrency = Math.max(2, availableParallelism());
+
+  console.log(`Scanning ${opts.vaultPath}...`);
+  const scanStart = Date.now();
   const files = await scanVault(opts.vaultPath);
+  console.log(`  found ${files.length} files in ${formatDuration(Date.now() - scanStart)}`);
 
   const withinLimit = files.filter((f) => {
     if (f.size > opts.maxFileBytes) {
@@ -47,7 +51,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     (f) => !/\.md$/i.test(f.path) && !COMPRESSIBLE_EXT_RE.test(f.path),
   );
 
-  // Build the page index (slug → meta) for wikilink resolution
+  // Build the page index for wikilink resolution
   const pageMetas: PageMeta[] = [];
   for (const f of markdownFiles) {
     const title = await pageTitle(f);
@@ -55,48 +59,76 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   }
   const pageIndex = new Map(pageMetas.map((p) => [slugify(p.path.split("/").pop()!), p]));
 
-  // Compress images (or copy verbatim if quality=0) and build the image index
+  // Compress images (with cache + parallelism)
   const imageIndex = new Map<string, ImageEntry>();
-  for (const f of imageFiles) {
-    const compressed = opts.imageQuality > 0
-      ? await compressImage(f.absolute, f.path, opts.imageQuality)
-      : { body: await readFile(f.absolute), contentType: contentTypeFor(f.path), outputPath: f.path };
+  if (imageFiles.length > 0) {
+    const cacheDir = join(opts.vaultPath, ".vault-cache", "images", `q${opts.imageQuality}`);
+    await mkdir(cacheDir, { recursive: true });
+    let cacheHits = 0;
 
-    const dest = join(opts.outputDir, compressed.outputPath);
-    await mkdir(dirname(dest), { recursive: true });
-    await writeFile(dest, compressed.body);
+    const progress = new Progress("Images");
+    progress.update(0, imageFiles.length);
 
-    imageIndex.set(slugify(f.path.split("/").pop()!), {
-      sourcePath: f.path,
-      outputPath: compressed.outputPath,
-    });
+    await pMap(imageFiles, concurrency, async (f) => {
+      const compressed = opts.imageQuality > 0
+        ? await compressImageCached(f, opts.imageQuality, cacheDir, () => { cacheHits++; })
+        : { body: await readFile(f.absolute), outputPath: f.path };
+
+      const dest = join(opts.outputDir, compressed.outputPath);
+      await mkdir(dirname(dest), { recursive: true });
+      await writeFile(dest, compressed.body);
+
+      imageIndex.set(slugify(f.path.split("/").pop()!), {
+        sourcePath: f.path,
+        outputPath: compressed.outputPath,
+      });
+    }, (done, total) => progress.update(done, total));
+
+    progress.done(`${imageFiles.length} processed (${cacheHits} cached, ${imageFiles.length - cacheHits} compressed)`);
   }
 
   const context: RenderContext = { pages: pageIndex, images: imageIndex };
 
-  for (const f of markdownFiles) {
-    const source = await readFile(f.absolute, "utf8");
-    const result = await renderMarkdown(source, context, basenameNoExt(f.path));
-    const html = renderLayout({
-      title: result.title,
-      pagePath: f.path,
-      bodyHtml: result.html,
-      pages: pageMetas,
-      vaultName: opts.vaultName,
-    });
-    const outputName = f.path.replace(/\.md$/i, ".html");
-    const dest = join(opts.outputDir, outputName);
-    await mkdir(dirname(dest), { recursive: true });
-    await writeFile(dest, html);
+  // Render markdown pages (parallel)
+  if (markdownFiles.length > 0) {
+    const progress = new Progress("Pages");
+    progress.update(0, markdownFiles.length);
+
+    await pMap(markdownFiles, concurrency, async (f) => {
+      const source = await readFile(f.absolute, "utf8");
+      const result = await renderMarkdown(source, context, basenameNoExt(f.path));
+      const html = renderLayout({
+        title: result.title,
+        pagePath: f.path,
+        bodyHtml: result.html,
+        pages: pageMetas,
+        vaultName: opts.vaultName,
+      });
+      const dest = join(opts.outputDir, f.path.replace(/\.md$/i, ".html"));
+      await mkdir(dirname(dest), { recursive: true });
+      await writeFile(dest, html);
+    }, (done, total) => progress.update(done, total));
+
+    progress.done(`${markdownFiles.length} rendered`);
   }
 
-  for (const f of otherFiles) {
-    const dest = join(opts.outputDir, f.path);
-    await mkdir(dirname(dest), { recursive: true });
-    await writeFile(dest, await readFile(f.absolute));
+  // Copy passthrough files (PDFs, audio, etc.) — parallel
+  if (otherFiles.length > 0) {
+    const progress = new Progress("Other");
+    progress.update(0, otherFiles.length);
+
+    await pMap(otherFiles, concurrency, async (f) => {
+      const dest = join(opts.outputDir, f.path);
+      await mkdir(dirname(dest), { recursive: true });
+      await copyFile(f.absolute, dest);
+    }, (done, total) => progress.update(done, total));
+
+    progress.done(`${otherFiles.length} copied`);
   }
 
   await writeFile(join(opts.outputDir, "styles.css"), DEFAULT_CSS);
+
+  console.log(`Built in ${formatDuration(Date.now() - start)}.`);
 
   return {
     files,
@@ -105,6 +137,29 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     imageCount: imageFiles.length,
     otherCount: otherFiles.length,
   };
+}
+
+async function compressImageCached(
+  file: ScannedFile,
+  quality: number,
+  cacheDir: string,
+  onHit: () => void,
+): Promise<{ body: Buffer; outputPath: string }> {
+  const outputPath = file.path.replace(COMPRESSIBLE_EXT_RE, ".webp");
+  const cacheKey = `${file.hash}.webp`;
+  const cachePath = join(cacheDir, cacheKey);
+
+  try {
+    await stat(cachePath);
+    onHit();
+    return { body: await readFile(cachePath), outputPath };
+  } catch {
+    // Cache miss — compress and store
+  }
+
+  const compressed = await compressImage(file.absolute, file.path, quality);
+  await writeFile(cachePath, compressed.body);
+  return { body: compressed.body, outputPath: compressed.outputPath };
 }
 
 async function pageTitle(file: ScannedFile): Promise<string> {
