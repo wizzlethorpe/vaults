@@ -1,6 +1,7 @@
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { availableParallelism } from "node:os";
+import picomatch from "picomatch";
 import { scanVault, type ScannedFile } from "./scan.js";
 import { compressImage, COMPRESSIBLE_EXT_RE } from "./images.js";
 import { renderMarkdown } from "./render/pipeline.js";
@@ -50,9 +51,14 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   console.log(`Scanning ${opts.vaultPath}...`);
   const scanStart = Date.now();
   const allFiles = await scanVault(opts.vaultPath);
-  // settings.md is CLI config, not content — keep it out of rendering and sync.
-  const files = allFiles.filter((f) => f.path !== SETTINGS_FILE);
-  console.log(`  found ${files.length} files in ${formatDuration(Date.now() - scanStart)}`);
+  // settings.md is CLI config, not content. Also drop anything matching the
+  // user's ignore globs (settings.ignore from settings.md).
+  const ignoreMatchers = settings.values.ignore.map((p) => picomatch(p));
+  const isIgnored = (path: string) => ignoreMatchers.some((m) => m(path));
+  const files = allFiles.filter((f) => f.path !== SETTINGS_FILE && !isIgnored(f.path));
+  const ignoredCount = allFiles.length - files.length - 1; // subtract the settings.md itself
+  console.log(`  found ${files.length} files in ${formatDuration(Date.now() - scanStart)}`
+    + (ignoredCount > 0 ? ` (${ignoredCount} ignored by patterns)` : ""));
 
   const withinLimit = files.filter((f) => {
     if (f.size > opts.maxFileBytes) {

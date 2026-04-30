@@ -9,11 +9,14 @@ export interface Settings {
   vault_name: string;
   image_quality: number;
   max_file_bytes: number;
+  ignore: string[];
 }
+
+type SettingType = "string" | "number" | "boolean" | "string[]";
 
 interface SettingDef<K extends keyof Settings> {
   default: Settings[K];
-  type: "string" | "number" | "boolean";
+  type: SettingType;
   description: string;
 }
 
@@ -32,6 +35,12 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     default: 25 * 1024 * 1024,
     type: "number",
     description: "Hard cap (in bytes) on a single file. Larger files are skipped.",
+  },
+  ignore: {
+    default: [],
+    type: "string[]",
+    description:
+      "Glob patterns of files to skip when rendering and syncing. Examples: 'Templates/**', '*.draft.md', 'Private/**'.",
   },
 };
 
@@ -54,7 +63,6 @@ export async function loadSettings(vaultPath: string): Promise<LoadedSettings> {
   try {
     raw = await readFile(path, "utf8");
   } catch {
-    // No settings file — return defaults, mark as changed so caller can init.
     const values = defaults();
     return { values, changed: true, warnings: [] };
   }
@@ -64,32 +72,29 @@ export async function loadSettings(vaultPath: string): Promise<LoadedSettings> {
   const warnings: string[] = [];
   const values = defaults();
 
-  // Apply user-provided values that match the schema.
   for (const [key, def] of Object.entries(SCHEMA) as [keyof Settings, SettingDef<keyof Settings>][]) {
     if (!(key in fm)) continue;
     const v = fm[key];
-    if (typeof v !== def.type) {
-      warnings.push(`settings.md: '${key}' should be a ${def.type}, got ${typeof v}. Using default.`);
+    if (!matchesType(v, def.type)) {
+      warnings.push(`settings.md: '${key}' should be a ${def.type}, got ${describeType(v)}. Using default.`);
       continue;
     }
     (values as unknown as Record<string, unknown>)[key] = v;
   }
 
-  // Warn about unknown keys.
   for (const key of Object.keys(fm)) {
     if (!(key in SCHEMA)) {
       warnings.push(`settings.md: unknown setting '${key}' will be removed on next sync.`);
     }
   }
 
-  // Has the canonical form drifted from on-disk?
   const canonical = renderSettingsFile(values);
   return { values, changed: canonical !== raw, warnings };
 }
 
 /**
- * Write settings.md to disk in canonical form. Used by `init` and by the
- * build pipeline whenever the on-disk file drifts from canonical.
+ * Write settings.md to disk in canonical form. Used by `init` and by `push`
+ * whenever the on-disk file drifts from canonical.
  */
 export async function writeSettings(vaultPath: string, values: Settings): Promise<void> {
   await writeFile(join(vaultPath, SETTINGS_FILE), renderSettingsFile(values));
@@ -101,14 +106,34 @@ function defaults(): Settings {
   ) as unknown as Settings;
 }
 
+function matchesType(v: unknown, t: SettingType): boolean {
+  if (t === "string[]") return Array.isArray(v) && v.every((item) => typeof item === "string");
+  return typeof v === t;
+}
+
+function describeType(v: unknown): string {
+  if (Array.isArray(v)) return "array";
+  return typeof v;
+}
+
 function renderSettingsFile(values: Settings): string {
   const lines: string[] = ["---"];
   for (const [key, def] of Object.entries(SCHEMA) as [keyof Settings, SettingDef<keyof Settings>][]) {
     lines.push(`# ${def.description}`);
-    lines.push(`${key}: ${formatValue((values as unknown as Record<string, unknown>)[key])}`);
+    const value = (values as unknown as Record<string, unknown>)[key];
+    if (def.type === "string[]") {
+      const arr = (value ?? []) as string[];
+      if (arr.length === 0) {
+        lines.push(`${key}: []`);
+      } else {
+        lines.push(`${key}:`);
+        for (const item of arr) lines.push(`  - ${formatString(item)}`);
+      }
+    } else {
+      lines.push(`${key}: ${formatScalar(value)}`);
+    }
     lines.push("");
   }
-  // Trim trailing blank line before closing fence.
   while (lines[lines.length - 1] === "") lines.pop();
   lines.push("---", "");
   lines.push("# Vault settings");
@@ -119,10 +144,11 @@ function renderSettingsFile(values: Settings): string {
   return lines.join("\n");
 }
 
-function formatValue(v: unknown): string {
-  if (typeof v === "string") {
-    // Quote only if necessary so YAML stays human-friendly.
-    return /^[A-Za-z0-9 _.-]+$/.test(v) ? v : JSON.stringify(v);
-  }
+function formatScalar(v: unknown): string {
+  if (typeof v === "string") return formatString(v);
   return String(v);
+}
+
+function formatString(v: string): string {
+  return /^[A-Za-z0-9 _.-]+$/.test(v) ? v : JSON.stringify(v);
 }
