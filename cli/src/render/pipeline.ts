@@ -41,6 +41,15 @@ export async function renderMarkdown(
   const parsed = matter(source);
   const fm = parsed.data as Record<string, unknown>;
 
+  // Escape pipes inside wikilinks/embeds so they don't break GFM tables.
+  // CommonMark unescapes `\|` back to `|` in the resulting text node, so the
+  // wikilink regex still matches downstream. Negative lookbehind avoids double-
+  // escaping pipes that the user already escaped Obsidian-style.
+  const content = parsed.content.replace(
+    /!?\[\[([^\[\]\n]+?)\]\]/g,
+    (m) => m.replace(/(?<!\\)\|/g, "\\|"),
+  );
+
   const file = await unified()
     .use(remarkParse)
     .use(remarkGfm)
@@ -53,7 +62,7 @@ export async function renderMarkdown(
     .use(rehypeAutolinkHeadings, { behavior: "wrap" })
     .use(rehypeSanitize, sanitizeSchema)
     .use(rehypeStringify)
-    .process(parsed.content);
+    .process(content);
 
   const title = (typeof fm.title === "string" && fm.title)
     || extractH1(parsed.content)
