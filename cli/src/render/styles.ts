@@ -133,6 +133,12 @@ article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
   cursor: pointer; user-select: none; font-weight: 500;
   list-style: none;  /* hide native disclosure marker (Firefox) */
 }
+.sidebar .sitemap-folder > details > summary > .folder-link {
+  color: inherit; text-decoration: none; display: block;
+}
+.sidebar .sitemap-folder > details > summary > .folder-link:hover {
+  text-decoration: none;
+}
 .sidebar .sitemap-folder > details > summary::-webkit-details-marker { display: none; }
 .sidebar .sitemap-folder > details > summary::before {
   content: '\\25B8';                  /* ▸ */

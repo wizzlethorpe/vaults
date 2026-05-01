@@ -79,7 +79,9 @@ interface FolderNode {
 function renderSitemap(pages: PageMeta[], currentPath: string): string {
   const root: FolderNode = { name: "", pages: [], subfolders: new Map() };
   for (const p of pages) {
-    if (p.path === "index.md") continue;
+    // index.md at any depth is the folder's homepage, not a sitemap child.
+    // The folder is already represented by its <details> wrapper in the parent.
+    if (p.path === "index.md" || p.path.endsWith("/index.md")) continue;
     const parts = p.path.split("/");
     let node = root;
     for (let i = 0; i < parts.length - 1; i++) {
@@ -94,15 +96,17 @@ function renderSitemap(pages: PageMeta[], currentPath: string): string {
     node.pages.push(p);
   }
 
-  return `<nav><h4>Pages</h4><ul class="sitemap-list">${renderNode(root, currentPath)}</ul></nav>`;
+  return `<nav><h4>Pages</h4><ul class="sitemap-list">${renderNode(root, "", currentPath)}</ul></nav>`;
 }
 
-function renderNode(node: FolderNode, currentPath: string): string {
+function renderNode(node: FolderNode, parentPath: string, currentPath: string): string {
   let html = "";
   // Folders first, then pages — matches Obsidian's file explorer convention.
   for (const [name, sub] of [...node.subfolders].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const folderPath = parentPath ? `${parentPath}/${name}` : name;
     const open = nodeContainsPath(sub, currentPath) ? " open" : "";
-    html += `<li class="sitemap-folder"><details${open}><summary>${esc(name)}</summary><ul class="sitemap-list">${renderNode(sub, currentPath)}</ul></details></li>`;
+    const href = "/" + folderPath.split("/").map(encodeURIComponent).join("/") + "/";
+    html += `<li class="sitemap-folder"><details${open}><summary><a href="${attr(href)}" class="folder-link">${esc(name)}</a></summary><ul class="sitemap-list">${renderNode(sub, folderPath, currentPath)}</ul></details></li>`;
   }
   for (const p of [...node.pages].sort((a, b) => a.title.localeCompare(b.title))) {
     html += sitemapItem(p, currentPath);
