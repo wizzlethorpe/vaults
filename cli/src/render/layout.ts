@@ -10,6 +10,8 @@ export interface LayoutInput {
   inlineTitle: boolean;
   /** CSS dimension applied to images without an explicit |N size hint. */
   defaultImageWidth: string;
+  /** Pages that link to this one. */
+  backlinks: PageMeta[];
   /** Unix-seconds. Optional — synthesized folder indexes may have neither. */
   mtime?: number;
   birthtime?: number;
@@ -51,6 +53,7 @@ export function renderLayout(input: LayoutInput): string {
       <summary class="toc-summary">On this page</summary>
       <ul id="page-toc"></ul>
     </details>
+    ${renderBacklinks(input.backlinks)}
   </aside>
 </div>
 ${HOVER_PREVIEW_SCRIPT}
@@ -58,6 +61,15 @@ ${TOC_SCRIPT}
 ${SEARCH_SCRIPT}
 </body>
 </html>`;
+}
+
+function renderBacklinks(backlinks: PageMeta[]): string {
+  if (backlinks.length === 0) return "";
+  const items = backlinks.map((p) => {
+    const href = "/" + p.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/");
+    return `<li><a href="${attr(href)}" class="internal internal-link">${esc(p.title)}</a></li>`;
+  }).join("");
+  return `<section class="backlinks"><h4>Backlinks</h4><ul>${items}</ul></section>`;
 }
 
 function renderMeta(mtime: number | undefined, birthtime: number | undefined): string {
@@ -125,22 +137,27 @@ function renderSitemap(pages: PageMeta[], currentPath: string): string {
     node.pages.push(p);
   }
 
-  return `<nav><h4>Pages</h4><ul class="sitemap-list">${renderNode(root, "", currentPath)}</ul></nav>`;
+  return `<nav><h4>Explorer</h4><ul class="sitemap-list">${renderNode(root, "", currentPath)}</ul></nav>`;
 }
 
 function renderNode(node: FolderNode, parentPath: string, currentPath: string): string {
   let html = "";
   // Folders first, then pages — matches Obsidian's file explorer convention.
-  for (const [name, sub] of [...node.subfolders].sort((a, b) => a[0].localeCompare(b[0]))) {
+  // Natural sort so "Page 2" comes before "Page 10" (instead of alphabetical).
+  for (const [name, sub] of [...node.subfolders].sort((a, b) => natCompare(a[0], b[0]))) {
     const folderPath = parentPath ? `${parentPath}/${name}` : name;
     const open = nodeContainsPath(sub, currentPath) ? " open" : "";
     const href = "/" + folderPath.split("/").map(encodeURIComponent).join("/") + "/";
     html += `<li class="sitemap-folder"><details${open}><summary><a href="${attr(href)}" class="folder-link">${esc(name)}</a></summary><ul class="sitemap-list">${renderNode(sub, folderPath, currentPath)}</ul></details></li>`;
   }
-  for (const p of [...node.pages].sort((a, b) => a.title.localeCompare(b.title))) {
+  for (const p of [...node.pages].sort((a, b) => natCompare(a.title, b.title))) {
     html += sitemapItem(p, currentPath);
   }
   return html;
+}
+
+function natCompare(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 }
 
 function nodeContainsPath(node: FolderNode, currentPath: string): boolean {
@@ -275,6 +292,7 @@ const SEARCH_SCRIPT = `<script>
   if (!input || !results) return;
   let index = null;
   let loading = false;
+
   async function ensureIndex() {
     if (index || loading) return;
     loading = true;
@@ -283,24 +301,65 @@ const SEARCH_SCRIPT = `<script>
       if (res.ok) index = await res.json();
     } finally { loading = false; }
   }
+
+  function escape(s) { return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+
+  function buildSnippet(text, query) {
+    const idx = text.toLowerCase().indexOf(query);
+    if (idx === -1) return '';
+    const start = Math.max(0, idx - 50);
+    const end = Math.min(text.length, idx + query.length + 80);
+    let snippet = text.slice(start, end);
+    if (start > 0) snippet = '…' + snippet;
+    if (end < text.length) snippet = snippet + '…';
+    // Highlight the match.
+    const matchStart = idx - start + (start > 0 ? 1 : 0);
+    const before = escape(snippet.slice(0, matchStart));
+    const hit = escape(snippet.slice(matchStart, matchStart + query.length));
+    const after = escape(snippet.slice(matchStart + query.length));
+    return before + '<mark>' + hit + '</mark>' + after;
+  }
+
   function show(matches) {
-    if (!matches.length) { results.style.display = 'block'; results.innerHTML = '<div class="search-empty">No matches.</div>'; return; }
+    if (!matches.length) {
+      results.style.display = 'block';
+      results.innerHTML = '<div class="search-empty">No matches.</div>';
+      return;
+    }
     results.style.display = 'block';
     results.innerHTML = matches.slice(0, 25).map(m =>
-      '<a class="search-result" href="' + m.href.replace(/"/g,'&quot;') + '">' +
+      '<a class="search-result" href="' + m.href.replace(/"/g, '&quot;') + '">' +
       '<div class="search-result-title">' + escape(m.title) + '</div>' +
       (m.folder ? '<div class="search-result-folder">' + escape(m.folder) + '</div>' : '') +
+      (m.snippet ? '<div class="search-result-summary">' + m.snippet + '</div>' : '') +
       '</a>'
     ).join('');
   }
-  function escape(s) { return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+
   input.addEventListener('focus', ensureIndex);
   input.addEventListener('input', async () => {
     const q = input.value.trim().toLowerCase();
     if (!q) { results.style.display = 'none'; return; }
     await ensureIndex();
     if (!index) return;
-    const matches = index.filter(p => p.title.toLowerCase().includes(q) || p.path.toLowerCase().includes(q));
+    const matches = [];
+    for (const p of index) {
+      const titleLc = p.title.toLowerCase();
+      const pathLc = p.path.toLowerCase();
+      const textLc = (p.text || '').toLowerCase();
+      const inTitle = titleLc.includes(q);
+      const inPath = pathLc.includes(q);
+      const inText = textLc.includes(q);
+      if (!(inTitle || inPath || inText)) continue;
+      // Rank: title hits first, then path, then body. Stable order otherwise.
+      const rank = inTitle ? 0 : inPath ? 1 : 2;
+      matches.push({
+        ...p,
+        rank,
+        snippet: inText && !inTitle ? buildSnippet(p.text, q) : '',
+      });
+    }
+    matches.sort((a, b) => a.rank - b.rank);
     show(matches);
   });
   document.addEventListener('click', (e) => {

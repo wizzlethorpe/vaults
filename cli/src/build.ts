@@ -153,7 +153,14 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     defaultImageWidth: settings.values.default_image_width,
   };
 
-  // Render markdown pages + write preview JSON (parallel)
+  // Render markdown pages in two phases:
+  //   1. Render bodies + collect each page's outlinks. Buffer the HTML so we
+  //      don't pay the rendering cost twice.
+  //   2. Build a backlinks map (target path → pages linking to it), then
+  //      write the layout and preview JSON for each page.
+  interface Rendered { title: string; html: string; outlinks: string[]; }
+  const renderedPages = new Map<string, Rendered>();
+
   if (pageMetas.length > 0) {
     const progress = new Progress("Pages");
     progress.update(0, pageMetas.length);
@@ -161,14 +168,36 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     await pMap(pageMetas, concurrency, async (p) => {
       const source = sources.get(p.path)!;
       const result = await renderMarkdown(source, context, basenameNoExt(p.path));
+      renderedPages.set(p.path, { title: result.title, html: result.html, outlinks: result.outlinks });
+    }, (done, total) => progress.update(done, total));
+
+    // Invert outlinks → backlinks. Multiple links from the same page count once.
+    const backlinkMap = new Map<string, Set<string>>();
+    for (const [from, info] of renderedPages) {
+      const seen = new Set<string>();
+      for (const target of info.outlinks) {
+        if (target === from || seen.has(target)) continue;
+        seen.add(target);
+        if (!backlinkMap.has(target)) backlinkMap.set(target, new Set());
+        backlinkMap.get(target)!.add(from);
+      }
+    }
+
+    await pMap(pageMetas, concurrency, async (p) => {
+      const rendered = renderedPages.get(p.path)!;
+      const backlinkPaths = backlinkMap.get(p.path) ?? new Set();
+      const backlinks = pageMetas
+        .filter((m) => backlinkPaths.has(m.path))
+        .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" }));
       const html = renderLayout({
-        title: result.title,
+        title: rendered.title,
         pagePath: p.path,
-        bodyHtml: result.html,
+        bodyHtml: rendered.html,
         pages: pageMetas,
         vaultName: opts.vaultName,
         inlineTitle: settings.values.inline_title,
         defaultImageWidth: settings.values.default_image_width,
+        backlinks,
         ...(p.mtime != null ? { mtime: p.mtime } : {}),
         ...(p.birthtime != null ? { birthtime: p.birthtime } : {}),
       });
@@ -177,10 +206,9 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       await mkdir(dirname(dest), { recursive: true });
       await writeFile(dest, html);
 
-      // Per-page preview JSON for hover popovers
-      const preview = await buildPreview(source, result.title);
+      const preview = await buildPreview(sources.get(p.path)!, rendered.title);
       await writeFile(join(opts.outputDir, outputBase + ".preview.json"), JSON.stringify(preview));
-    }, (done, total) => progress.update(done, total));
+    });
 
     progress.done(`${pageMetas.length} rendered (${markdownFiles.length} from source, ${folderIndexes.length} folder indexes)`);
   }
@@ -197,12 +225,14 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     progress.done(`${otherFiles.length} copied`);
   }
 
-  // Write search index
+  // Write search index — title + path + a stripped-text body so the client
+  // can match anywhere in the page and show a snippet.
   const searchIndex = pageMetas.map((p) => ({
     title: p.title,
     path: p.path,
     href: "/" + p.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/"),
     folder: p.path.includes("/") ? p.path.split("/").slice(0, -1).join("/") : "",
+    text: extractPlainText(sources.get(p.path) ?? "", 1500),
   }));
   await writeFile(join(opts.outputDir, "_search-index.json"), JSON.stringify(searchIndex));
 
@@ -269,12 +299,12 @@ function generateFolderIndexes(existing: PageMeta[]): FolderIndex[] {
     const lines: string[] = [];
     if (subfolders.size > 0) {
       lines.push("");
-      const sorted = [...subfolders].sort((a, b) => a.localeCompare(b));
+      const sorted = [...subfolders].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
       for (const sub of sorted) lines.push(`- [[${folder ? folder + "/" : ""}${sub}/index|${sub}]]`);
     }
     if (pages.length > 0) {
       lines.push("");
-      const sorted = [...pages].sort((a, b) => a.title.localeCompare(b.title));
+      const sorted = [...pages].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" }));
       for (const p of sorted) lines.push(`- [[${p.path.replace(/\.md$/i, "")}|${p.title}]]`);
     }
     if (subfolders.size === 0 && pages.length === 0) continue;
@@ -315,4 +345,27 @@ function pageTitle(source: string, path: string): string {
 
 function basenameNoExt(path: string): string {
   return path.split("/").pop()!.replace(/\.md$/i, "");
+}
+
+/**
+ * Strip markdown formatting and other noise to produce a plain-text body
+ * suitable for full-text search.
+ */
+function extractPlainText(source: string, max: number): string {
+  return source
+    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "")            // frontmatter
+    .replace(/%%[\s\S]*?%%/g, "")                              // Obsidian comments
+    .replace(/```[\s\S]*?```/g, "")                            // fenced code
+    .replace(/!\[\[[^\]]+\]\]/g, "")                           // image embeds
+    .replace(/\[\[([^\]|#]+)(?:[#|][^\]]+)?\]\]/g, "$1")        // wikilinks → display text
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")                  // markdown images → alt
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")                   // markdown links → text
+    .replace(/`([^`]+)`/g, "$1")                               // inline code
+    .replace(/[*_~]+([^*_~\n]+)[*_~]+/g, "$1")                  // emphasis
+    .replace(/^>\s?\[![^\]]+\][+-]?\s*(.*)$/gm, "$1")           // callout markers
+    .replace(/^>\s?/gm, "")                                    // blockquote markers
+    .replace(/^#{1,6}\s+/gm, "")                              // headings
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
 }

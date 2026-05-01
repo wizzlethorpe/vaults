@@ -76,6 +76,14 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 .search-result-title { font-weight: 600; color: var(--accent); }
 .search-result-folder { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.15rem; }
 .search-empty { padding: 0.75rem; color: var(--muted); font-style: italic; font-size: 0.85rem; }
+.search-result-summary {
+  font-size: 0.78rem; color: var(--muted); margin-top: 0.25rem; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.search-result-summary mark {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: inherit; padding: 0 0.1em; border-radius: 2px;
+}
 
 .toc { display: block; }
 .toc-summary {
@@ -90,6 +98,23 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 .toc a:hover { color: var(--accent); border-left-color: var(--accent); text-decoration: none; }
 .toc-d3 a { padding-left: 1.25rem; font-size: 0.85rem; }
 .toc-d4 a { padding-left: 2rem; font-size: 0.8rem; }
+
+/* Backlinks panel — same visual rhythm as the TOC. */
+.rightbar .backlinks { margin-top: 1.75rem; }
+.rightbar .backlinks h4 {
+  margin: 0 0 0.5rem; font-size: 0.75rem;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); font-weight: 600;
+}
+.rightbar .backlinks ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.rightbar .backlinks a {
+  display: block; padding: 0.15rem 0 0.15rem 0.5rem;
+  color: var(--muted); text-decoration: none;
+  border-left: 2px solid transparent;
+  background: transparent;
+  transition: color 0.12s, border-color 0.12s;
+}
+.rightbar .backlinks a:hover { color: var(--accent); border-left-color: var(--accent); }
 
 .page-meta {
   color: var(--muted); font-size: 0.78rem;
@@ -128,7 +153,7 @@ article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
 .sidebar .sitemap-list a.internal-link,
 .sidebar .sitemap-folder > details > summary {
   display: block;
-  padding: 0.2rem 0.4rem 0.2rem 1.05rem;  /* leaves ~1rem of chevron gutter */
+  padding: 0.2rem 0.4rem 0.2rem 0.85rem;  /* tight gutter for the chevron */
   background: transparent;
   color: var(--muted);
   text-decoration: none;
@@ -155,19 +180,26 @@ article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
   text-decoration: none;
 }
 .sidebar .sitemap-folder > details > summary::-webkit-details-marker { display: none; }
+/* CSS-drawn chevron — crisper and more compact than any Unicode glyph. */
 .sidebar .sitemap-folder > details > summary::before {
-  content: '\\25B6';                  /* ▶ — full-size right-pointing triangle */
+  content: '';
   position: absolute;
-  left: 0.05rem;
+  left: 0.25rem;
   top: 50%;
-  font-size: 0.85em;
-  line-height: 1;
-  color: var(--muted);
-  transform: translateY(-50%);
-  transition: transform 0.15s ease;
+  width: 4px;
+  height: 4px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-65%) rotate(-45deg);
+  transform-origin: center;
+  opacity: 0.65;
+  transition: transform 0.15s ease, opacity 0.15s ease;
 }
 .sidebar .sitemap-folder > details[open] > summary::before {
-  transform: translateY(-50%) rotate(90deg);
+  transform: translateY(-50%) rotate(45deg);
+}
+.sidebar .sitemap-folder > details > summary:hover::before {
+  opacity: 1;
 }
 
 /* Children of a folder indent uniformly — chevron position is preserved

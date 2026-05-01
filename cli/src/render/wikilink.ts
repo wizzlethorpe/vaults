@@ -8,7 +8,11 @@ import { slugify } from "./slug.js";
 // Negative lookbehind blocks ![[embed]] from being consumed here.
 const WIKILINK_RE = /(?<!!)(?<!\[)\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]+?))?\]\]/g;
 
-export function wikiLinkPlugin(opts: { context: RenderContext }): Plugin<[], Root> {
+export function wikiLinkPlugin(opts: {
+  context: RenderContext;
+  /** Receives each resolved target page's vault path; used to compute backlinks. */
+  outlinks?: string[];
+}): Plugin<[], Root> {
   return () => (tree) => {
     findAndReplace(tree, [
       [
@@ -19,10 +23,14 @@ export function wikiLinkPlugin(opts: { context: RenderContext }): Plugin<[], Roo
           const display = rawAlias?.trim() ?? name;
           const slug = slugify(name);
 
-          const page = opts.context.pages.get(slug);
+          // Try basename slug first, then full-path slug (so [[NPCs/index]] works).
+          const page = opts.context.pages.get(slug)
+            ?? opts.context.pages.get(slugify(name.replace(/\.md$/i, "").replace(/\//g, "/")));
           const href = page != null
             ? "/" + page.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/") + (anchor ? `#${anchor}` : "")
             : "#";
+
+          if (page && opts.outlinks) opts.outlinks.push(page.path);
 
           // Mirror Obsidian's DOM: `internal-link` is the canonical class community
           // snippets target. We also keep `internal` (and `new` for unresolved) for

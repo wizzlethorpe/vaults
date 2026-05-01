@@ -40,6 +40,7 @@ export async function renderMarkdown(
 ): Promise<RenderResult> {
   const parsed = matter(source);
   const fm = parsed.data as Record<string, unknown>;
+  const outlinks: string[] = [];
 
   // Pre-process the markdown source before parsing.
   //   1. Strip Obsidian-style comments (%% ... %% — single- or multi-line).
@@ -56,7 +57,7 @@ export async function renderMarkdown(
     .use(remarkGfm)
     .use(calloutPlugin())
     .use(embedPlugin({ context }))
-    .use(wikiLinkPlugin({ context }))
+    .use(wikiLinkPlugin({ context, outlinks }))
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
     .use(rehypeSlug)
@@ -69,7 +70,7 @@ export async function renderMarkdown(
     || extractH1(parsed.content)
     || fallbackTitle;
 
-  return { html: String(file), title, frontmatter: fm, outlinks: [] };
+  return { html: String(file), title, frontmatter: fm, outlinks };
 }
 
 function extractH1(markdown: string): string | null {
