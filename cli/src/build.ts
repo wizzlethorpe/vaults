@@ -197,6 +197,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
         vaultName: opts.vaultName,
         inlineTitle: settings.values.inline_title,
         defaultImageWidth: settings.values.default_image_width,
+        centerImages: settings.values.center_images,
         backlinks,
         ...(p.mtime != null ? { mtime: p.mtime } : {}),
         ...(p.birthtime != null ? { birthtime: p.birthtime } : {}),

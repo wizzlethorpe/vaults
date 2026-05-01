@@ -10,6 +10,8 @@ export interface LayoutInput {
   inlineTitle: boolean;
   /** CSS dimension applied to images without an explicit |N size hint. */
   defaultImageWidth: string;
+  /** Center images in the article body. */
+  centerImages: boolean;
   /** Pages that link to this one. */
   backlinks: PageMeta[];
   /** Unix-seconds. Optional — synthesized folder indexes may have neither. */
@@ -30,7 +32,7 @@ export function renderLayout(input: LayoutInput): string {
 <link rel="stylesheet" href="/styles.css">
 <link rel="stylesheet" href="/user.css">
 </head>
-<body${input.defaultImageWidth ? ` style="--default-img-width: ${attr(input.defaultImageWidth)}"` : ""}>
+<body${input.centerImages ? ` class="center-images"` : ""}${input.defaultImageWidth ? ` style="--default-img-width: ${attr(input.defaultImageWidth)}"` : ""}>
 <div class="app-grid">
   <aside class="sidebar">
     <a class="brand" href="/">${esc(input.vaultName)}</a>

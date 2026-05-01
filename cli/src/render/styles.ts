@@ -158,6 +158,12 @@ article td > img:first-child:last-child {
    width itself is set by --default-img-width on <body>, configurable via
    the default_image_width setting. */
 article img.default-width { width: var(--default-img-width, 50vw); max-width: 100%; }
+
+/* Centre images when settings.center_images is on. Scoped to standalone
+   <p><img></p> wrappers (Markdown emits these for image-only paragraphs)
+   so inline images mid-sentence aren't displaced. */
+body.center-images article p > img:only-child { display: block; margin-left: auto; margin-right: auto; }
+body.center-images article p:has(> img:only-child) { text-align: center; }
 article code { background: color-mix(in srgb, var(--muted) 12%, transparent); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }
 article pre { background: color-mix(in srgb, var(--muted) 12%, transparent); padding: 1rem; border-radius: 6px; overflow-x: auto; }
 article pre code { background: none; padding: 0; }

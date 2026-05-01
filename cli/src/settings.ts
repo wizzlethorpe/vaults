@@ -12,6 +12,7 @@ export interface Settings {
   ignore: string[];
   inline_title: boolean;
   default_image_width: string;
+  center_images: boolean;
 }
 
 type SettingType = "string" | "number" | "boolean" | "string[]";
@@ -55,6 +56,12 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     type: "string",
     description:
       "CSS width applied to images embedded without an explicit '|N' size hint. Any valid CSS dimension works (50vw, 400px, 100%, etc). Set empty string to leave images at natural size.",
+  },
+  center_images: {
+    default: true,
+    type: "boolean",
+    description:
+      "Center images in the article body. Set false to leave them flush left.",
   },
 };
 
