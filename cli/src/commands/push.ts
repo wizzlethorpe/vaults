@@ -5,7 +5,6 @@ import { ApiClient } from "../api.js";
 import { loadConfig } from "../config.js";
 import { contentTypeFor } from "../images.js";
 import { buildSite } from "../build.js";
-import { loadSettings, writeSettings, SETTINGS_FILE } from "../settings.js";
 import type { ScannedFile } from "../scan.js";
 
 interface PushOptions {
@@ -28,14 +27,6 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
   const api = new ApiClient(cfg);
   const vaultName = opts.vaultName ?? "Vault";
   const outputDir = join(vaultPath, ".vault-cache", "rendered");
-
-  // Push is the explicit sync point — canonicalise settings.md if it's drifted
-  // (or create it from defaults if missing).
-  const settings = await loadSettings(vaultPath);
-  if (settings.changed && !opts.dryRun) {
-    await writeSettings(vaultPath, settings.values);
-    console.log(`Updated ${SETTINGS_FILE} to canonical format.`);
-  }
 
   console.log(`Building site from ${vaultPath}...`);
   const result = await buildSite({

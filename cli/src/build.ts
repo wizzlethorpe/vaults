@@ -10,7 +10,7 @@ import { slugify } from "./render/slug.js";
 import { buildPreview } from "./render/preview.js";
 import { DEFAULT_CSS } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
-import { loadSettings, SETTINGS_FILE } from "./settings.js";
+import { loadSettings, writeSettings, SETTINGS_FILE } from "./settings.js";
 import type { ImageEntry, PageMeta, RenderContext } from "./render/types.js";
 import { formatDuration, pMap, Progress } from "./util.js";
 
@@ -36,10 +36,16 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
 
   // settings.md (frontmatter-only file in the vault root) overrides the build
   // options for the few settings it covers. CLI flags still win — they were
-  // passed in BuildOptions explicitly. We only READ here; rewriting the file
-  // is the caller's job (push does it during sync, init creates it fresh).
+  // passed in BuildOptions explicitly. If the file already exists and has
+  // drifted from canonical (unknown keys, missing keys, stale formatting),
+  // rewrite it so the user sees consistent output as the schema evolves.
+  // We don't auto-create the file when it's missing — that's `init`'s job.
   const settings = await loadSettings(opts.vaultPath);
   for (const w of settings.warnings) console.warn(`  ${w}`);
+  if (settings.exists && settings.changed) {
+    await writeSettings(opts.vaultPath, settings.values);
+    console.log(`  rewrote ${SETTINGS_FILE} to canonical format`);
+  }
   const effective: BuildOptions = {
     ...opts,
     vaultName: opts.vaultName === "Vault" ? settings.values.vault_name : opts.vaultName,

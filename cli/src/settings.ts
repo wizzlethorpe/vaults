@@ -55,6 +55,8 @@ export const SETTINGS_FILE = "settings.md";
 
 export interface LoadedSettings {
   values: Settings;
+  /** Did settings.md exist on disk? If false, defaults were used. */
+  exists: boolean;
   /** Was the on-disk version already canonical? If false, callers may want to write back. */
   changed: boolean;
   warnings: string[];
@@ -71,7 +73,7 @@ export async function loadSettings(vaultPath: string): Promise<LoadedSettings> {
     raw = await readFile(path, "utf8");
   } catch {
     const values = defaults();
-    return { values, changed: true, warnings: [] };
+    return { values, exists: false, changed: false, warnings: [] };
   }
 
   const parsed = matter(raw);
@@ -96,7 +98,7 @@ export async function loadSettings(vaultPath: string): Promise<LoadedSettings> {
   }
 
   const canonical = renderSettingsFile(values);
-  return { values, changed: canonical !== raw, warnings };
+  return { values, exists: true, changed: canonical !== raw, warnings };
 }
 
 /**

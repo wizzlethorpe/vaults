@@ -152,18 +152,18 @@ article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
 }
 .sidebar .sitemap-folder > details > summary::-webkit-details-marker { display: none; }
 .sidebar .sitemap-folder > details > summary::before {
-  content: '\\25B8';                  /* ▸ */
+  content: '\\25B6';                  /* ▶ — full-size right-pointing triangle */
   position: absolute;
-  left: 0.15rem;
+  left: 0.05rem;
   top: 50%;
-  font-size: 0.95em;
+  font-size: 0.85em;
   line-height: 1;
   color: var(--muted);
-  transform: translateY(-55%);  /* visual centring — chevron baseline is low */
+  transform: translateY(-50%);
   transition: transform 0.15s ease;
 }
 .sidebar .sitemap-folder > details[open] > summary::before {
-  transform: translateY(-55%) rotate(90deg);
+  transform: translateY(-50%) rotate(90deg);
 }
 
 /* Children of a folder indent uniformly — chevron position is preserved
