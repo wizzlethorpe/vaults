@@ -11,6 +11,7 @@ import { buildPreview } from "./render/preview.js";
 import { DEFAULT_CSS } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./settings.js";
+import { renderAuthMiddleware, LOGIN_HTML } from "./render/auth-template.js";
 import type { ImageEntry, PageMeta, RenderContext } from "./render/types.js";
 import { formatDuration, pMap, Progress } from "./util.js";
 
@@ -200,6 +201,29 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     });
     perRolePageCount[role] = stats.pageCount;
     if (!collapseToRoot) console.log(`  variant '${role}': ${stats.pageCount} pages`);
+  }
+
+  // ── Auth Function (multi-role only) ─────────────────────────────────────
+  if (!collapseToRoot) {
+    const fnDir = join(opts.outputDir, "functions");
+    await mkdir(fnDir, { recursive: true });
+    const middleware = renderAuthMiddleware({
+      roles,
+      rolePasswords: settings.values.role_passwords,
+    });
+    await writeFile(join(fnDir, "_middleware.js"), middleware);
+
+    // Login page — drop in the role list (everything above the default).
+    const protectedRoles = roles.slice(1);
+    const opts_html = protectedRoles
+      .map((r) => `<option value="${r}">${r}</option>`)
+      .join("");
+    await writeFile(join(opts.outputDir, "login.html"), LOGIN_HTML.replace("__ROLE_OPTIONS__", opts_html));
+
+    const missing = protectedRoles.filter((r) => !settings.values.role_passwords[r]);
+    if (missing.length > 0) {
+      console.warn(`  WARNING: no password set for role(s): ${missing.join(", ")}. Run 'vaults password <role>' before pushing.`);
+    }
   }
 
   console.log(`Built in ${formatDuration(Date.now() - start)}.`);

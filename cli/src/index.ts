@@ -4,6 +4,7 @@ import { push } from "./commands/push.js";
 import { build } from "./commands/build.js";
 import { preview } from "./commands/preview.js";
 import { init } from "./commands/init.js";
+import { password } from "./commands/password.js";
 
 const program = new Command();
 
@@ -11,6 +12,16 @@ program
   .name("vaults")
   .description("Sync an Obsidian vault to a Cloudflare-hosted wiki")
   .version("0.1.0");
+
+program
+  .command("password")
+  .description("Set the password for a role (writes a PBKDF2 hash to settings.md)")
+  .argument("<role>", "Role name (must already exist in settings.roles)")
+  .option("--vault-path <path>", "Path to the vault", process.cwd())
+  .action(async (role: string, opts: { vaultPath: string }) => {
+    try { await password(opts.vaultPath, role, {}); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
 
 program
   .command("init")

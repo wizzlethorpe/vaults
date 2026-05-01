@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface VaultConfig {
@@ -12,6 +12,16 @@ export interface VaultConfig {
   maxFileBytes: number;
   /** Cloudflare Pages project name (used for `wrangler pages deploy`). */
   projectName?: string;
+  /** Hex-encoded HMAC key used to sign session cookies. Generated on first push. */
+  sessionSecret?: string;
+}
+
+export async function saveSessionSecret(vaultPath: string, secret: string): Promise<void> {
+  const path = join(vaultPath, ".vaultrc.json");
+  let existing: Partial<VaultConfig> = {};
+  try { existing = JSON.parse(await readFile(path, "utf8")) as Partial<VaultConfig>; } catch { /* no file yet */ }
+  existing.sessionSecret = secret;
+  await writeFile(path, JSON.stringify(existing, null, 2) + "\n");
 }
 
 const DEFAULT_CONFIG: Partial<VaultConfig> = {
