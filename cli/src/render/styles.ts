@@ -132,6 +132,28 @@ article h1 { margin-top: 0; font-size: 2.25rem; }
 article h2 { margin-top: 2rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.25rem; }
 article hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
 article img { max-width: 100%; border-radius: 4px; }
+
+/* Tables — readable defaults so cell content doesn't run together. */
+article table {
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  width: 100%;
+}
+article th, article td {
+  padding: 0.6rem 0.85rem;
+  vertical-align: top;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+}
+article thead th {
+  border-bottom: 2px solid var(--rule);
+  font-weight: 600;
+}
+article tbody tr:last-child > td { border-bottom: none; }
+article td > img:first-child:last-child {
+  /* Solo image in a cell (e.g. portrait + bio layouts) — keep it from sprawling. */
+  max-width: 12rem;
+}
 /* Default size for ![[image]] embeds without an explicit |N hint. The
    width itself is set by --default-img-width on <body>, configurable via
    the default_image_width setting. */
