@@ -8,7 +8,7 @@ import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeStringify from "rehype-stringify";
 import matter from "gray-matter";
-import type { RenderContext } from "./types.js";
+import type { RenderContext, RenderWarning } from "./types.js";
 import { wikiLinkPlugin } from "./wikilink.js";
 import { embedPlugin } from "./embed.js";
 import { calloutPlugin } from "./callouts.js";
@@ -29,8 +29,10 @@ export interface RenderResult {
   html: string;
   title: string;
   frontmatter: Record<string, unknown>;
-  /** Raw outbound link slugs (resolved or not). */
+  /** Resolved outbound link target paths. */
   outlinks: string[];
+  /** Broken wikilinks, missing images, missing transclusions encountered while rendering. */
+  warnings: RenderWarning[];
 }
 
 export async function renderMarkdown(
@@ -41,6 +43,7 @@ export async function renderMarkdown(
   const parsed = matter(source);
   const fm = parsed.data as Record<string, unknown>;
   const outlinks: string[] = [];
+  const warnings: RenderWarning[] = [];
 
   // Pre-process the markdown source before parsing.
   //   1. Strip Obsidian-style comments (%% ... %% — single- or multi-line).
@@ -56,8 +59,8 @@ export async function renderMarkdown(
     .use(remarkParse)
     .use(remarkGfm)
     .use(calloutPlugin({ redactRoles: context.redactRoles }))
-    .use(embedPlugin({ context }))
-    .use(wikiLinkPlugin({ context, outlinks }))
+    .use(embedPlugin({ context, warnings }))
+    .use(wikiLinkPlugin({ context, outlinks, warnings }))
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
     .use(rehypeSlug)
@@ -70,7 +73,7 @@ export async function renderMarkdown(
     || extractH1(parsed.content)
     || fallbackTitle;
 
-  return { html: String(file), title, frontmatter: fm, outlinks };
+  return { html: String(file), title, frontmatter: fm, outlinks, warnings };
 }
 
 function extractH1(markdown: string): string | null {

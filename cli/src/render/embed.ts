@@ -4,7 +4,7 @@ import { findAndReplace } from "mdast-util-find-and-replace";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
-import type { RenderContext } from "./types.js";
+import type { RenderContext, RenderWarning } from "./types.js";
 import { slugify } from "./slug.js";
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?)$/i;
@@ -17,8 +17,12 @@ const MAX_DEPTH = 3;
 
 const subParser = unified().use(remarkParse).use(remarkGfm);
 
-export function embedPlugin(opts: { context: RenderContext }): Plugin<[], Root> {
-  const { context } = opts;
+export function embedPlugin(opts: {
+  context: RenderContext;
+  /** Receives warnings for missing pages, sections, and images encountered while rendering. */
+  warnings?: RenderWarning[];
+}): Plugin<[], Root> {
+  const { context, warnings } = opts;
 
   return () => (tree) => {
     // 1. Page transclusion — paragraphs that are a single embed and not an image.
@@ -35,7 +39,7 @@ export function embedPlugin(opts: { context: RenderContext }): Plugin<[], Root> 
       const name = rawName!.trim();
       if (IMAGE_EXT_RE.test(name)) continue;
 
-      replacements.push({ index: i, node: transcludePage(slugify(name), rawAnchor?.trim(), context) });
+      replacements.push({ index: i, node: transcludePage(slugify(name), rawAnchor?.trim(), context, warnings, name) });
     }
     for (let i = replacements.length - 1; i >= 0; i--) {
       const r = replacements[i]!;
@@ -51,6 +55,7 @@ export function embedPlugin(opts: { context: RenderContext }): Plugin<[], Root> 
           if (!IMAGE_EXT_RE.test(name)) return false;
           const slug = slugify(name);
           const image = context.images.get(slug);
+          if (!image && warnings) warnings.push({ kind: "missing-image", target: name });
           const path = image?.outputPath ?? name;
           const src = "/" + path.split("/").map(encodeURIComponent).join("/");
           const explicit = parseSizeHint(rawAlias?.trim());
@@ -73,16 +78,22 @@ function transcludePage(
   slug: string,
   anchor: string | undefined,
   context: RenderContext,
+  warnings: RenderWarning[] | undefined,
+  rawName: string,
 ): RootContent {
   const source = context.markdownContent.get(slug);
   if (source == null) {
+    if (warnings) warnings.push({ kind: "missing-page", target: rawName });
     return brokenEmbed(slug, "(page not found)", "embed-broken");
   }
 
   let body = stripFrontmatter(source);
   if (anchor) {
     const section = extractSection(body, anchor);
-    if (section == null) return brokenEmbed(slug, "(section not found)", "embed-broken");
+    if (section == null) {
+      if (warnings) warnings.push({ kind: "missing-section", target: `${rawName}#${anchor}` });
+      return brokenEmbed(slug, "(section not found)", "embed-broken");
+    }
     body = section;
   }
 

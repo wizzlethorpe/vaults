@@ -1,7 +1,7 @@
 import type { Plugin } from "unified";
 import type { Root, Link, Text } from "mdast";
 import { findAndReplace } from "mdast-util-find-and-replace";
-import type { RenderContext } from "./types.js";
+import type { RenderContext, RenderWarning } from "./types.js";
 import { slugify } from "./slug.js";
 
 // Matches [[Page]], [[Page|alias]], [[Page#anchor]], [[Page#anchor|alias]].
@@ -12,6 +12,8 @@ export function wikiLinkPlugin(opts: {
   context: RenderContext;
   /** Receives each resolved target page's vault path; used to compute backlinks. */
   outlinks?: string[];
+  /** Receives one warning per unresolved [[wikilink]]. */
+  warnings?: RenderWarning[];
 }): Plugin<[], Root> {
   return () => (tree) => {
     findAndReplace(tree, [
@@ -31,6 +33,7 @@ export function wikiLinkPlugin(opts: {
             : "#";
 
           if (page && opts.outlinks) opts.outlinks.push(page.path);
+          if (!page && opts.warnings) opts.warnings.push({ kind: "broken-link", target: name });
 
           // Mirror Obsidian's DOM: `internal-link` is the canonical class community
           // snippets target. We also keep `internal` (and `new` for unresolved) for

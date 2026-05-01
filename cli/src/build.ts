@@ -12,7 +12,7 @@ import { DEFAULT_CSS } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./settings.js";
 import { renderAuthMiddleware, LOGIN_HTML } from "./render/auth-template.js";
-import type { ImageEntry, PageMeta, RenderContext } from "./render/types.js";
+import type { ImageEntry, PageMeta, RenderContext, RenderWarning } from "./render/types.js";
 import { formatDuration, pMap, Progress } from "./util.js";
 
 export interface BuildOptions {
@@ -290,16 +290,23 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     redactRoles: a.redactRoles,
   };
 
-  // Pass 1: render bodies + collect outlinks.
-  interface Rendered { title: string; html: string; outlinks: string[]; }
+  // Pass 1: render bodies + collect outlinks + warnings.
+  interface Rendered { title: string; html: string; outlinks: string[]; warnings: RenderWarning[]; }
   const rendered = new Map<string, Rendered>();
 
   const progress = new Progress(`Pages (${a.role})`);
   progress.update(0, visibleMetas.length);
   await pMap(visibleMetas, a.concurrency, async (p) => {
     const result = await renderMarkdown(visibleSources.get(p.path)!, context, basenameNoExt(p.path));
-    rendered.set(p.path, { title: result.title, html: result.html, outlinks: result.outlinks });
+    rendered.set(p.path, {
+      title: result.title,
+      html: result.html,
+      outlinks: result.outlinks,
+      warnings: result.warnings,
+    });
   }, (done, total) => progress.update(done, total));
+
+  reportWarnings(a.role, rendered);
 
   // Invert outlinks → backlinks. (Cross-role links can only point downwards
   // because higher-role pages aren't in this variant's index.)
@@ -456,6 +463,57 @@ function extractH1(source: string): string | null {
 
 function basenameNoExt(path: string): string {
   return path.split("/").pop()!.replace(/\.md$/i, "");
+}
+
+/**
+ * Print a compact summary of render-time warnings (broken wikilinks, missing
+ * images, missing transclusions) for the given variant. Truncates at 20
+ * pages-with-issues to avoid scrolling off the screen for large vaults.
+ */
+function reportWarnings(role: string, rendered: Map<string, { warnings: RenderWarning[] }>): void {
+  interface Issue { kind: string; target: string; }
+  const issuesByPage = new Map<string, Issue[]>();
+  let total = 0;
+  for (const [path, info] of rendered) {
+    if (info.warnings.length === 0) continue;
+    issuesByPage.set(path, info.warnings.map((w) => ({ kind: kindLabel(w.kind), target: w.target })));
+    total += info.warnings.length;
+  }
+  if (total === 0) return;
+
+  const counts: Record<string, number> = {};
+  for (const issues of issuesByPage.values()) {
+    for (const i of issues) counts[i.kind] = (counts[i.kind] ?? 0) + 1;
+  }
+  const summary = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(", ");
+  console.warn(`  ⚠ ${role}: ${summary} across ${issuesByPage.size} page(s)`);
+
+  const pages = [...issuesByPage].sort((a, b) => a[0].localeCompare(b[0]));
+  const shown = pages.slice(0, 20);
+  for (const [path, issues] of shown) {
+    console.warn(`    ${path}`);
+    // Dedupe within a page so a heavily repeated link only shows once.
+    const seen = new Set<string>();
+    for (const i of issues) {
+      const key = `${i.kind}:${i.target}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      console.warn(`      ${i.kind}: ${i.target}`);
+    }
+  }
+  if (pages.length > shown.length) {
+    console.warn(`    … and ${pages.length - shown.length} more page(s) with warnings`);
+  }
+}
+
+function kindLabel(kind: string): string {
+  switch (kind) {
+    case "broken-link": return "broken link";
+    case "missing-image": return "missing image";
+    case "missing-page": return "missing page";
+    case "missing-section": return "missing section";
+    default: return kind;
+  }
 }
 
 function extractPlainText(source: string, max: number): string {

@@ -17,6 +17,13 @@ export interface ImageEntry {
   outputPath: string;
 }
 
+export type RenderWarningKind = "broken-link" | "missing-image" | "missing-page" | "missing-section";
+
+export interface RenderWarning {
+  kind: RenderWarningKind;
+  target: string;
+}
+
 export interface RenderContext {
   /** slug → page metadata. Used to resolve [[wikilinks]]. */
   pages: Map<string, PageMeta>;
