@@ -70,31 +70,52 @@ function renderBreadcrumbs(pagePath: string, vaultName: string): string {
   return `<nav class="crumbs">${crumbs.join(" › ")}</nav>`;
 }
 
+interface FolderNode {
+  name: string;
+  pages: PageMeta[];
+  subfolders: Map<string, FolderNode>;
+}
+
 function renderSitemap(pages: PageMeta[], currentPath: string): string {
-  const roots: PageMeta[] = [];
-  const folders = new Map<string, PageMeta[]>();
+  const root: FolderNode = { name: "", pages: [], subfolders: new Map() };
   for (const p of pages) {
     if (p.path === "index.md") continue;
     const parts = p.path.split("/");
-    if (parts.length === 1) {
-      roots.push(p);
-    } else {
-      const key = parts[0]!;
-      if (!folders.has(key)) folders.set(key, []);
-      folders.get(key)!.push(p);
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const folder = parts[i]!;
+      let child = node.subfolders.get(folder);
+      if (!child) {
+        child = { name: folder, pages: [], subfolders: new Map() };
+        node.subfolders.set(folder, child);
+      }
+      node = child;
     }
+    node.pages.push(p);
   }
 
-  let html = '<nav><h4>Pages</h4><ul class="sitemap-list">';
-  for (const p of roots) html += sitemapItem(p, currentPath);
-  for (const [folder, children] of [...folders].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const open = children.some((p) => p.path === currentPath) ? " open" : "";
-    html += `<li class="sitemap-folder"><details${open}><summary>${esc(folder)}</summary><ul class="sitemap-list">`;
-    for (const p of children) html += sitemapItem(p, currentPath);
-    html += "</ul></details></li>";
+  return `<nav><h4>Pages</h4><ul class="sitemap-list">${renderNode(root, currentPath)}</ul></nav>`;
+}
+
+function renderNode(node: FolderNode, currentPath: string): string {
+  let html = "";
+  // Folders first, then pages — matches Obsidian's file explorer convention.
+  for (const [name, sub] of [...node.subfolders].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const open = nodeContainsPath(sub, currentPath) ? " open" : "";
+    html += `<li class="sitemap-folder"><details${open}><summary>${esc(name)}</summary><ul class="sitemap-list">${renderNode(sub, currentPath)}</ul></details></li>`;
   }
-  html += "</ul></nav>";
+  for (const p of [...node.pages].sort((a, b) => a.title.localeCompare(b.title))) {
+    html += sitemapItem(p, currentPath);
+  }
   return html;
+}
+
+function nodeContainsPath(node: FolderNode, currentPath: string): boolean {
+  if (node.pages.some((p) => p.path === currentPath)) return true;
+  for (const sub of node.subfolders.values()) {
+    if (nodeContainsPath(sub, currentPath)) return true;
+  }
+  return false;
 }
 
 function sitemapItem(p: PageMeta, currentPath: string): string {
