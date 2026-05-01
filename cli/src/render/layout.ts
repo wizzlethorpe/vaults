@@ -61,6 +61,7 @@ export function renderLayout(input: LayoutInput): string {
 ${HOVER_PREVIEW_SCRIPT}
 ${TOC_SCRIPT}
 ${SEARCH_SCRIPT}
+${LIGHTBOX_SCRIPT}
 </body>
 </html>`;
 }
@@ -237,6 +238,9 @@ const HOVER_PREVIEW_SCRIPT = `<script>
   }
   function isInternal(el) {
     if (!(el instanceof HTMLAnchorElement)) return false;
+    // Only preview links inside the main article body — sitemap / backlinks /
+    // breadcrumbs / TOC links shouldn't trigger popovers as the user navigates.
+    if (!el.closest('article')) return false;
     const href = el.getAttribute('href');
     if (!href || !href.startsWith('/') || href.startsWith('//')) return false;
     if (href.endsWith('.json') || href.endsWith('.css')) return false;
@@ -284,6 +288,34 @@ const TOC_SCRIPT = `<script>
     const cls = 'toc-d' + h.tagName[1];
     return '<li class="' + cls + '"><a href="#' + id + '">' + text.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</a></li>';
   }).join('');
+})();
+</script>`;
+
+const LIGHTBOX_SCRIPT = `<script>
+(function () {
+  let onKey = null;
+  function close(overlay) {
+    overlay.remove();
+    if (onKey) document.removeEventListener('keydown', onKey);
+    onKey = null;
+  }
+  document.addEventListener('click', (e) => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    if (!img.closest('article')) return;
+    if (img.closest('a')) return; // skip linked images
+    e.preventDefault();
+    const overlay = document.createElement('div');
+    overlay.className = 'lightbox-overlay';
+    const big = document.createElement('img');
+    big.src = img.src;
+    big.alt = img.alt;
+    overlay.appendChild(big);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', () => close(overlay));
+    onKey = (ev) => { if (ev.key === 'Escape') close(overlay); };
+    document.addEventListener('keydown', onKey);
+  });
 })();
 </script>`;
 

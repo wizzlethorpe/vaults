@@ -164,6 +164,22 @@ article img.default-width { width: var(--default-img-width, 50vw); max-width: 10
    so inline images mid-sentence aren't displaced. */
 body.center-images article p > img:only-child { display: block; margin-left: auto; margin-right: auto; }
 body.center-images article p:has(> img:only-child) { text-align: center; }
+
+/* Lightbox — click an image in the article body to view it full-size. */
+article img { cursor: zoom-in; }
+.lightbox-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  cursor: zoom-out;
+  animation: lightbox-fade 0.12s ease-out;
+}
+.lightbox-overlay img {
+  max-width: 95vw; max-height: 95vh;
+  object-fit: contain; border-radius: 4px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+@keyframes lightbox-fade { from { opacity: 0; } to { opacity: 1; } }
 article code { background: color-mix(in srgb, var(--muted) 12%, transparent); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }
 article pre { background: color-mix(in srgb, var(--muted) 12%, transparent); padding: 1rem; border-radius: 6px; overflow-x: auto; }
 article pre code { background: none; padding: 0; }
