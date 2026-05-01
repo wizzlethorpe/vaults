@@ -154,6 +154,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
         bodyHtml: result.html,
         pages: pageMetas,
         vaultName: opts.vaultName,
+        inlineTitle: settings.values.inline_title,
       });
       const outputBase = p.path.replace(/\.md$/i, "");
       const dest = join(opts.outputDir, outputBase + ".html");

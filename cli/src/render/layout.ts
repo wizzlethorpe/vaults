@@ -6,6 +6,8 @@ export interface LayoutInput {
   bodyHtml: string;
   pages: PageMeta[];
   vaultName: string;
+  /** Inject an <h1> with the page title above the body. */
+  inlineTitle: boolean;
 }
 
 export function renderLayout(input: LayoutInput): string {
@@ -36,7 +38,7 @@ export function renderLayout(input: LayoutInput): string {
   <main>
     <article class="markdown-preview-view markdown-rendered">
       ${breadcrumbs}
-      <h1>${esc(input.title)}</h1>
+      ${input.inlineTitle ? `<h1>${esc(input.title)}</h1>` : ""}
       ${input.bodyHtml}
     </article>
   </main>

@@ -10,6 +10,7 @@ export interface Settings {
   image_quality: number;
   max_file_bytes: number;
   ignore: string[];
+  inline_title: boolean;
 }
 
 type SettingType = "string" | "number" | "boolean" | "string[]";
@@ -41,6 +42,12 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     type: "string[]",
     description:
       "Glob patterns of files to skip when rendering and syncing. Examples: 'Templates/**', '*.draft.md', 'Private/**'.",
+  },
+  inline_title: {
+    default: true,
+    type: "boolean",
+    description:
+      "Inject the page title as an <h1> at the top. Set false if your notes already start with a '# Title' heading and you don't want the duplicate.",
   },
 };
 
