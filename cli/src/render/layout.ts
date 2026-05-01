@@ -8,6 +8,8 @@ export interface LayoutInput {
   vaultName: string;
   /** Inject an <h1> with the page title above the body. */
   inlineTitle: boolean;
+  /** CSS dimension applied to images without an explicit |N size hint. */
+  defaultImageWidth: string;
   /** Unix-seconds. Optional — synthesized folder indexes may have neither. */
   mtime?: number;
   birthtime?: number;
@@ -26,7 +28,7 @@ export function renderLayout(input: LayoutInput): string {
 <link rel="stylesheet" href="/styles.css">
 <link rel="stylesheet" href="/user.css">
 </head>
-<body>
+<body${input.defaultImageWidth ? ` style="--default-img-width: ${attr(input.defaultImageWidth)}"` : ""}>
 <div class="app-grid">
   <aside class="sidebar">
     <a class="brand" href="/">${esc(input.vaultName)}</a>

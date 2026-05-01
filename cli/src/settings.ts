@@ -11,6 +11,7 @@ export interface Settings {
   max_file_bytes: number;
   ignore: string[];
   inline_title: boolean;
+  default_image_width: string;
 }
 
 type SettingType = "string" | "number" | "boolean" | "string[]";
@@ -48,6 +49,12 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     type: "boolean",
     description:
       "Inject the page title as an <h1> at the top. Set false if your notes already start with a '# Title' heading and you don't want the duplicate.",
+  },
+  default_image_width: {
+    default: "50vw",
+    type: "string",
+    description:
+      "CSS width applied to images embedded without an explicit '|N' size hint. Any valid CSS dimension works (50vw, 400px, 100%, etc). Set empty string to leave images at natural size.",
   },
 };
 

@@ -146,7 +146,12 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     progress.done(`${imageFiles.length} processed (${cacheHits} cached, ${imageFiles.length - cacheHits} compressed)`);
   }
 
-  const context: RenderContext = { pages: pageIndex, images: imageIndex, markdownContent };
+  const context: RenderContext = {
+    pages: pageIndex,
+    images: imageIndex,
+    markdownContent,
+    defaultImageWidth: settings.values.default_image_width,
+  };
 
   // Render markdown pages + write preview JSON (parallel)
   if (pageMetas.length > 0) {
@@ -163,6 +168,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
         pages: pageMetas,
         vaultName: opts.vaultName,
         inlineTitle: settings.values.inline_title,
+        defaultImageWidth: settings.values.default_image_width,
         ...(p.mtime != null ? { mtime: p.mtime } : {}),
         ...(p.birthtime != null ? { birthtime: p.birthtime } : {}),
       });

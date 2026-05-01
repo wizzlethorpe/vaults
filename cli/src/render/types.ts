@@ -22,6 +22,8 @@ export interface RenderContext {
   images: Map<string, ImageEntry>;
   /** slug → raw markdown source. Used for ![[Page]] transclusion. */
   markdownContent: Map<string, string>;
+  /** CSS width for images embedded without an explicit |N hint (e.g. "50vw"). Empty = no default. */
+  defaultImageWidth: string;
   /** Internal: slugs of ancestor pages in the current embed chain (cycle detection). */
   embedAncestors?: ReadonlySet<string>;
   /** Internal: current embed depth. */

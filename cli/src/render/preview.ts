@@ -33,7 +33,8 @@ const previewPipeline = unified()
   .use(rehypeStringify);
 
 export async function buildPreview(rawMarkdown: string, title: string): Promise<PagePreview> {
-  const body = stripFrontmatter(rawMarkdown).trim();
+  // Strip frontmatter and Obsidian %% comments %% before walking the body.
+  const body = stripFrontmatter(rawMarkdown).replace(/%%[\s\S]*?%%/g, "").trim();
   const summary = await renderSnippet(body);
 
   const headings: Record<string, { title: string; summary: string }> = {};

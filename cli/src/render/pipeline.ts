@@ -41,14 +41,15 @@ export async function renderMarkdown(
   const parsed = matter(source);
   const fm = parsed.data as Record<string, unknown>;
 
-  // Escape pipes inside wikilinks/embeds so they don't break GFM tables.
-  // CommonMark unescapes `\|` back to `|` in the resulting text node, so the
-  // wikilink regex still matches downstream. Negative lookbehind avoids double-
-  // escaping pipes that the user already escaped Obsidian-style.
-  const content = parsed.content.replace(
-    /!?\[\[([^\[\]\n]+?)\]\]/g,
-    (m) => m.replace(/(?<!\\)\|/g, "\\|"),
-  );
+  // Pre-process the markdown source before parsing.
+  //   1. Strip Obsidian-style comments (%% ... %% — single- or multi-line).
+  //   2. Escape pipes inside wikilinks/embeds so they don't break GFM tables.
+  //      CommonMark unescapes `\|` back to `|` in the resulting text node, so
+  //      the wikilink regex still matches downstream. Negative lookbehind
+  //      avoids double-escaping pipes the user already escaped Obsidian-style.
+  const content = parsed.content
+    .replace(/%%[\s\S]*?%%/g, "")
+    .replace(/!?\[\[([^\[\]\n]+?)\]\]/g, (m) => m.replace(/(?<!\\)\|/g, "\\|"));
 
   const file = await unified()
     .use(remarkParse)

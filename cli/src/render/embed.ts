@@ -53,10 +53,15 @@ export function embedPlugin(opts: { context: RenderContext }): Plugin<[], Root> 
           const image = context.images.get(slug);
           const path = image?.outputPath ?? name;
           const src = "/" + path.split("/").map(encodeURIComponent).join("/");
-          const sizeAttrs = parseSizeHint(rawAlias?.trim());
+          const explicit = parseSizeHint(rawAlias?.trim());
+          // When no explicit |N hint, fall through to a class — the actual
+          // width is set via a CSS variable on <body> so it stays configurable
+          // and sanitize-safe (no inline styles on user-controlled HTML).
+          const extra = explicit
+            || (context.defaultImageWidth ? ` class="default-width"` : "");
           return {
             type: "html",
-            value: `<img src="${escAttr(src)}" alt="${escAttr(name)}" loading="lazy"${sizeAttrs}>`,
+            value: `<img src="${escAttr(src)}" alt="${escAttr(name)}" loading="lazy"${extra}>`,
           } satisfies Html;
         },
       ],

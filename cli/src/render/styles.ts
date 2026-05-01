@@ -107,6 +107,10 @@ article h1 { margin-top: 0; font-size: 2.25rem; }
 article h2 { margin-top: 2rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.25rem; }
 article hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
 article img { max-width: 100%; border-radius: 4px; }
+/* Default size for ![[image]] embeds without an explicit |N hint. The
+   width itself is set by --default-img-width on <body>, configurable via
+   the default_image_width setting. */
+article img.default-width { width: var(--default-img-width, 50vw); max-width: 100%; }
 article code { background: color-mix(in srgb, var(--muted) 12%, transparent); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }
 article pre { background: color-mix(in srgb, var(--muted) 12%, transparent); padding: 1rem; border-radius: 6px; overflow-x: auto; }
 article pre code { background: none; padding: 0; }
