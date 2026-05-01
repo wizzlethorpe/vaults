@@ -200,27 +200,24 @@ article pre code { background: none; padding: 0; }
 article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px solid var(--rule); color: var(--muted); }
 article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
 
-/* Sitemap nav (in left sidebar). Tree-view layout: every row has the same
-   left "gutter" reserved for a chevron, so folder text and page text line up
-   even though only folders draw the chevron. */
+/* Sitemap nav (in left sidebar). Tree-view layout: folder rows split into a
+   chevron toggle column and a folder-link column with a divider between;
+   page rows align with the folder-link column so all names start at the same x. */
 .sidebar .sitemap-list, .sidebar .sitemap-list ul { list-style: none; padding: 0; margin: 0; }
 .sidebar .sitemap-list li { margin: 0; }
 
 .sidebar .sitemap-list a,
 .sidebar .sitemap-list a.internal,
-.sidebar .sitemap-list a.internal-link,
-.sidebar .sitemap-folder > details > summary {
+.sidebar .sitemap-list a.internal-link {
   display: block;
-  padding: 0.2rem 0.4rem 0.2rem 0.85rem;  /* tight gutter for the chevron */
+  padding: 0.2rem 0.4rem 0.2rem 1.5rem;  /* aligns with folder-link text */
   background: transparent;
   color: var(--muted);
   text-decoration: none;
   border-radius: 3px;
   line-height: 1.45;
-  position: relative;
 }
-.sidebar .sitemap-list a:hover,
-.sidebar .sitemap-folder > details > summary:hover {
+.sidebar .sitemap-list a:hover {
   background: var(--wikilink-bg); color: var(--accent);
 }
 .sidebar .sitemap-list a[aria-current="page"] {
@@ -228,36 +225,61 @@ article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
 }
 
 .sidebar .sitemap-folder > details > summary {
-  cursor: pointer; user-select: none; font-weight: 500;
+  display: flex;
+  align-items: stretch;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  color: var(--muted);
+  border-radius: 3px;
+  line-height: 1.45;
   list-style: none;  /* hide native disclosure marker (Firefox) */
 }
-.sidebar .sitemap-folder > details > summary > .folder-link {
-  color: inherit; text-decoration: none; display: block;
-}
-.sidebar .sitemap-folder > details > summary > .folder-link:hover {
-  text-decoration: none;
-}
 .sidebar .sitemap-folder > details > summary::-webkit-details-marker { display: none; }
+
+.sidebar .sitemap-folder > details > summary > .folder-toggle {
+  position: relative;
+  flex: 0 0 1.25rem;
+  border-right: 1px solid var(--rule);
+  border-radius: 3px 0 0 3px;
+}
+.sidebar .sitemap-folder > details > summary:hover > .folder-toggle {
+  background: var(--wikilink-bg);
+}
 /* CSS-drawn chevron — crisper and more compact than any Unicode glyph. */
-.sidebar .sitemap-folder > details > summary::before {
+.sidebar .sitemap-folder > details > summary > .folder-toggle::before {
   content: '';
   position: absolute;
-  left: 0.25rem;
+  left: 50%;
   top: 50%;
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
-  transform: translateY(-65%) rotate(-45deg);
+  transform: translate(-65%, -65%) rotate(-45deg);
   transform-origin: center;
   opacity: 0.65;
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
-.sidebar .sitemap-folder > details[open] > summary::before {
-  transform: translateY(-50%) rotate(45deg);
+.sidebar .sitemap-folder > details[open] > summary > .folder-toggle::before {
+  transform: translate(-50%, -50%) rotate(45deg);
 }
-.sidebar .sitemap-folder > details > summary:hover::before {
+.sidebar .sitemap-folder > details > summary:hover > .folder-toggle::before {
   opacity: 1;
+}
+
+.sidebar .sitemap-folder > details > summary > .folder-link {
+  flex: 1;
+  display: block;
+  padding: 0.2rem 0.4rem 0.2rem 0.25rem;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 0 3px 3px 0;
+}
+.sidebar .sitemap-folder > details > summary > .folder-link:hover {
+  background: var(--wikilink-bg);
+  color: var(--accent);
+  text-decoration: none;
 }
 
 /* Children of a folder indent uniformly — chevron position is preserved

@@ -155,7 +155,7 @@ function renderNode(node: FolderNode, parentPath: string, currentPath: string): 
     const folderPath = parentPath ? `${parentPath}/${name}` : name;
     const open = nodeContainsPath(sub, currentPath) ? " open" : "";
     const href = "/" + folderPath.split("/").map(encodeURIComponent).join("/") + "/";
-    html += `<li class="sitemap-folder"><details${open}><summary><a href="${attr(href)}" class="folder-link">${esc(name)}</a></summary><ul class="sitemap-list">${renderNode(sub, folderPath, currentPath)}</ul></details></li>`;
+    html += `<li class="sitemap-folder"><details${open}><summary><span class="folder-toggle" aria-hidden="true"></span><a href="${attr(href)}" class="folder-link">${esc(name)}</a></summary><ul class="sitemap-list">${renderNode(sub, folderPath, currentPath)}</ul></details></li>`;
   }
   for (const p of [...node.pages].sort((a, b) => natCompare(a.title, b.title))) {
     html += sitemapItem(p, currentPath);

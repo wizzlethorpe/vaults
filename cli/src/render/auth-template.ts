@@ -180,11 +180,17 @@ function parseCookie(header) {
 }
 
 function isSharedAsset(pathname) {
-  // Anything with an extension that's NOT html is a shared asset (images,
-  // css, search-index json, preview json, etc.) and shouldn't be rewritten.
-  // The wiki HTML uses extensionless paths.
-  if (pathname === "/" || pathname.endsWith(".html")) return false;
-  return /\\.[^/]+$/.test(pathname);
+  // Per-variant files: HTML pages (with or without .html), markdown source,
+  // hover preview JSON, search index, and manifest. Everything else (images,
+  // css, login.html, audio, etc.) lives at the deploy root and is shared.
+  if (pathname === "/" || pathname === "/index.html") return false;
+  if (pathname.endsWith(".html") && pathname !== "/login.html") return false;
+  if (pathname.endsWith(".md")) return false;
+  if (pathname.endsWith(".preview.json")) return false;
+  if (pathname === "/_manifest.json" || pathname === "/_search-index.json") return false;
+  // Clean URLs (no extension) — wiki pages
+  if (!/\\.[^/]+$/.test(pathname)) return false;
+  return true;
 }
 `;
 }

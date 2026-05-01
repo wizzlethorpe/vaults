@@ -1,4 +1,6 @@
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { relative } from "node:path";
 import { dirname, join } from "node:path";
 import { availableParallelism } from "node:os";
 import picomatch from "picomatch";
@@ -12,6 +14,7 @@ import { DEFAULT_CSS } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./settings.js";
 import { renderAuthMiddleware, LOGIN_HTML } from "./render/auth-template.js";
+import { renderMcpFunction } from "./render/mcp-template.js";
 import type { ImageEntry, PageMeta, RenderContext, RenderWarning } from "./render/types.js";
 import { formatDuration, pMap, Progress } from "./util.js";
 
@@ -201,12 +204,22 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     });
     perRolePageCount[role] = stats.pageCount;
     if (!collapseToRoot) console.log(`  variant '${role}': ${stats.pageCount} pages`);
+
+    // Write a per-variant _manifest.json so external clients (Foundry, MCP,
+    // etc.) can do an incremental diff. Includes EVERY file that variant
+    // serves — html, md, images (as relative paths into shared root), css.
+    const manifest = await buildManifest(opts.outputDir, variantDir);
+    await writeFile(join(variantDir, "_manifest.json"), JSON.stringify(manifest));
   }
 
-  // ── Auth Function (multi-role only) ─────────────────────────────────────
+  // ── Pages Functions ─────────────────────────────────────────────────────
+  // MCP function ships always (it's the AI-tooling surface). Auth middleware
+  // is generated only when there are multiple roles.
+  const fnDir = join(opts.outputDir, "functions");
+  await mkdir(fnDir, { recursive: true });
+  await writeFile(join(fnDir, "mcp.js"), renderMcpFunction({ roles }));
+
   if (!collapseToRoot) {
-    const fnDir = join(opts.outputDir, "functions");
-    await mkdir(fnDir, { recursive: true });
     const middleware = renderAuthMiddleware({
       roles,
       rolePasswords: settings.values.role_passwords,
@@ -343,11 +356,16 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
       ...(p.birthtime != null ? { birthtime: p.birthtime } : {}),
     });
     const outputBase = p.path.replace(/\.md$/i, "");
-    const dest = join(a.variantDir, outputBase + ".html");
-    await mkdir(dirname(dest), { recursive: true });
-    await writeFile(dest, html);
+    const htmlDest = join(a.variantDir, outputBase + ".html");
+    await mkdir(dirname(htmlDest), { recursive: true });
+    await writeFile(htmlDest, html);
 
-    const preview = await buildPreview(visibleSources.get(p.path)!, r.title);
+    // Ship the raw markdown source alongside the rendered HTML so MCP clients
+    // (and Foundry, if it wants source) can pull .md without going through R2.
+    const source = visibleSources.get(p.path)!;
+    await writeFile(join(a.variantDir, p.path), source);
+
+    const preview = await buildPreview(source, r.title);
     await writeFile(join(a.variantDir, outputBase + ".preview.json"), JSON.stringify(preview));
   });
 
@@ -515,6 +533,94 @@ function kindLabel(kind: string): string {
     case "missing-section": return "missing section";
     default: return kind;
   }
+}
+
+interface ManifestEntry {
+  path: string;
+  hash: string;
+  size: number;
+  mtime: number;
+  content_type: string;
+}
+
+/**
+ * Walk the variant directory and produce a manifest of every file with its MD5
+ * hash + size + mtime + content type. Shared assets (anything OUTSIDE the
+ * variant dir but inside the deploy root) are listed too — clients use a
+ * single manifest to diff the entire site, not just the role-specific bits.
+ */
+async function buildManifest(rootDir: string, variantDir: string): Promise<{ files: ManifestEntry[] }> {
+  const files: ManifestEntry[] = [];
+  const seen = new Set<string>();
+
+  // Variant-specific files: use pathBase=variantDir so paths come out as
+  // "index.html", not "_variants/<role>/index.html". This matches the public
+  // URL the client uses; the auth middleware does the variant rewrite.
+  await walkAndIndex(variantDir, variantDir, files, seen);
+
+  // Shared assets under the deploy root (attachments, css). Skip the variant
+  // tree itself and anything inside `functions/` (Function code isn't served).
+  if (rootDir !== variantDir) {
+    await walkAndIndex(rootDir, rootDir, files, seen, ["_variants", "functions"]);
+  }
+
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  return { files };
+}
+
+async function walkAndIndex(
+  dir: string,
+  pathBase: string,
+  out: ManifestEntry[],
+  seen: Set<string>,
+  skipDirNames: string[] = [],
+): Promise<void> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const ent of entries) {
+    if (ent.name === "_manifest.json") continue;
+    const abs = join(dir, ent.name);
+    if (ent.isDirectory()) {
+      if (skipDirNames.includes(ent.name)) continue;
+      await walkAndIndex(abs, pathBase, out, seen, skipDirNames);
+      continue;
+    }
+    if (!ent.isFile()) continue;
+    const path = relative(pathBase, abs).split(/[/\\]/).join("/");
+    if (seen.has(path)) continue;
+    seen.add(path);
+    const body = await readFile(abs);
+    const info = await stat(abs);
+    out.push({
+      path,
+      hash: createHash("md5").update(body).digest("hex"),
+      size: info.size,
+      mtime: Math.floor(info.mtimeMs / 1000),
+      content_type: contentTypeForExt(ent.name),
+    });
+  }
+}
+
+function contentTypeForExt(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    html: "text/html; charset=utf-8",
+    md: "text/markdown; charset=utf-8",
+    json: "application/json",
+    css: "text/css; charset=utf-8",
+    js: "application/javascript; charset=utf-8",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    webp: "image/webp",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    avif: "image/avif",
+    pdf: "application/pdf",
+    mp3: "audio/mpeg",
+    wav: "audio/wav",
+    ogg: "audio/ogg",
+  };
+  return map[ext] ?? "application/octet-stream";
 }
 
 function extractPlainText(source: string, max: number): string {

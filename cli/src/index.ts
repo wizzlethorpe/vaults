@@ -52,14 +52,12 @@ program
 
 program
   .command("push")
-  .description("Render and deploy the vault to Cloudflare")
+  .description("Render and deploy the vault to Cloudflare Pages")
   .argument("[vault-path]", "Path to the Obsidian vault", process.cwd())
-  .option("-u, --url <url>", "Deployed Pages URL")
-  .option("-k, --key <key>", "API key")
   .option("-p, --project-name <name>", "Cloudflare Pages project name")
   .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
   .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
-  .option("--dry-run", "Render and diff without uploading")
+  .option("--dry-run", "Render without deploying")
   .action(wrap(push));
 
 program.parseAsync().catch((err) => {
