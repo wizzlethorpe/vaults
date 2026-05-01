@@ -14,6 +14,8 @@ export interface LayoutInput {
   centerImages: boolean;
   /** Pages that link to this one. */
   backlinks: PageMeta[];
+  /** True if this site has roles beyond the default (i.e. login UI is meaningful). */
+  authConfigured: boolean;
   /** Unix-seconds. Optional — synthesized folder indexes may have neither. */
   mtime?: number;
   birthtime?: number;
@@ -40,6 +42,7 @@ export function renderLayout(input: LayoutInput): string {
       <input id="vault-search" type="search" placeholder="Search…" aria-label="Search vault" autocomplete="off">
       <div class="search-results" role="listbox"></div>
     </div>
+    ${input.authConfigured ? '<div class="auth-box" id="vault-auth"></div>' : ''}
     ${sitemap}
   </aside>
   <main>
@@ -62,6 +65,7 @@ ${HOVER_PREVIEW_SCRIPT}
 ${TOC_SCRIPT}
 ${SEARCH_SCRIPT}
 ${LIGHTBOX_SCRIPT}
+${AUTH_SCRIPT}
 </body>
 </html>`;
 }
@@ -111,7 +115,7 @@ function renderBreadcrumbs(pagePath: string, vaultName: string): string {
       crumbs.push(`<a href="${attr(href)}">${esc(part)}</a>`);
     }
   });
-  return `<nav class="crumbs">${crumbs.join(" › ")}</nav>`;
+  return `<nav class="crumbs">${crumbs.join(' <span class="crumb-sep">/</span> ')}</nav>`;
 }
 
 interface FolderNode {
@@ -288,6 +292,30 @@ const TOC_SCRIPT = `<script>
     const cls = 'toc-d' + h.tagName[1];
     return '<li class="' + cls + '"><a href="#' + id + '">' + text.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</a></li>';
   }).join('');
+})();
+</script>`;
+
+const AUTH_SCRIPT = `<script>
+(function () {
+  const box = document.getElementById('vault-auth');
+  if (!box) return;
+  const role = readCookie('vault_role_display');
+  const next = encodeURIComponent(location.pathname + location.search + location.hash);
+  if (role) {
+    box.innerHTML =
+      '<div class="auth-status">Signed in as <strong>' + esc(role) + '</strong></div>' +
+      '<a class="auth-action" href="/logout">Sign out</a>';
+  } else {
+    box.innerHTML = '<a class="auth-action" href="/login.html?next=' + next + '">Sign in</a>';
+  }
+  function readCookie(name) {
+    for (const part of document.cookie.split(/;\\s*/)) {
+      const eq = part.indexOf('=');
+      if (eq > 0 && part.slice(0, eq) === name) return decodeURIComponent(part.slice(eq + 1));
+    }
+    return '';
+  }
+  function esc(s) { return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
 })();
 </script>`;
 

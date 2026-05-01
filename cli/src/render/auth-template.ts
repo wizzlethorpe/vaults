@@ -22,6 +22,9 @@ export function renderAuthMiddleware(cfg: AuthTemplateConfig): string {
 const ROLES = ${rolesLiteral};
 const PASSWORDS = ${passwordsLiteral};
 const COOKIE_NAME = "vault_role";
+// Non-HttpOnly companion cookie carrying the role name only — the auth check
+// uses COOKIE_NAME (which is signed and HttpOnly), this one is purely for UI.
+const DISPLAY_COOKIE_NAME = "vault_role_display";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 const PBKDF2_DEFAULT_ITERATIONS = 600000;
 
@@ -37,10 +40,10 @@ export const onRequest = async (ctx) => {
     return handleLogin(request, env);
   }
   if (url.pathname === "/logout") {
-    return new Response(null, {
-      status: 302,
-      headers: { Location: "/", "Set-Cookie": clearCookie() },
-    });
+    const headers = new Headers({ Location: "/" });
+    headers.append("Set-Cookie", clearCookie(COOKIE_NAME));
+    headers.append("Set-Cookie", clearCookie(DISPLAY_COOKIE_NAME));
+    return new Response(null, { status: 302, headers });
   }
 
   // Skip rewriting for static-asset paths that don't have a per-role variant.
@@ -74,10 +77,11 @@ async function handleLogin(request, env) {
   if (!ok) return loginRedirect(next, "wrong_password");
 
   const cookie = await signSessionCookie(role, env.SESSION_SECRET);
-  return new Response(null, {
-    status: 302,
-    headers: { Location: next, "Set-Cookie": cookie },
-  });
+  const headers = new Headers({ Location: next });
+  headers.append("Set-Cookie", cookie);
+  headers.append("Set-Cookie", DISPLAY_COOKIE_NAME + "=" + encodeURIComponent(role)
+    + "; Path=/; Secure; SameSite=Lax; Max-Age=" + COOKIE_MAX_AGE);
+  return new Response(null, { status: 302, headers });
 }
 
 function loginRedirect(next, error) {
@@ -114,8 +118,10 @@ async function verifySessionCookie(cookie, secret) {
   return constantTimeEqual(sig, expected) ? role : null;
 }
 
-function clearCookie() {
-  return COOKIE_NAME + "=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
+function clearCookie(name) {
+  // HttpOnly only on the auth cookie; the display cookie is JS-readable.
+  const attrs = name === COOKIE_NAME ? "HttpOnly; " : "";
+  return name + "=; Path=/; " + attrs + "Secure; SameSite=Lax; Max-Age=0";
 }
 
 // ── Crypto primitives (Web Crypto API) ────────────────────────────────────

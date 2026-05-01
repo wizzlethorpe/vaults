@@ -76,6 +76,19 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 .search-result-title { font-weight: 600; color: var(--accent); }
 .search-result-folder { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.15rem; }
 .search-empty { padding: 0.75rem; color: var(--muted); font-style: italic; font-size: 0.85rem; }
+
+/* Auth box — sits under the search box; populated by JS from a non-HttpOnly
+   display cookie set by the Function on login. */
+.auth-box {
+  font-size: 0.78rem; color: var(--muted);
+  padding: 0.5rem 0.65rem; border: 1px solid var(--rule); border-radius: 4px;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.auth-box:empty { display: none; }
+.auth-box .auth-status strong { color: var(--accent); font-weight: 600; }
+.auth-box .auth-action { color: var(--accent); text-decoration: none; font-weight: 500; }
+.auth-box .auth-action:hover { text-decoration: underline; }
 .search-result-summary {
   font-size: 0.78rem; color: var(--muted); margin-top: 0.25rem; line-height: 1.4;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
@@ -127,8 +140,9 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 .crumbs { color: var(--muted); font-size: 0.875rem; margin-bottom: 1rem; }
 .crumbs a { color: var(--muted); text-decoration: none; }
 .crumbs a:hover { color: var(--accent); text-decoration: underline; }
+.crumb-sep { color: var(--rule); }
 
-article h1 { margin-top: 0; font-size: 2.25rem; }
+article h1 { margin-top: 0; font-size: 2.75rem; line-height: 1.15; }
 article h2 { margin-top: 2rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.25rem; }
 article hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
 article img { max-width: 100%; border-radius: 4px; }

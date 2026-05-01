@@ -338,6 +338,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
       defaultImageWidth: a.settings.default_image_width,
       centerImages: a.settings.center_images,
       backlinks,
+      authConfigured: a.settings.roles.length > 1,
       ...(p.mtime != null ? { mtime: p.mtime } : {}),
       ...(p.birthtime != null ? { birthtime: p.birthtime } : {}),
     });
