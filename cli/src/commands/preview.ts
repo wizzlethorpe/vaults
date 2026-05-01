@@ -10,6 +10,7 @@ interface PreviewOptions {
   imageQuality?: number;
   vaultName?: string;
   maxFileBytes?: number;
+  role?: string;
 }
 
 const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
@@ -28,15 +29,30 @@ export async function preview(vaultPath: string, opts: PreviewOptions): Promise<
     imageQuality: opts.imageQuality ?? 85,
     maxFileBytes: opts.maxFileBytes ?? DEFAULT_MAX_BYTES,
   });
-  console.log(`  ${result.pageCount} pages, ${result.imageCount} images, ${result.otherCount} other files`);
+  const summary = Object.entries(result.perRolePageCount)
+    .map(([role, n]) => `${role}: ${n}`)
+    .join(", ");
+  console.log(`  ${summary} pages, ${result.imageCount} images, ${result.otherCount} other files`);
 
-  await serve(outputDir, port);
+  // Pick which variant to serve.
+  let role = opts.role;
+  if (role && !result.roles.includes(role)) {
+    console.error(`Role "${role}" is not in settings.roles (${result.roles.join(", ")})`);
+    process.exit(1);
+  }
+  if (!role) role = result.roles[result.roles.length - 1]!;
+  const variantDir = result.roles.length === 1
+    ? outputDir
+    : join(outputDir, "_variants", role);
+  console.log(`  serving variant '${role}' from ${variantDir}`);
+
+  await serve(outputDir, variantDir, port);
 }
 
-async function serve(rootDir: string, port: number): Promise<void> {
+async function serve(rootDir: string, variantDir: string, port: number): Promise<void> {
   const server = createServer(async (req, res) => {
     try {
-      const filePath = await resolveFile(rootDir, req.url ?? "/");
+      const filePath = await resolveFile(rootDir, variantDir, req.url ?? "/");
       if (!filePath) {
         res.writeHead(404, { "Content-Type": "text/plain" });
         res.end("Not found");
@@ -56,26 +72,30 @@ async function serve(rootDir: string, port: number): Promise<void> {
 
   await new Promise<void>((resolve) => server.listen(port, () => resolve()));
   console.log(`\n  Preview ready at http://localhost:${port}\n  Press Ctrl-C to stop.\n`);
-  await new Promise<void>(() => {}); // run until killed
+  await new Promise<void>(() => {});
 }
 
-async function resolveFile(rootDir: string, urlPath: string): Promise<string | null> {
+/**
+ * Look up `urlPath` in the variant first (HTML pages, search index, previews),
+ * then fall back to the shared root (images, styles, attachments, other files).
+ */
+async function resolveFile(rootDir: string, variantDir: string, urlPath: string): Promise<string | null> {
   const cleaned = decodeURIComponent(urlPath.split("?")[0]!.split("#")[0]!);
-  // Reject path traversal
   const normalized = normalize(cleaned).replace(/^[/\\]+/, "");
   if (normalized.split(/[/\\]/).some((s) => s === "..")) return null;
 
-  const candidates = [
-    join(rootDir, normalized),
-    join(rootDir, normalized + ".html"),
-    join(rootDir, normalized, "index.html"),
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      const info = await stat(candidate);
-      if (info.isFile()) return candidate;
-    } catch { /* try next */ }
+  const dirs = variantDir === rootDir ? [rootDir] : [variantDir, rootDir];
+  for (const dir of dirs) {
+    for (const candidate of [
+      join(dir, normalized),
+      join(dir, normalized + ".html"),
+      join(dir, normalized, "index.html"),
+    ]) {
+      try {
+        const info = await stat(candidate);
+        if (info.isFile()) return candidate;
+      } catch { /* try next */ }
+    }
   }
   return null;
 }

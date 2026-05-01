@@ -36,6 +36,7 @@ program
   .option("-p, --port <n>", "Port for the preview server", (v) => parseInt(v, 10), 4173)
   .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
   .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
+  .option("-r, --role <name>", "Which role variant to serve (default = highest role)")
   .action(wrap(preview));
 
 program

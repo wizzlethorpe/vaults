@@ -1,6 +1,6 @@
 import type { Plugin } from "unified";
 import type { Root, Blockquote, Paragraph, Text } from "mdast";
-import { visit } from "unist-util-visit";
+import { visit, SKIP } from "unist-util-visit";
 
 // Obsidian-style callouts: blockquote starting with `[!type]` becomes a styled div.
 //
@@ -11,12 +11,15 @@ import { visit } from "unist-util-visit";
 //   > DM-only block
 //
 // Recognised types map to CSS classes via .callout.callout-<type>.
+// If the callout's type matches a name in `redactRoles`, the entire blockquote is
+// removed from the tree — used to strip role-gated callouts during lower-tier builds.
 
 const CALLOUT_RE = /^\[!(\w+)\][+-]?\s*(.*?)(?:\n|$)/;
 
-export function calloutPlugin(): Plugin<[], Root> {
+export function calloutPlugin(opts: { redactRoles?: ReadonlySet<string> } = {}): Plugin<[], Root> {
+  const redact = opts.redactRoles;
   return () => (tree) => {
-    visit(tree, "blockquote", (node: Blockquote) => {
+    visit(tree, "blockquote", (node: Blockquote, index, parent) => {
       const first = node.children[0];
       if (!first || first.type !== "paragraph") return;
       const firstChild = (first as Paragraph).children[0];
@@ -26,6 +29,14 @@ export function calloutPlugin(): Plugin<[], Root> {
       if (!match) return;
 
       const [fullMatch, type, rawTitle] = match;
+      const lowerType = type!.toLowerCase();
+
+      // Role-gated callout — drop entirely from this tree.
+      if (redact?.has(lowerType) && parent && index != null) {
+        parent.children.splice(index, 1);
+        return [SKIP, index];
+      }
+
       const title = (rawTitle ?? "").trim() || cap(type!);
 
       const remaining = (firstChild as Text).value.slice(fullMatch.length);

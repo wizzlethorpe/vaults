@@ -23,6 +23,9 @@ export async function build(vaultPath: string, opts: BuildOptions): Promise<void
     imageQuality: opts.imageQuality ?? 85,
     maxFileBytes: opts.maxFileBytes ?? DEFAULT_MAX_BYTES,
   });
-  console.log(`  ${result.pageCount} pages, ${result.imageCount} images, ${result.otherCount} other files`);
+  const summary = Object.entries(result.perRolePageCount)
+    .map(([role, n]) => `${role}: ${n}`)
+    .join(", ");
+  console.log(`  ${summary} pages, ${result.imageCount} images, ${result.otherCount} other files`);
   console.log(`Output: ${outputDir}`);
 }

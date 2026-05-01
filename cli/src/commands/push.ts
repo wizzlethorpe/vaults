@@ -36,7 +36,10 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
     imageQuality: cfg.imageQuality,
     maxFileBytes: cfg.maxFileBytes,
   });
-  console.log(`  ${result.pageCount} pages, ${result.imageCount} images, ${result.otherCount} other files`);
+  const summary = Object.entries(result.perRolePageCount)
+    .map(([r, n]) => `${r}: ${n}`)
+    .join(", ");
+  console.log(`  ${summary} pages, ${result.imageCount} images, ${result.otherCount} other files`);
 
   await syncSource(api, result.withinLimit, opts.dryRun ?? false);
 

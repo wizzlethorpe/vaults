@@ -13,9 +13,14 @@ export interface Settings {
   inline_title: boolean;
   default_image_width: string;
   center_images: boolean;
+  /** Access tiers, lowest → highest. First is the default for untagged content. */
+  roles: string[];
+  auth_type: string;
+  /** role name → "<saltHex>:<hashHex>" produced by `vaults password <role>`. */
+  role_passwords: Record<string, string>;
 }
 
-type SettingType = "string" | "number" | "boolean" | "string[]";
+type SettingType = "string" | "number" | "boolean" | "string[]" | "string-map";
 
 interface SettingDef<K extends keyof Settings> {
   default: Settings[K];
@@ -62,6 +67,23 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     type: "boolean",
     description:
       "Center images in the article body. Set false to leave them flush left.",
+  },
+  roles: {
+    default: ["public"],
+    type: "string[]",
+    description:
+      "Access tiers, lowest → highest. The first role is the default for untagged content; pages and callouts can opt in to higher roles via frontmatter (role: dm) or callout type (> [!dm]).",
+  },
+  auth_type: {
+    default: "password",
+    type: "string",
+    description: "How non-default roles authenticate. Currently only 'password' is supported.",
+  },
+  role_passwords: {
+    default: {},
+    type: "string-map",
+    description:
+      "PBKDF2 hashes per role above the default. Set with `vaults password <role>` — never edit by hand.",
   },
 };
 
@@ -131,6 +153,10 @@ function defaults(): Settings {
 
 function matchesType(v: unknown, t: SettingType): boolean {
   if (t === "string[]") return Array.isArray(v) && v.every((item) => typeof item === "string");
+  if (t === "string-map") {
+    return typeof v === "object" && v !== null && !Array.isArray(v)
+      && Object.values(v as Record<string, unknown>).every((x) => typeof x === "string");
+  }
   return typeof v === t;
 }
 
@@ -151,6 +177,15 @@ function renderSettingsFile(values: Settings): string {
       } else {
         lines.push(`${key}:`);
         for (const item of arr) lines.push(`  - ${formatString(item)}`);
+      }
+    } else if (def.type === "string-map") {
+      const map = (value ?? {}) as Record<string, string>;
+      const entries = Object.entries(map);
+      if (entries.length === 0) {
+        lines.push(`${key}: {}`);
+      } else {
+        lines.push(`${key}:`);
+        for (const [k, v] of entries) lines.push(`  ${formatString(k)}: ${formatString(v)}`);
       }
     } else {
       lines.push(`${key}: ${formatScalar(value)}`);

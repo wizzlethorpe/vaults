@@ -3,6 +3,8 @@ export interface PageMeta {
   path: string;
   /** Display title. */
   title: string;
+  /** Minimum role required to view this page. Default = first role in settings.roles. */
+  role: string;
   /** Unix-seconds; missing for synthesized folder indexes. */
   mtime?: number;
   birthtime?: number;
@@ -24,6 +26,8 @@ export interface RenderContext {
   markdownContent: Map<string, string>;
   /** CSS width for images embedded without an explicit |N hint (e.g. "50vw"). Empty = no default. */
   defaultImageWidth: string;
+  /** Set of role names that should be stripped from this render (callouts whose type matches a name in here are dropped). */
+  redactRoles: ReadonlySet<string>;
   /** Internal: slugs of ancestor pages in the current embed chain (cycle detection). */
   embedAncestors?: ReadonlySet<string>;
   /** Internal: current embed depth. */

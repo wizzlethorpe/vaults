@@ -55,7 +55,7 @@ export async function renderMarkdown(
   const file = await unified()
     .use(remarkParse)
     .use(remarkGfm)
-    .use(calloutPlugin())
+    .use(calloutPlugin({ redactRoles: context.redactRoles }))
     .use(embedPlugin({ context }))
     .use(wikiLinkPlugin({ context, outlinks }))
     .use(remarkRehype, { allowDangerousHtml: true })
