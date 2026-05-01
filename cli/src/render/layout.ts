@@ -8,6 +8,9 @@ export interface LayoutInput {
   vaultName: string;
   /** Inject an <h1> with the page title above the body. */
   inlineTitle: boolean;
+  /** Unix-seconds. Optional — synthesized folder indexes may have neither. */
+  mtime?: number;
+  birthtime?: number;
 }
 
 export function renderLayout(input: LayoutInput): string {
@@ -24,11 +27,9 @@ export function renderLayout(input: LayoutInput): string {
 <link rel="stylesheet" href="/user.css">
 </head>
 <body>
-<header class="site-nav">
-  <a class="brand" href="/">${esc(input.vaultName)}</a>
-</header>
 <div class="app-grid">
   <aside class="sidebar">
+    <a class="brand" href="/">${esc(input.vaultName)}</a>
     <div class="search-box">
       <input id="vault-search" type="search" placeholder="Search…" aria-label="Search vault" autocomplete="off">
       <div class="search-results" role="listbox"></div>
@@ -39,6 +40,7 @@ export function renderLayout(input: LayoutInput): string {
     <article class="markdown-preview-view markdown-rendered">
       ${breadcrumbs}
       ${input.inlineTitle ? `<h1>${esc(input.title)}</h1>` : ""}
+      ${renderMeta(input.mtime, input.birthtime)}
       ${input.bodyHtml}
     </article>
   </main>
@@ -56,9 +58,32 @@ ${SEARCH_SCRIPT}
 </html>`;
 }
 
+function renderMeta(mtime: number | undefined, birthtime: number | undefined): string {
+  if (!mtime && !birthtime) return "";
+  const parts: string[] = [];
+  if (birthtime && (!mtime || Math.abs(mtime - birthtime) > 60)) {
+    // Only show "Created" if it's meaningfully different from the modified time.
+    parts.push(`<span>Created <time datetime="${isoDate(birthtime)}">${formatDate(birthtime)}</time></span>`);
+  }
+  if (mtime) parts.push(`<span>Updated <time datetime="${isoDate(mtime)}">${formatDate(mtime)}</time></span>`);
+  return `<div class="page-meta">${parts.join(' <span class="meta-sep">·</span> ')}</div>`;
+}
+
+function isoDate(unix: number): string {
+  return new Date(unix * 1000).toISOString();
+}
+
+function formatDate(unix: number): string {
+  const d = new Date(unix * 1000);
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
 function renderBreadcrumbs(pagePath: string, vaultName: string): string {
   const parts = pagePath.replace(/\.md$/i, "").split("/");
   if (parts.length === 1 && parts[0] === "index") return "";
+  // Folder homepages end in /index — drop that trailing segment so the crumbs
+  // read "Vault › DM Notes" instead of "Vault › DM Notes › index".
+  if (parts.length > 1 && parts[parts.length - 1] === "index") parts.pop();
   const crumbs = [`<a href="/">${esc(vaultName)}</a>`];
   parts.forEach((part, i) => {
     const isLast = i === parts.length - 1;
@@ -168,14 +193,15 @@ const HOVER_PREVIEW_SCRIPT = `<script>
   }
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function render(data, anchor) {
+    // .summary is already sanitised HTML at build time — safe to inject.
     const section = anchor && data.headings && data.headings[anchor];
     if (section) {
       return '<div class="wiki-preview-title">' + esc(data.title) + '</div>' +
              '<div class="wiki-preview-subheading">› ' + esc(section.title) + '</div>' +
-             '<div class="wiki-preview-body">' + esc(section.summary || '') + '</div>';
+             '<div class="wiki-preview-body">' + (section.summary || '') + '</div>';
     }
     return '<div class="wiki-preview-title">' + esc(data.title) + '</div>' +
-           '<div class="wiki-preview-body">' + esc(data.summary || '') + '</div>';
+           '<div class="wiki-preview-body">' + (data.summary || '') + '</div>';
   }
   async function fetchPreview(href) {
     if (cache.has(href)) return cache.get(href);

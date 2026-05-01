@@ -30,16 +30,19 @@ article a.internal {
 article a.internal:hover { background: var(--wikilink-bg-hover); text-decoration: none; }
 article a.internal.new, article a.internal.is-unresolved { opacity: 0.7; font-style: italic; }
 
-.site-nav {
-  border-bottom: 1px solid var(--rule); padding: 0.75rem 1.5rem;
-  display: flex; align-items: center; justify-content: space-between; background: var(--bg);
+/* Brand sits at the top of the left sidebar in place of the old top nav. */
+.sidebar > .brand {
+  display: block; padding: 0.4rem 0.5rem 0.9rem;
+  font-weight: 700; font-size: 1.05rem; letter-spacing: 0.04em;
+  color: var(--fg); text-decoration: none;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 0.25rem;
 }
-.site-nav .brand { font-weight: 700; letter-spacing: 0.04em; color: var(--fg); }
-.site-nav .brand:hover { text-decoration: none; color: var(--accent); }
+.sidebar > .brand:hover { color: var(--accent); text-decoration: none; }
 
 .app-grid {
   display: grid; grid-template-columns: 15rem minmax(0, 56rem) 17rem;
-  gap: 2.5rem; max-width: 96rem; margin: 0 auto; padding: 0 1.5rem;
+  gap: 2.5rem; max-width: 96rem; margin: 0 auto; padding: 1.5rem;
 }
 main { padding: 2rem 0 4rem; min-width: 0; }
 .sidebar { padding: 1.5rem 1.5rem 1.5rem 0; border-right: 1px solid var(--rule); font-size: 0.9rem; display: flex; flex-direction: column; gap: 1.25rem; }
@@ -88,6 +91,14 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 .toc-d3 a { padding-left: 1.25rem; font-size: 0.85rem; }
 .toc-d4 a { padding-left: 2rem; font-size: 0.8rem; }
 
+.page-meta {
+  color: var(--muted); font-size: 0.78rem;
+  margin: -0.75rem 0 1.75rem;
+  display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;
+}
+.page-meta time { font-variant-numeric: tabular-nums; }
+.page-meta .meta-sep { opacity: 0.5; }
+
 .crumbs { color: var(--muted); font-size: 0.875rem; margin-bottom: 1rem; }
 .crumbs a { color: var(--muted); text-decoration: none; }
 .crumbs a:hover { color: var(--accent); text-decoration: underline; }
@@ -113,7 +124,7 @@ article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
 .sidebar .sitemap-list a.internal-link,
 .sidebar .sitemap-folder > details > summary {
   display: block;
-  padding: 0.2rem 0.5rem 0.2rem 1.4rem;  /* 1.4rem reserves the chevron gutter */
+  padding: 0.2rem 0.4rem 0.2rem 1.05rem;  /* leaves ~1rem of chevron gutter */
   background: transparent;
   color: var(--muted);
   text-decoration: none;
@@ -143,15 +154,16 @@ article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
 .sidebar .sitemap-folder > details > summary::before {
   content: '\\25B8';                  /* ▸ */
   position: absolute;
-  left: 0.5rem;
+  left: 0.15rem;
   top: 50%;
-  font-size: 0.7em;
+  font-size: 0.95em;
+  line-height: 1;
   color: var(--muted);
-  transform: translateY(-50%);
+  transform: translateY(-55%);  /* visual centring — chevron baseline is low */
   transition: transform 0.15s ease;
 }
 .sidebar .sitemap-folder > details[open] > summary::before {
-  transform: translateY(-50%) rotate(90deg);
+  transform: translateY(-55%) rotate(90deg);
 }
 
 /* Children of a folder indent uniformly — chevron position is preserved

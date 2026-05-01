@@ -3,6 +3,9 @@ export interface PageMeta {
   path: string;
   /** Display title. */
   title: string;
+  /** Unix-seconds; missing for synthesized folder indexes. */
+  mtime?: number;
+  birthtime?: number;
 }
 
 export interface ImageEntry {

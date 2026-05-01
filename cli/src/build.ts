@@ -87,6 +87,8 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   const pageMetas: PageMeta[] = markdownFiles.map((f) => ({
     path: f.path,
     title: pageTitle(sources.get(f.path)!, f.path),
+    mtime: f.mtime,
+    birthtime: f.birthtime,
   }));
 
   // Identify folders that don't have an index.md and synthesize one
@@ -155,6 +157,8 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
         pages: pageMetas,
         vaultName: opts.vaultName,
         inlineTitle: settings.values.inline_title,
+        ...(p.mtime != null ? { mtime: p.mtime } : {}),
+        ...(p.birthtime != null ? { birthtime: p.birthtime } : {}),
       });
       const outputBase = p.path.replace(/\.md$/i, "");
       const dest = join(opts.outputDir, outputBase + ".html");
@@ -162,7 +166,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       await writeFile(dest, html);
 
       // Per-page preview JSON for hover popovers
-      const preview = buildPreview(source, result.title);
+      const preview = await buildPreview(source, result.title);
       await writeFile(join(opts.outputDir, outputBase + ".preview.json"), JSON.stringify(preview));
     }, (done, total) => progress.update(done, total));
 
