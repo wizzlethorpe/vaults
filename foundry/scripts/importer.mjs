@@ -1,13 +1,9 @@
 // Create / update / delete Foundry JournalEntry + JournalEntryPage from
-// vault markdown sources.
+// vault-rendered HTML.
 
 import { MODULE_ID, SETTINGS, get } from "./settings.mjs";
 import { entryId, pageId, folderId } from "./ids.mjs";
-import { parseFrontmatter, stripComments } from "./parser.mjs";
-import { transformLinks } from "./links.mjs";
-import { marked } from "../vendor/marked.esm.js";
-
-marked.setOptions({ gfm: true, breaks: false, headerIds: false, mangle: false });
+import { transformHtmlForFoundry } from "./links.mjs";
 
 /**
  * Ensure a chain of nested Foundry folders exists matching the vault's
@@ -42,13 +38,12 @@ async function upsertFolder(id, name, parentId) {
 }
 
 /**
- * Import (create or update) a single markdown file as a Foundry journal.
+ * Import (create or update) a single page. `path` is the logical .md path
+ * (used for stable ids + folder structure); `body` is the rendered article
+ * HTML straight from the vault's <page>.body.html.
  */
-export async function upsertFile(path, source, pathIndex) {
-  const { body } = parseFrontmatter(source);
-  const cleaned = stripComments(body);
-  const transformed = await transformLinks(cleaned, pathIndex);
-  const html = marked.parse(transformed);
+export async function upsertFile(path, body, index) {
+  const html = await transformHtmlForFoundry(body, index);
 
   const segs = path.split("/");
   const filename = segs.pop();
@@ -72,11 +67,8 @@ export async function upsertFile(path, source, pathIndex) {
       await existing.update({ name: title, folder });
     }
     const existingPage = existing.pages.get(pId);
-    if (existingPage) {
-      await existingPage.update(pageData);
-    } else {
-      await existing.createEmbeddedDocuments("JournalEntryPage", [pageData], { keepId: true });
-    }
+    if (existingPage) await existingPage.update(pageData);
+    else await existing.createEmbeddedDocuments("JournalEntryPage", [pageData], { keepId: true });
     return "modified";
   }
 
@@ -90,12 +82,9 @@ export async function upsertFile(path, source, pathIndex) {
   return "added";
 }
 
-/**
- * Delete the journal corresponding to a vault path.
- */
+/** Delete the journal corresponding to a vault path. */
 export async function deleteFile(path) {
   const eId = await entryId(path);
   const entry = game.journal.get(eId);
   if (entry) await entry.delete();
 }
-

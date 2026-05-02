@@ -44,3 +44,85 @@
   font-style: italic;
   text-decoration: underline wavy;
 }
+
+/* ── Vault content rendered inside JournalEntryPages ───────────────── */
+/* The vault's remark/rehype pipeline produces these classes; mirror the
+   minimum styling so callouts and transcluded embeds don't fall back to
+   plain blockquotes / generic divs once they land in Foundry. */
+
+.journal-entry-page .callout {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--color-text-secondary, #888);
+  border-radius: 0 4px 4px 0;
+  background: rgba(128, 128, 128, 0.08);
+}
+.journal-entry-page .callout > .callout-title {
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary, #888);
+}
+.journal-entry-page .callout > *:last-child { margin-bottom: 0; }
+
+.journal-entry-page .callout-note,
+.journal-entry-page .callout-info {
+  border-left-color: #3b7bbf;
+  background: rgba(59, 123, 191, 0.10);
+}
+.journal-entry-page .callout-note > .callout-title,
+.journal-entry-page .callout-info > .callout-title { color: #3b7bbf; }
+
+.journal-entry-page .callout-tip,
+.journal-entry-page .callout-hint {
+  border-left-color: #2a8b58;
+  background: rgba(42, 139, 88, 0.10);
+}
+.journal-entry-page .callout-tip > .callout-title,
+.journal-entry-page .callout-hint > .callout-title { color: #2a8b58; }
+
+.journal-entry-page .callout-warning,
+.journal-entry-page .callout-caution {
+  border-left-color: #c89a4d;
+  background: rgba(200, 154, 77, 0.12);
+}
+.journal-entry-page .callout-warning > .callout-title,
+.journal-entry-page .callout-caution > .callout-title { color: #a87a2d; }
+
+.journal-entry-page .callout-danger,
+.journal-entry-page .callout-error {
+  border-left-color: #b94a3a;
+  background: rgba(185, 74, 58, 0.10);
+}
+.journal-entry-page .callout-danger > .callout-title,
+.journal-entry-page .callout-error > .callout-title { color: #b94a3a; }
+
+.journal-entry-page .callout-dm {
+  border-left-color: #a8201a;
+  background: rgba(168, 32, 26, 0.12);
+}
+.journal-entry-page .callout-dm > .callout-title { color: #a8201a; }
+
+/* Transcluded embeds (![[Page]]) */
+.journal-entry-page .embed {
+  position: relative;
+  border-left: 3px solid var(--color-shadow-primary, #888);
+  padding: 0.75rem 1rem 1.1rem;
+  margin: 1rem 0;
+  background: rgba(128, 128, 128, 0.06);
+  border-radius: 0 4px 4px 0;
+}
+.journal-entry-page .embed > *:first-child { margin-top: 0; }
+.journal-entry-page .embed-source {
+  position: absolute; bottom: 0.3rem; right: 0.75rem;
+  font-size: 0.72rem; line-height: 1;
+  color: var(--color-text-secondary, #888);
+}
+.journal-entry-page .embed-broken,
+.journal-entry-page .embed-cycle,
+.journal-entry-page .embed-truncated {
+  color: var(--color-text-secondary, #888);
+  font-style: italic;
+}

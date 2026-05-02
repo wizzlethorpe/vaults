@@ -2,7 +2,7 @@
   "id": "vaults",
   "title": "Vaults",
   "description": "Sync an Obsidian vault deployed via vaults-template into Foundry VTT journals. Manifest-based incremental sync with role-based auth.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "compatibility": {
     "minimum": "13",
     "verified": "14"

@@ -48,7 +48,7 @@ fi
 
 mkdir -p "$TARGET"
 cp module.json "$TARGET/"
-cp -r scripts styles lang vendor "$TARGET/"
+cp -r scripts styles lang "$TARGET/"
 [ -f LICENSE ]   && cp LICENSE   "$TARGET/" || true
 [ -f README.md ] && cp README.md "$TARGET/" || true
 

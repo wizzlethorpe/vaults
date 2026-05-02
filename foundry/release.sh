@@ -41,14 +41,6 @@ command -v zip >/dev/null 2>&1  || { echo -e "${RED}Error: zip is required${NC}"
 command -v curl >/dev/null 2>&1 || { echo -e "${RED}Error: curl is required${NC}" >&2; exit 1; }
 gh auth status >/dev/null 2>&1  || { echo -e "${RED}Error: GitHub CLI not authenticated${NC}" >&2; exit 1; }
 
-# Pinned vendored markdown library; fetch if someone deleted it.
-MARKED_VERSION="12.0.2"
-if [ ! -f "vendor/marked.esm.js" ]; then
-  echo -e "${YELLOW}Downloading marked@${MARKED_VERSION}...${NC}"
-  mkdir -p vendor
-  curl -sSfL "https://cdn.jsdelivr.net/npm/marked@${MARKED_VERSION}/lib/marked.esm.js" -o vendor/marked.esm.js
-fi
-
 if [ -n "$1" ]; then
   NEW_VERSION="$1"
 else
@@ -77,7 +69,7 @@ mkdir -p "$MODULE_DIR"
 
 echo -e "${YELLOW}Building release package...${NC}"
 cp module.json "$MODULE_DIR/"
-cp -r scripts styles lang vendor "$MODULE_DIR/"
+cp -r scripts styles lang "$MODULE_DIR/"
 [ -f LICENSE ]   && cp LICENSE   "$MODULE_DIR/"
 [ -f README.md ] && cp README.md "$MODULE_DIR/"
 

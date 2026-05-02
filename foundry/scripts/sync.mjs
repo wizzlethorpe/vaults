@@ -25,13 +25,13 @@ export async function sync({ forceFull = false } = {}) {
   const remote = new Map(manifest.files.map((f) => [f.path, f.hash]));
   const local = forceFull ? new Map() : new Map(Object.entries(get(SETTINGS.lastManifest) || {}));
 
-  const mdPaths = manifest.files.filter((f) => f.path.endsWith(".md")).map((f) => f.path);
+  const bodyPaths = manifest.files.filter((f) => f.path.endsWith(".body.html")).map((f) => f.path);
   const pathIndex = buildPathIndex(manifest.files);
 
-  // Diff: any md file whose hash differs (or is new) needs an upsert; any md
-  // file in local but not remote needs a delete.
-  const toUpsert = mdPaths.filter((p) => remote.get(p) !== local.get(p));
-  const toDelete = [...local.keys()].filter((p) => p.endsWith(".md") && !remote.has(p));
+  // Diff on body.html paths — any whose hash differs needs an upsert; any
+  // local entry not in the remote manifest needs a delete.
+  const toUpsert = bodyPaths.filter((p) => remote.get(p) !== local.get(p));
+  const toDelete = [...local.keys()].filter((p) => p.endsWith(".body.html") && !remote.has(p));
 
   // Pull any new/changed images into the world's data dir before upserting
   // journals — that way the freshly-rendered <img src="worlds/…"> URLs
@@ -58,12 +58,9 @@ export async function sync({ forceFull = false } = {}) {
         }),
   );
 
-  // Fetch all sources in bulk via /_batch — one HTTP round trip per ~100
-  // files instead of one per file. Avoids the per-URL CORS preflight that
-  // tripped Cloudflare's OPTIONS rate limit on full syncs.
-  let sources;
+  let bodies;
   try {
-    sources = await fetchSourceBatch(toUpsert);
+    bodies = await fetchSourceBatch(toUpsert);
   } catch (err) {
     console.error("Vaults | batch fetch failed:", err);
     ui.notifications.error(game.i18n.format("VAULTS.Sync.Error", { message: err.message }));
@@ -74,24 +71,26 @@ export async function sync({ forceFull = false } = {}) {
   // JournalEntry.create() on the same world, and the bottleneck has moved
   // off the network anyway.
   let added = 0, modified = 0;
-  for (const path of toUpsert) {
-    const source = sources.get(path);
-    if (source == null) {
-      console.warn(`Vaults | server returned no content for ${path}`);
+  for (const bodyPath of toUpsert) {
+    const html = bodies.get(bodyPath);
+    if (html == null) {
+      console.warn(`Vaults | server returned no content for ${bodyPath}`);
       continue;
     }
+    const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
     try {
-      const result = await upsertFile(path, source, pathIndex);
+      const result = await upsertFile(logicalPath, html, pathIndex);
       if (result === "added") added++; else modified++;
     } catch (err) {
-      console.warn(`Vaults | upsert failed for ${path}:`, err);
+      console.warn(`Vaults | upsert failed for ${logicalPath}:`, err);
     }
   }
 
   let removed = 0;
-  for (const path of toDelete) {
-    try { await deleteFile(path); removed++; }
-    catch (err) { console.warn(`Vaults | delete failed for ${path}:`, err); }
+  for (const bodyPath of toDelete) {
+    const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
+    try { await deleteFile(logicalPath); removed++; }
+    catch (err) { console.warn(`Vaults | delete failed for ${logicalPath}:`, err); }
   }
 
   // Persist the new manifest as our new "last seen" state.
