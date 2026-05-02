@@ -4,46 +4,48 @@
 // never ends up in journal HTML — once the file is local, Foundry serves
 // it like any other module asset.
 
-import { SETTINGS, get, set } from "./settings.mjs";
 import { IMAGE_EXT_RE } from "./parser.mjs";
+import { updateVault } from "./vaults.mjs";
 
 // Where the cache lives inside the world data dir. No leading dot — Foundry's
 // FilePicker validation hides dotfile paths from listings and may reject
 // uploads underneath them depending on the version.
 export const CACHE_DIR = "vaults-cache";
 
-// Binary batch settings. Each batch is one HTTP request that returns up to
-// BATCH_SIZE base64-encoded image bodies; we run BATCH_CONCURRENCY of those
-// in parallel. Sized so total in-flight payload stays under ~30MB and we
-// don't hit Cloudflare's per-IP burst limits.
+// Each batch is one HTTP request that returns up to BATCH_SIZE base64 image
+// bodies; we run BATCH_CONCURRENCY in parallel. Sized so total in-flight
+// payload stays under ~30MB.
 const BATCH_SIZE = 25;
 const BATCH_CONCURRENCY = 4;
 
-/** Local URL Foundry can serve for an image cached from the vault. */
-export function localImageUrl(vaultPath) {
+/** Local URL Foundry can serve for an image cached from the given vault. */
+export function localImageUrl(vaultId, vaultPath) {
   const worldId = game.world?.id;
   if (!worldId) throw new Error("No active world; image cache path unavailable.");
   const segs = vaultPath.split("/").map(encodeURIComponent).join("/");
-  const relative = `worlds/${worldId}/${CACHE_DIR}/${segs}`;
-  // Use foundry.utils.getRoute so the URL respects Foundry's routePrefix
-  // (when a server is hosted under e.g. /foundry/...). Falls back to a
-  // leading-slash absolute path so the browser doesn't resolve it against
-  // whatever document URL the journal renders inside.
+  const relative = `worlds/${worldId}/${CACHE_DIR}/${vaultId}/${segs}`;
   return foundry.utils?.getRoute?.(relative) ?? `/${relative}`;
 }
 
+/** Where this vault's image cache lives on disk (relative to the data dir). */
+export function vaultCacheDir(vaultId) {
+  const worldId = game.world.id;
+  return `worlds/${worldId}/${CACHE_DIR}/${vaultId}`;
+}
+
 /**
- * Reconcile the local image cache with the manifest. Downloads any image
- * whose hash differs from `lastImageManifest`, deletes orphans where the
- * Foundry API allows it. Returns counts for the user-facing notification.
+ * Reconcile a vault's local image cache with its manifest. Downloads any
+ * image whose hash differs from `vault.lastImageManifest`, deletes orphans
+ * where the Foundry API allows it, and persists the updated manifest back
+ * onto the vault entry. Returns counts for the user-facing notification.
  */
-export async function syncImages(manifestFiles) {
+export async function syncImages(vault, manifestFiles) {
   const remoteImages = new Map();
   for (const f of manifestFiles) {
     if (IMAGE_EXT_RE.test(f.path)) remoteImages.set(f.path, f.hash);
   }
 
-  const last = new Map(Object.entries(get(SETTINGS.lastImageManifest) || {}));
+  const last = new Map(Object.entries(vault.lastImageManifest || {}));
 
   const toDownload = [];
   for (const [path, hash] of remoteImages) {
@@ -51,13 +53,10 @@ export async function syncImages(manifestFiles) {
   }
   const toDelete = [...last.keys()].filter((p) => !remoteImages.has(p));
 
-  if (toDownload.length === 0 && toDelete.length === 0) return { downloaded: 0, removed: 0 };
+  if (toDownload.length === 0 && toDelete.length === 0) return { downloaded: 0, removed: 0, errors: 0 };
 
-  const worldId = game.world.id;
-  const baseDir = `worlds/${worldId}/${CACHE_DIR}`;
+  const baseDir = vaultCacheDir(vault.id);
 
-  // Pre-create every directory we're about to write into. FilePicker.upload
-  // doesn't auto-create, so missing parents → 404 errors mid-batch.
   const dirsNeeded = new Set([baseDir]);
   for (const p of toDownload) {
     const segs = p.split("/").slice(0, -1);
@@ -67,9 +66,6 @@ export async function syncImages(manifestFiles) {
   }
   await ensureDirs([...dirsNeeded]);
 
-  // Slice paths into batches. Each batch is one HTTP request that returns
-  // base64 bodies for up to BATCH_SIZE images, so 300 images is ~12 calls
-  // instead of 300 — well under Cloudflare's rate limits.
   const chunks = [];
   for (let i = 0; i < toDownload.length; i += BATCH_SIZE) {
     chunks.push(toDownload.slice(i, i + BATCH_SIZE));
@@ -83,10 +79,9 @@ export async function syncImages(manifestFiles) {
       const idx = next++;
       const chunk = chunks[idx];
       try {
-        const blobs = await fetchImagesBatch(chunk);
-        // Upload to Foundry sequentially within a chunk — the Foundry server
-        // serialises file writes anyway, and parallel uploads sometimes
-        // collide on directory creation.
+        const blobs = await fetchImagesBatch(vault, chunk);
+        // Foundry serialises file writes anyway; uploading sequentially within
+        // a chunk avoids occasional collisions on directory creation.
         for (const path of chunk) {
           const blob = blobs.get(path);
           if (!blob) { errors.push({ path, err: new Error("missing in batch response") }); continue; }
@@ -114,36 +109,50 @@ export async function syncImages(manifestFiles) {
       await deleteFromWorld(baseDir, path);
       removed++;
     } catch (err) {
-      // Foundry's file-delete API isn't available in every version; orphans
-      // are harmless but accumulate. Log once per failure.
       console.warn(`Vaults | could not remove orphan ${path}:`, err?.message || err);
     }
   }
 
-  // Persist the new manifest only with paths we actually have on disk —
-  // failures stay in the diff so the next sync retries them.
+  // Persist only the paths we actually have on disk; failures stay in the
+  // diff so the next sync retries them.
   const persisted = {};
   for (const [path, hash] of remoteImages) {
     if (last.get(path) === hash) { persisted[path] = hash; continue; }
     if (downloaded.includes(path)) persisted[path] = hash;
   }
-  await set(SETTINGS.lastImageManifest, persisted);
+  await updateVault(vault.id, { lastImageManifest: persisted });
 
   return { downloaded: downloaded.length, removed, errors: errors.length };
 }
 
+/**
+ * Delete a vault's entire image cache directory. Best-effort — depends on
+ * the Foundry version exposing FilePicker.deleteFile. Returns true on
+ * complete success, false if anything was left behind.
+ */
+export async function deleteVaultCache(vaultId) {
+  const baseDir = vaultCacheDir(vaultId);
+  const impl = fp();
+  if (typeof impl.deleteFile !== "function") return false;
+  try {
+    // FilePicker doesn't expose recursive delete; walk and delete files
+    // before removing dirs. Easier: just try the dir — some Foundry
+    // versions accept a directory and recurse.
+    await impl.deleteFile("data", baseDir);
+    return true;
+  } catch (err) {
+    console.warn(`Vaults | could not remove cache dir ${baseDir}:`, err?.message || err);
+    return false;
+  }
+}
+
 // ── Vault → Foundry plumbing ──────────────────────────────────────────────
 
-async function fetchImagesBatch(paths) {
-  const base = get(SETTINGS.url);
-  const token = get(SETTINGS.token);
-  const endpoint = (() => {
-    const u = new URL("/_batch-images", base.endsWith("/") ? base : base + "/");
-    if (token) u.searchParams.set("_token", token);
-    return u.toString();
-  })();
+async function fetchImagesBatch(vault, paths) {
+  const u = new URL("/_batch-images", vault.url.endsWith("/") ? vault.url : vault.url + "/");
+  if (vault.token) u.searchParams.set("_token", vault.token);
 
-  const res = await fetch(endpoint, {
+  const res = await fetch(u.toString(), {
     method: "POST",
     headers: { "Content-Type": "text/plain" }, // CORS-simple, no preflight
     body: paths.join("\n"),
@@ -165,8 +174,6 @@ function base64ToBlob(b64, type) {
   return new Blob([bytes], { type });
 }
 
-// Resolve whichever FilePicker class this Foundry version exposes. V13+
-// surfaces FilePicker.implementation; older versions just use FilePicker.
 function fp() {
   return foundry.applications?.apps?.FilePicker?.implementation
     ?? FilePicker.implementation
@@ -178,8 +185,6 @@ async function uploadToWorld(baseDir, path, blob) {
   const filename = segs.pop();
   const dir = segs.length > 0 ? `${baseDir}/${segs.join("/")}` : baseDir;
   const file = new File([blob], filename, { type: blob.type || guessMime(filename) });
-  // FilePicker.upload returns false on failure rather than throwing, so we
-  // have to inspect the result. notify:false suppresses one toast per file.
   const result = await fp().upload("data", dir, file, {}, { notify: false });
   if (result === false || result?.status === "error") {
     throw new Error(`upload failed: ${result?.message || "unknown"} (path=${dir}/${filename})`);
@@ -187,9 +192,6 @@ async function uploadToWorld(baseDir, path, blob) {
 }
 
 async function ensureDirs(paths) {
-  // FilePicker.createDirectory creates a single level only and throws if
-  // the directory already exists. Sort so parents come first, swallow
-  // EEXIST-style errors. Ordering by length is a cheap topo sort here.
   paths.sort((a, b) => a.length - b.length);
   for (const p of paths) {
     try { await fp().createDirectory("data", p, {}); }

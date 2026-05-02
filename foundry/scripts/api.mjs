@@ -1,16 +1,11 @@
-// HTTP client for talking to a deployed vault. The bearer token is
-// passed as a `?_token=` query param rather than an Authorization header
-// so cross-origin GETs stay "simple" and don't trigger a CORS preflight
-// per file — Cloudflare rate-limits OPTIONS bursts and a full sync is
-// hundreds of unique URLs.
+// HTTP client for talking to a deployed vault. The bearer token rides as
+// a `?_token=` query param (not an Authorization header) so cross-origin
+// GETs stay CORS-simple — no preflight per file.
 
-import { SETTINGS, get } from "./settings.mjs";
-
-function url(base, path) {
-  if (!base) throw new Error("Vault URL is not configured.");
-  const u = new URL(path, base.endsWith("/") ? base : base + "/");
-  const token = get(SETTINGS.token);
-  if (token) u.searchParams.set("_token", token);
+function url(vault, path) {
+  if (!vault?.url) throw new Error("Vault URL is not configured.");
+  const u = new URL(path, vault.url.endsWith("/") ? vault.url : vault.url + "/");
+  if (vault.token) u.searchParams.set("_token", vault.token);
   return u.toString();
 }
 
@@ -20,9 +15,8 @@ async function fetchJson(u) {
   return res.json();
 }
 
-export async function fetchManifest() {
-  const base = get(SETTINGS.url);
-  return fetchJson(url(base, "/_manifest.json"));
+export async function fetchManifest(vault) {
+  return fetchJson(url(vault, "/_manifest.json"));
 }
 
 const BATCH_SIZE = 100;
@@ -34,12 +28,9 @@ const BATCH_CONCURRENCY = 4;
  * + ?_token query keeps the POST CORS-simple so it doesn't trigger a
  * per-file preflight (which Cloudflare rate-limits on burst).
  */
-export async function fetchSourceBatch(paths) {
+export async function fetchSourceBatch(vault, paths) {
   if (paths.length === 0) return new Map();
-  const base = get(SETTINGS.url);
-  const token = get(SETTINGS.token);
-  const endpoint = new URL("/_batch", base.endsWith("/") ? base : base + "/");
-  if (token) endpoint.searchParams.set("_token", token);
+  const endpoint = url(vault, "/_batch");
 
   const chunks = [];
   for (let i = 0; i < paths.length; i += BATCH_SIZE) chunks.push(paths.slice(i, i + BATCH_SIZE));
@@ -49,7 +40,7 @@ export async function fetchSourceBatch(paths) {
   const workers = Array.from({ length: Math.min(BATCH_CONCURRENCY, chunks.length) }, async () => {
     while (next < chunks.length) {
       const idx = next++;
-      const res = await fetch(endpoint.toString(), {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: chunks[idx].join("\n"),

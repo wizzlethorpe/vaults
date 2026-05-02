@@ -1,6 +1,7 @@
 // Deterministic 16-char Foundry document IDs derived from stable keys.
-// Same trick as vault-sync: SHA-1 → first 16 hex chars (subset of Foundry's
-// allowed [A-Za-z0-9]). 64-bit truncation collision risk is negligible.
+// SHA-1 → first 16 hex chars (subset of Foundry's allowed [A-Za-z0-9]).
+// 64-bit truncation collision risk is negligible. Each id is namespaced
+// by vaultId so the same path under two vaults gets different journals.
 
 const enc = new TextEncoder();
 
@@ -14,6 +15,6 @@ async function det(kind, key) {
   return hex.slice(0, 16);
 }
 
-export const entryId = (path) => det("entry", path);
-export const pageId = (path) => det("page", path);
-export const folderId = (path) => det("folder", path);
+export const entryId = (vaultId, path) => det("entry", `${vaultId}:${path}`);
+export const pageId = (vaultId, path) => det("page", `${vaultId}:${path}`);
+export const folderId = (vaultId, path) => det("folder", `${vaultId}:${path}`);

@@ -1,58 +1,55 @@
+// World-scoped settings for the Vaults module.
+//
+// Multi-vault: the canonical state lives in a single `vaults` setting (array
+// of vault entries). Legacy keys (`url`, `token`, etc) are kept registered
+// so existing worlds load cleanly; on first read they're auto-migrated into
+// a vaults[] entry — see migrateLegacyIfNeeded() below.
+
 export const MODULE_ID = "vaults";
 
 export const SETTINGS = {
-  /** Base URL of the deployed vault, e.g. https://my-vault.pages.dev */
+  /** Array of vault entries — see VAULT_DEFAULTS for shape. */
+  vaults: "vaults",
+
+  // Legacy single-vault keys (pre-0.4). Read once at migration, never
+  // written to after that. Don't reference these in new code.
   url: "url",
-  /** Bearer token (signed JWT-ish, format: role.expiry.HMAC). Set by Connect. */
   token: "token",
-  /** Display label for the role we're connected as (purely for UI). */
   role: "role",
-  /** Top-level Foundry folder name. */
   rootFolder: "rootFolder",
-  /** Last seen { path → hash } map from the vault's _manifest.json. */
   lastManifest: "lastManifest",
-  /** Last-downloaded { imagePath → hash } so image sync is incremental. */
   lastImageManifest: "lastImageManifest",
-  /** Random nonce used to round-trip state through the /connect flow. */
   pendingState: "pendingState",
+};
+
+/** Default shape for a new vault entry. */
+export const VAULT_DEFAULTS = {
+  id: "",
+  label: "",
+  url: "",
+  rootFolder: "Vault",
+  token: "",
+  role: "",
+  lastManifest: {},
+  lastImageManifest: {},
+  pendingState: "",
 };
 
 export function registerSettings() {
   const g = game.settings;
 
-  g.register(MODULE_ID, SETTINGS.url, {
-    name: "VAULTS.Settings.Url.Name",
-    hint: "VAULTS.Settings.Url.Hint",
-    scope: "world", config: true, type: String, default: "",
+  g.register(MODULE_ID, SETTINGS.vaults, {
+    scope: "world", config: false, type: Array, default: [],
   });
 
-  g.register(MODULE_ID, SETTINGS.token, {
-    name: "VAULTS.Settings.Token.Name",
-    hint: "VAULTS.Settings.Token.Hint",
-    scope: "world", config: true, type: String, default: "",
-  });
-
-  g.register(MODULE_ID, SETTINGS.role, {
-    scope: "world", config: false, type: String, default: "",
-  });
-
-  g.register(MODULE_ID, SETTINGS.rootFolder, {
-    name: "VAULTS.Settings.RootFolder.Name",
-    hint: "VAULTS.Settings.RootFolder.Hint",
-    scope: "world", config: true, type: String, default: "Vault",
-  });
-
-  g.register(MODULE_ID, SETTINGS.lastManifest, {
-    scope: "world", config: false, type: Object, default: {},
-  });
-
-  g.register(MODULE_ID, SETTINGS.lastImageManifest, {
-    scope: "world", config: false, type: Object, default: {},
-  });
-
-  g.register(MODULE_ID, SETTINGS.pendingState, {
-    scope: "world", config: false, type: String, default: "",
-  });
+  // Legacy keys — registered so existing worlds load without crashes.
+  // Migrated to vaults[] on first load.
+  for (const key of [SETTINGS.url, SETTINGS.token, SETTINGS.role, SETTINGS.pendingState]) {
+    g.register(MODULE_ID, key, { scope: "world", config: false, type: String, default: "" });
+  }
+  g.register(MODULE_ID, SETTINGS.rootFolder, { scope: "world", config: false, type: String, default: "Vault" });
+  g.register(MODULE_ID, SETTINGS.lastManifest, { scope: "world", config: false, type: Object, default: {} });
+  g.register(MODULE_ID, SETTINGS.lastImageManifest, { scope: "world", config: false, type: Object, default: {} });
 }
 
 export const get = (k) => game.settings.get(MODULE_ID, k);

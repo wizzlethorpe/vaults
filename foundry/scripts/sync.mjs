@@ -1,48 +1,53 @@
-// Top-level sync orchestrator.
-//
-// Pull /_manifest.json, diff against last-known hashes (stored in world
-// settings), upsert/delete journals for the difference. Hashes come from
-// the manifest itself (MD5 of the served file content), so the diff is just
-// a key-by-key compare of two flat objects.
+// Per-vault sync orchestrator. Each call operates on one vault entry from
+// the registry: fetch its manifest, diff against its lastManifest, pull
+// changed body.html files in bulk, upsert the resulting journals, and
+// reconcile its image cache.
 
-import { SETTINGS, get, set } from "./settings.mjs";
 import { fetchManifest, fetchSourceBatch } from "./api.mjs";
 import { upsertFile, deleteFile } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
+import { getVault, updateVault } from "./vaults.mjs";
 
-export async function sync({ forceFull = false } = {}) {
-  const url = get(SETTINGS.url);
-  if (!url) {
+export async function sync(vaultId, { forceFull = false } = {}) {
+  const vault = getVault(vaultId);
+  if (!vault) {
+    ui.notifications.error(`Vaults | unknown vault: ${vaultId}`);
+    return;
+  }
+  if (!vault.url) {
     ui.notifications.error(game.i18n.localize("VAULTS.Sync.NoUrl"));
     return;
   }
 
   const start = Date.now();
-  ui.notifications.info(game.i18n.localize("VAULTS.Sync.Starting"));
+  ui.notifications.info(game.i18n.format("VAULTS.Sync.StartingNamed", { name: vault.label }));
 
-  const manifest = await fetchManifest();
+  let manifest;
+  try {
+    manifest = await fetchManifest(vault);
+  } catch (err) {
+    ui.notifications.error(game.i18n.format("VAULTS.Sync.Error", { message: err.message }));
+    return;
+  }
   const remote = new Map(manifest.files.map((f) => [f.path, f.hash]));
-  const local = forceFull ? new Map() : new Map(Object.entries(get(SETTINGS.lastManifest) || {}));
+  const local = forceFull ? new Map() : new Map(Object.entries(vault.lastManifest || {}));
 
   const bodyPaths = manifest.files.filter((f) => f.path.endsWith(".body.html")).map((f) => f.path);
   const pathIndex = buildPathIndex(manifest.files);
 
-  // Diff on body.html paths — any whose hash differs needs an upsert; any
-  // local entry not in the remote manifest needs a delete.
   const toUpsert = bodyPaths.filter((p) => remote.get(p) !== local.get(p));
   const toDelete = [...local.keys()].filter((p) => p.endsWith(".body.html") && !remote.has(p));
 
-  // Pull any new/changed images into the world's data dir before upserting
-  // journals — that way the freshly-rendered <img src="worlds/…"> URLs
-  // resolve immediately. forceFull blanks the local image manifest so a
-  // Reset re-downloads everything.
-  if (forceFull) await set(SETTINGS.lastImageManifest, {});
+  // Pull any new/changed images first so the freshly-rendered <img src>
+  // URLs in journal HTML resolve immediately.
+  if (forceFull) await updateVault(vault.id, { lastImageManifest: {} });
   let imageStats = { downloaded: 0, removed: 0, errors: 0 };
   try {
-    imageStats = await syncImages(manifest.files);
+    const fresh = getVault(vault.id); // re-read after the forceFull reset
+    imageStats = await syncImages(fresh, manifest.files);
   } catch (err) {
-    console.warn("Vaults | image sync failed:", err);
+    console.warn(`Vaults | image sync failed for ${vault.label}:`, err);
   }
 
   if (toUpsert.length === 0 && toDelete.length === 0 && imageStats.downloaded === 0 && imageStats.removed === 0) {
@@ -60,16 +65,15 @@ export async function sync({ forceFull = false } = {}) {
 
   let bodies;
   try {
-    bodies = await fetchSourceBatch(toUpsert);
+    bodies = await fetchSourceBatch(vault, toUpsert);
   } catch (err) {
-    console.error("Vaults | batch fetch failed:", err);
+    console.error(`Vaults | batch fetch failed for ${vault.label}:`, err);
     ui.notifications.error(game.i18n.format("VAULTS.Sync.Error", { message: err.message }));
     return;
   }
 
-  // Upserts run sequentially — Foundry's data layer doesn't love concurrent
-  // JournalEntry.create() on the same world, and the bottleneck has moved
-  // off the network anyway.
+  // Foundry's data layer doesn't love concurrent JournalEntry.create calls
+  // on the same world, and the bottleneck has moved off the network.
   let added = 0, modified = 0;
   for (const bodyPath of toUpsert) {
     const html = bodies.get(bodyPath);
@@ -79,7 +83,7 @@ export async function sync({ forceFull = false } = {}) {
     }
     const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
     try {
-      const result = await upsertFile(logicalPath, html, pathIndex);
+      const result = await upsertFile(vault, logicalPath, html, pathIndex);
       if (result === "added") added++; else modified++;
     } catch (err) {
       console.warn(`Vaults | upsert failed for ${logicalPath}:`, err);
@@ -89,18 +93,16 @@ export async function sync({ forceFull = false } = {}) {
   let removed = 0;
   for (const bodyPath of toDelete) {
     const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
-    try { await deleteFile(logicalPath); removed++; }
+    try { await deleteFile(vault, logicalPath); removed++; }
     catch (err) { console.warn(`Vaults | delete failed for ${logicalPath}:`, err); }
   }
 
-  // Persist the new manifest as our new "last seen" state.
-  const newLast = Object.fromEntries(remote);
-  await set(SETTINGS.lastManifest, newLast);
+  await updateVault(vault.id, { lastManifest: Object.fromEntries(remote) });
 
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
   ui.notifications.info(game.i18n.format("VAULTS.Sync.Done", { added, modified, removed, seconds }));
   if (imageStats.downloaded > 0 || imageStats.removed > 0) {
-    console.info(`Vaults | images: ${imageStats.downloaded} downloaded, ${imageStats.removed} removed`
+    console.info(`Vaults | ${vault.label} images: ${imageStats.downloaded} downloaded, ${imageStats.removed} removed`
       + (imageStats.errors ? `, ${imageStats.errors} failed` : ""));
   }
 }

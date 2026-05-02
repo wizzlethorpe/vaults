@@ -1,19 +1,15 @@
 // Iframe-based /connect flow for getting a vault bearer token.
 //
-// We host the vault's /connect endpoint in an iframe inside a Foundry
-// dialog. The vault's approve page postMessages the issued token back
-// to window.parent (us) on the vault origin. Foundry's tab never
-// navigates away — so its SPA session and world cookies stay intact.
+// The vault's /connect page renders inside a Foundry DialogV2 iframe;
+// the approve page postMessages the issued token back to window.parent.
+// Foundry's tab never navigates, so its session and world cookies stay
+// intact regardless of the host's session-cookie policy.
 
-import { SETTINGS, get, set } from "./settings.mjs";
+import { updateVault, getVault } from "./vaults.mjs";
 
-// Long enough for the user to sign in to the vault first.
 const CONNECT_TIMEOUT_MS = 5 * 60 * 1000;
 
-/**
- * Decode a token's role + expiry without verifying — used purely for UI
- * (showing "connected as patron"). The vault re-validates every request.
- */
+/** Decode a token's role + expiry without verifying — purely for UI. */
 export function tokenInfo(token) {
   if (!token) return null;
   const parts = token.split(".");
@@ -26,29 +22,39 @@ export function tokenInfo(token) {
 }
 
 /**
- * Build the /connect URL for a given vault, including a fresh CSRF state
- * persisted to settings. Returns { src, vaultOrigin, state }.
+ * Build the connect URL for a vault and persist a fresh CSRF state on
+ * the vault entry. The iframe lands on /logout first, which clears any
+ * existing session for this vault before bouncing to /connect — so the
+ * user always sees the role chooser, even if they're connecting a vault
+ * they're already signed into in another tab. Returns { src, vaultOrigin,
+ * state }.
  */
-export async function prepareConnect(vaultUrl) {
-  if (!vaultUrl) throw new Error("Vault URL is required.");
-  const vaultOrigin = new URL(vaultUrl).origin;
+export async function prepareConnect(vault) {
+  if (!vault?.url) throw new Error("Vault URL is required.");
+  const vaultOrigin = new URL(vault.url).origin;
   const state = crypto.randomUUID();
-  await set(SETTINGS.pendingState, state);
+  await updateVault(vault.id, { pendingState: state });
 
-  const target = new URL("/connect", vaultUrl);
-  target.searchParams.set("return_to", window.location.origin + "/");
-  target.searchParams.set("app", "Foundry VTT");
-  target.searchParams.set("state", state);
+  const connect = new URL("/connect", vault.url);
+  connect.searchParams.set("return_to", window.location.origin + "/");
+  connect.searchParams.set("app", "Foundry VTT");
+  connect.searchParams.set("state", state);
 
-  return { src: target.toString(), vaultOrigin, state };
+  // /logout clears any existing role cookie and then redirects to `next`,
+  // ensuring the user starts at the login form. The middleware's safeNext
+  // accepts relative paths, so we pass the connect URL minus its origin.
+  const logout = new URL("/logout", vault.url);
+  logout.searchParams.set("next", connect.pathname + connect.search);
+
+  return { src: logout.toString(), vaultOrigin, state };
 }
 
 /**
  * Listen for the vault's approve postMessage, validate state, persist
- * the token. Returns a { promise, cancel } pair — cancel() detaches the
- * listener (call it when the host dialog closes without approval).
+ * the token onto the matching vault entry. Returns a { promise, cancel }
+ * pair — cancel() detaches the listener if the host dialog closes.
  */
-export function awaitConnectMessage({ vaultOrigin, state }) {
+export function awaitConnectMessage({ vault, vaultOrigin, state }) {
   let settled = false;
   let onMessage = null;
   let timeout = null;
@@ -72,16 +78,14 @@ export function awaitConnectMessage({ vaultOrigin, state }) {
     onMessage = async (event) => {
       const data = event.data;
       if (!data || data.type !== "vaults-connect") return;
-      // Normally event.origin is the vault's origin. Foundry's runtime
-      // applies `sandbox` to nested browsing contexts via its CSP, which
-      // gives the iframe an opaque origin reported here as the literal
-      // string "null". In that case we fall back to validating the
-      // message via the CSRF state — a UUID we just generated and only
-      // sent to the vault, so an attacker can't guess it.
+      // Foundry sandboxes nested browsing contexts; iframes get an opaque
+      // origin reported as the literal string "null". CSRF state still
+      // proves the message came from the vault we just opened.
       const originOk = event.origin === vaultOrigin || event.origin === "null";
       if (!originOk) return;
 
-      const expected = get(SETTINGS.pendingState);
+      const fresh = getVault(vault.id);
+      const expected = fresh?.pendingState;
       if (!expected || data.state !== expected) {
         ui.notifications.error(game.i18n.localize("VAULTS.Connect.StateMismatch"));
         fail(new Error("State mismatch"));
@@ -92,10 +96,12 @@ export function awaitConnectMessage({ vaultOrigin, state }) {
         return;
       }
 
-      await set(SETTINGS.token, data.token);
-      await set(SETTINGS.pendingState, "");
       const info = tokenInfo(data.token);
-      if (info?.role) await set(SETTINGS.role, info.role);
+      await updateVault(vault.id, {
+        token: data.token,
+        role: info?.role || "",
+        pendingState: "",
+      });
 
       ui.notifications.info(
         game.i18n.format("VAULTS.Connect.Success", { role: info?.role ?? "?" }),
@@ -118,9 +124,7 @@ export function awaitConnectMessage({ vaultOrigin, state }) {
   };
 }
 
-/** Clear the saved token + role. */
-export async function disconnect() {
-  await set(SETTINGS.token, "");
-  await set(SETTINGS.role, "");
-  await set(SETTINGS.lastManifest, {});
+/** Clear a vault's token + role (does not delete the vault entry). */
+export async function disconnect(vaultId) {
+  await updateVault(vaultId, { token: "", role: "", lastManifest: {}, lastImageManifest: {} });
 }
