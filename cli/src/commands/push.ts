@@ -62,7 +62,7 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
       secret = generateSessionSecret();
       await saveSessionSecret(vaultPath, secret);
       console.log(opts.rotateSecret
-        ? "Rotated SESSION_SECRET — all existing tokens are now invalid."
+        ? "Rotated SESSION_SECRET; all existing tokens are now invalid."
         : "Generated SESSION_SECRET (saved to .vaultrc.json).");
     }
     await wranglerSecret(cfg.projectName!, "SESSION_SECRET", secret);
@@ -73,7 +73,7 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
 // ── First-push bootstrap ─────────────────────────────────────────────────
 
 async function ensureSetup(vaultPath: string, cfg: VaultConfig): Promise<void> {
-  // 1. Project name — derive a sensible default from the vault dir, but ask.
+  // 1. Project name; derive a sensible default from the vault dir, but ask.
   if (!cfg.projectName) {
     const suggested = sanitizeProjectName(basename(vaultPath));
     const name = await promptIfTty(
@@ -86,7 +86,7 @@ async function ensureSetup(vaultPath: string, cfg: VaultConfig): Promise<void> {
     console.log(`  saved projectName='${cfg.projectName}' to .vaultrc.json`);
   }
 
-  // 2. Wrangler authentication — wrangler whoami exits non-zero if logged out.
+  // 2. Wrangler authentication; wrangler whoami exits non-zero if logged out.
   if (!await isWranglerLoggedIn()) {
     if (!stdin.isTTY) {
       throw new Error("Not authenticated with Cloudflare. Run `npx wrangler login` first.");
@@ -95,7 +95,7 @@ async function ensureSetup(vaultPath: string, cfg: VaultConfig): Promise<void> {
     await runWranglerInteractive(["login"]);
   }
 
-  // 3. Pages project — create it if missing. wrangler returns a clear error
+  // 3. Pages project; create it if missing. wrangler returns a clear error
   // if the project already exists; we treat that as success.
   if (!await pagesProjectExists(cfg.projectName)) {
     console.log(`Creating Pages project '${cfg.projectName}'…`);
@@ -103,7 +103,7 @@ async function ensureSetup(vaultPath: string, cfg: VaultConfig): Promise<void> {
       "pages", "project", "create", cfg.projectName,
       "--production-branch=main",
     ]).catch((err) => {
-      // If the failure is "already exists", that's fine — we lost the race
+      // If the failure is "already exists", that's fine; we lost the race
       // with another push or a user creating it manually.
       const msg = err instanceof Error ? err.message : String(err);
       if (!/already exists/i.test(msg)) throw err;
@@ -133,11 +133,11 @@ async function isWranglerLoggedIn(): Promise<boolean> {
 async function pagesProjectExists(name: string): Promise<boolean> {
   try {
     const out = await runWranglerCaptured(["pages", "project", "list"]);
-    // wrangler prints a table — check for the project name as a whole word.
+    // wrangler prints a table; check for the project name as a whole word.
     const re = new RegExp(`(^|\\s|\\|)${escapeRe(name)}(\\s|\\||$)`, "m");
     return re.test(out);
   } catch {
-    // If we can't even list, assume not — `create` will give a clearer error.
+    // If we can't even list, assume not -- `create` will give a clearer error.
     return false;
   }
 }

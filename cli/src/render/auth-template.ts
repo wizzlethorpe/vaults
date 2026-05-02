@@ -22,7 +22,7 @@ export function renderAuthMiddleware(cfg: AuthTemplateConfig): string {
 const ROLES = ${rolesLiteral};
 const PASSWORDS = ${passwordsLiteral};
 const COOKIE_NAME = "vault_role";
-// Non-HttpOnly companion cookie carrying the role name only — the auth check
+// Non-HttpOnly companion cookie carrying the role name only; the auth check
 // uses COOKIE_NAME (which is signed and HttpOnly), this one is purely for UI.
 const DISPLAY_COOKIE_NAME = "vault_role_display";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
@@ -37,7 +37,7 @@ export const onRequest = async (ctx) => {
   const { request, env, next } = ctx;
   const url = new URL(request.url);
 
-  // CORS preflight — Foundry, the MCP server, and AI tooling fetch the
+  // CORS preflight. Foundry, the MCP server, and AI tooling fetch the
   // manifest / source / search endpoints from a different origin with an
   // 'Authorization: Bearer' header, which triggers a preflight OPTIONS.
   // Allow * because the resource is gated by the bearer token, not by
@@ -46,14 +46,14 @@ export const onRequest = async (ctx) => {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
-  // Block direct access to /_variants/<role>/* — those paths exist in storage
+  // Block direct access to /_variants/<role>/*; those paths exist in storage
   // for the rewrite below, but exposing them would let anyone fetch any
   // variant's manifest, page, or markdown source by guessing the role name.
   if (url.pathname.startsWith("/_variants/")) {
     return withCors(new Response("Not found", { status: 404 }), request);
   }
 
-  // /login — POST validates a password and sets the session cookie. GET
+  // /login. POST validates a password and sets the session cookie. GET
   // serves the static login page from the deploy root; we have to pass it
   // through explicitly because the variant-rewrite below would otherwise
   // try to fetch /_variants/<role>/login (which doesn't exist).
@@ -75,7 +75,7 @@ export const onRequest = async (ctx) => {
     return new Response(null, { status: 302, headers });
   }
 
-  // /connect — OAuth-style approval flow for Foundry / MCP clients to obtain
+  // /connect. OAuth-style approval flow for Foundry / MCP clients to obtain
   // a long-lived bearer token. GET shows the approval page; POST signs the
   // token and redirects back to the requesting app.
   if (url.pathname === "/connect" && request.method === "GET") {
@@ -85,7 +85,7 @@ export const onRequest = async (ctx) => {
     return handleConnectApprove(request, env);
   }
 
-  // /_batch — bulk source fetch for sync clients (Foundry). Body is
+  // /_batch; bulk source fetch for sync clients (Foundry). Body is
   // newline-separated paths under text/plain so the request stays CORS-
   // simple (no preflight per file → no OPTIONS rate-limit). Response is
   // JSON: { files: { path: content }, missing: [path, ...] }.
@@ -93,7 +93,7 @@ export const onRequest = async (ctx) => {
     return withCors(await handleBatch(request, env), request);
   }
 
-  // /_batch-images — bulk *binary* fetch (images, etc). Same input shape as
+  // /_batch-images; bulk *binary* fetch (images, etc). Same input shape as
   // /_batch but each file is base64-encoded so it can ride in JSON. Used by
   // the Foundry image cache so a 300-image sync is a handful of HTTP calls
   // instead of 300 GETs that hit Cloudflare's per-IP rate limit.
@@ -110,7 +110,7 @@ export const onRequest = async (ctx) => {
   const role = await readRole(request, env);
 
   // env.ASSETS canonicalizes URLs (strips .html, strips index.html, redirects
-  // with 308s) — passing those redirects through to the browser would expose
+  // with 308s); passing those redirects through to the browser would expose
   // the /_variants/<role>/ path, which the guard at the top of this function
   // explicitly blocks. So: rewrite to a clean URL, and if ASSETS still returns
   // a redirect, follow it server-side instead of leaking it to the client.
@@ -153,7 +153,7 @@ function corsHeaders() {
 
 function withCors(response, request) {
   if (!request.headers.get("Origin")) return response;
-  // Response from env.ASSETS.fetch is immutable — clone before mutating.
+  // Response from env.ASSETS.fetch is immutable; clone before mutating.
   const headers = new Headers(response.headers);
   for (const [k, v] of Object.entries(corsHeaders())) headers.set(k, v);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
@@ -188,7 +188,7 @@ async function handleLogin(request, env) {
 }
 
 // Sanitise a 'next' redirect target. Only same-origin relative paths are
-// allowed — anything else (absolute URLs, protocol-relative '//evil.com',
+// allowed; anything else (absolute URLs, protocol-relative '//evil.com',
 // the protected /_variants/ tree) is replaced with '/'. Prevents the login
 // and logout endpoints from being weaponised as open redirects.
 function safeNext(value) {
@@ -208,7 +208,7 @@ function loginRedirect(next, error) {
 //
 // Bulk-read endpoint used by sync clients to avoid making one HTTP request
 // per .md file. The body is newline-separated paths (text/plain, so the
-// request stays CORS-simple — no preflight). The handler resolves each
+// request stays CORS-simple; no preflight). The handler resolves each
 // path against the caller's role variant and bundles the results into a
 // single JSON response.
 //
@@ -218,7 +218,7 @@ function loginRedirect(next, error) {
 //     (would escape the variant or hit metadata files)
 
 const BATCH_MAX_PATHS = 200;
-// Smaller cap for binary — base64 inflates ~4/3x and we don't want to
+// Smaller cap for binary; base64 inflates ~4/3x and we don't want to
 // blow the worker response budget. ~30 images at 200KB avg ≈ 8MB JSON.
 const BATCH_BINARY_MAX_PATHS = 30;
 
@@ -310,7 +310,7 @@ async function handleConnectGet(request, env) {
     return new Response("Invalid or missing return_to. Must be an http(s) URL.", { status: 400 });
   }
 
-  // Require login first — the user's role is what we're authorising.
+  // Require login first; the user's role is what we're authorising.
   const role = await readRole(request, env);
   const isLoggedIn = role !== ROLES[0] || PASSWORDS[role] != null;
   if (!isLoggedIn || role === ROLES[0]) {
@@ -345,7 +345,7 @@ async function handleConnectApprove(request, env) {
 
   const token = await signToken(role, env.SESSION_SECRET, BEARER_MAX_AGE);
   // Render a page that delivers the token via postMessage when running
-  // inside an iframe or popup — that avoids a cross-site top-level
+  // inside an iframe or popup; that avoids a cross-site top-level
   // navigation back to the host app, which can blow away SPA sessions
   // (Foundry logs the user out on full reloads). Falls back to a top-
   // level redirect with the token in the query string for CLI / direct
@@ -402,7 +402,7 @@ function renderConnectDeliveryPage({ token, state, returnTo }) {
     } catch (e) { /* fall through to redirect */ }
   }
 
-  // No parent or opener — fall back to the original redirect flow.
+  // No parent or opener; fall back to the original redirect flow.
   var sep = returnTo.indexOf("?") === -1 ? "?" : "&";
   var target = returnTo + sep + "token=" + encodeURIComponent(token)
     + (state ? "&state=" + encodeURIComponent(state) : "");
@@ -495,7 +495,7 @@ async function readRole(request, env) {
   const fallback = ROLES[0];
   if (!env.SESSION_SECRET) return fallback;
 
-  // Authorization: Bearer <token> — used by curl / the MCP server / any
+  // Authorization: Bearer <token>; used by curl / the MCP server / any
   // client that can set request headers freely. Same signed-token format
   // as the cookie, so verification is shared.
   const auth = request.headers.get("Authorization") || "";
@@ -505,7 +505,7 @@ async function readRole(request, env) {
     if (role && ROLES.includes(role)) return role;
   }
 
-  // ?_token=<token> — used by the Foundry module so cross-origin GETs stay
+  // ?_token=<token>; used by the Foundry module so cross-origin GETs stay
   // CORS-simple and don't trigger a preflight per file (Cloudflare rate-
   // limits OPTIONS bursts and a sync is hundreds of unique URLs).
   const queryToken = new URL(request.url).searchParams.get("_token");
@@ -530,7 +530,7 @@ async function signToken(role, secret, maxAgeSeconds) {
 
 async function signSessionCookie(role, secret) {
   const value = await signToken(role, secret, COOKIE_MAX_AGE);
-  // SameSite=None + Partitioned (CHIPS) — required so the cookie persists
+  // SameSite=None + Partitioned (CHIPS); required so the cookie persists
   // when the vault is loaded inside a cross-origin iframe (the Foundry
   // connect dialog). Partitioned scopes the cookie per parent origin, so
   // it isn't a general third-party tracking cookie. Top-level browsing
@@ -552,7 +552,7 @@ async function verifyToken(token, secret) {
 function clearCookieVariants(name) {
   // Browsers match cookies for deletion on (Path, Domain, Secure, SameSite,
   // Partitioned). A single Set-Cookie attempt only matches one configuration,
-  // so we emit two — one that matches cookies set by the current
+  // so we emit two; one that matches cookies set by the current
   // (SameSite=None+Partitioned) signSessionCookie, and one that matches the
   // older Lax form. Both are safe to send; the unmatched one is a no-op.
   const httpOnly = name === COOKIE_NAME ? "HttpOnly; " : "";
@@ -619,7 +619,7 @@ function parseCookie(header) {
 
 function isSharedAsset(pathname) {
   // Allowlist of root-served files that are intentionally public to every
-  // visitor (no role gate). Everything else — including images — goes
+  // visitor (no role gate). Everything else (including images) goes
   // through the variant rewrite so role-restricted content is structurally
   // unreachable on under-tier deploys.
   if (pathname === "/styles.css") return true;

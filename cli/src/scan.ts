@@ -8,11 +8,11 @@ export interface ScannedFile {
   /** Absolute path on disk. */
   absolute: string;
   size: number;
-  /** MD5 hex digest of the file body — matches R2's etag format for single-part uploads. */
+  /** MD5 hex digest of the file body; matches R2's etag format for single-part uploads. */
   hash: string;
   /** Unix-seconds; when the file was last modified on disk. */
   mtime: number;
-  /** Unix-seconds; when the file was created (best-effort — may equal mtime on Linux). */
+  /** Unix-seconds; when the file was created (best-effort; may equal mtime on Linux). */
   birthtime: number;
 }
 

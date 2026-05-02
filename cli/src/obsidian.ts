@@ -10,7 +10,7 @@ interface AppearanceJson {
  *
  * If .obsidian/appearance.json exists, only snippets listed in
  * `enabledCssSnippets` are included. If it's missing, all snippets are
- * included — matches Obsidian's behaviour when the user hasn't configured
+ * included; matches Obsidian's behaviour when the user hasn't configured
  * anything, and gives users a "drop a CSS file in and it works" workflow.
  *
  * Returns a single concatenated CSS string, or empty if no snippets.

@@ -55,7 +55,7 @@ article a.internal:hover { background: var(--wikilink-bg-hover); text-decoration
 article a.internal.new, article a.internal.is-unresolved { opacity: 0.7; font-style: italic; }
 
 /* Brand sits at the top of the left sidebar in place of the old top nav.
-   The sidebar's flex gap handles spacing — no extra margin or rule needed. */
+   The sidebar's flex gap handles spacing; no extra margin or rule needed. */
 .sidebar > .brand {
   display: block; padding: 0 0.5rem;
   font-weight: 700; font-size: 1.05rem; letter-spacing: 0.04em;
@@ -102,7 +102,7 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 .search-result-folder { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.15rem; }
 .search-empty { padding: 0.75rem; color: var(--muted); font-style: italic; font-size: 0.85rem; }
 
-/* Auth box — sits under the search box; populated by JS from a non-HttpOnly
+/* Auth box; sits under the search box; populated by JS from a non-HttpOnly
    display cookie set by the Function on login. */
 .auth-box {
   font-size: 0.78rem; color: var(--muted);
@@ -133,7 +133,7 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 }
 .toc-summary:hover { color: var(--accent); }
 .toc-summary::-webkit-details-marker { display: none; }
-/* CSS-drawn chevron — same shape as the sitemap-folder toggles. Rotates
+/* CSS-drawn chevron; same shape as the sitemap-folder toggles. Rotates
    when [open] so the affordance reads as "click to collapse / expand". */
 .toc-summary::before {
   content: ''; display: inline-block;
@@ -152,7 +152,7 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 .toc-d3 a { padding-left: 1.25rem; font-size: 0.85rem; }
 .toc-d4 a { padding-left: 2rem; font-size: 0.8rem; }
 
-/* Backlinks panel — same visual rhythm as the TOC. */
+/* Backlinks panel; same visual rhythm as the TOC. */
 .rightbar .backlinks { margin-top: 1.75rem; }
 .rightbar .backlinks h4 {
   margin: 0 0 0.5rem; font-size: 0.75rem;
@@ -187,7 +187,7 @@ article h2 { margin-top: 2rem; border-bottom: 1px solid var(--rule); padding-bot
 article hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
 article img { max-width: 100%; border-radius: 4px; }
 
-/* Tables — readable defaults so cell content doesn't run together. */
+/* Tables; readable defaults so cell content doesn't run together. */
 article table {
   border-collapse: collapse;
   margin: 1.25rem 0;
@@ -205,7 +205,7 @@ article thead th {
 }
 article tbody tr:last-child > td { border-bottom: none; }
 article td > img:first-child:last-child {
-  /* Solo image in a cell (e.g. portrait + bio layouts) — keep it from sprawling. */
+  /* Solo image in a cell (e.g. portrait + bio layouts); keep it from sprawling. */
   max-width: 12rem;
 }
 /* Default size for ![[image]] embeds without an explicit |N hint. The
@@ -219,7 +219,7 @@ article img.default-width { width: var(--default-img-width, 50vw); max-width: 10
 body.center-images article p > img:only-child { display: block; margin-left: auto; margin-right: auto; }
 body.center-images article p:has(> img:only-child) { text-align: center; }
 
-/* Lightbox — click an image in the article body to view it full-size. */
+/* Lightbox; click an image in the article body to view it full-size. */
 article img { cursor: zoom-in; }
 .lightbox-overlay {
   position: fixed; inset: 0; z-index: 1000;
@@ -285,7 +285,7 @@ article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px soli
 .sidebar .sitemap-folder > details > summary:hover > .folder-toggle {
   background: var(--wikilink-bg);
 }
-/* CSS-drawn chevron — crisper and more compact than any Unicode glyph. */
+/* CSS-drawn chevron; crisper and more compact than any Unicode glyph. */
 .sidebar .sitemap-folder > details > summary > .folder-toggle::before {
   content: '';
   position: absolute;
@@ -321,13 +321,13 @@ article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px soli
   text-decoration: none;
 }
 
-/* Children of a folder indent uniformly — chevron position is preserved
+/* Children of a folder indent uniformly; chevron position is preserved
    relative to the nested ul so descendants form a clean tree. */
 .sidebar .sitemap-folder > details > .sitemap-list {
   padding-left: 0.75rem;
 }
 
-/* 404 page — leans on the standard article layout but bumps the lead text. */
+/* 404 page; leans on the standard article layout but bumps the lead text. */
 .lead-404 { font-size: 1.05rem; color: var(--muted); margin-top: 0.5rem; }
 
 /* Auto-generated folder index pages */

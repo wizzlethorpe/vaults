@@ -2,7 +2,7 @@ import { webcrypto } from "node:crypto";
 
 // Password hashing: PBKDF2-SHA256. The Cloudflare Workers runtime caps
 // PBKDF2 iterations at 100k (NotSupportedError above that), so we hash at
-// 100k here too — the CLI and the edge Function must use the same algorithm
+// 100k here too; the CLI and the edge Function must use the same algorithm
 // for stored hashes to verify.
 
 const ITERATIONS = 100_000;

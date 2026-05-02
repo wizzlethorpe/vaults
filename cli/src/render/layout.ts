@@ -16,7 +16,7 @@ export interface LayoutInput {
   backlinks: PageMeta[];
   /** True if this site has roles beyond the default (i.e. login UI is meaningful). */
   authConfigured: boolean;
-  /** Unix-seconds. Optional — synthesized folder indexes may have neither. */
+  /** Unix-seconds. Optional; synthesized folder indexes may have neither. */
   mtime?: number;
   birthtime?: number;
 }
@@ -32,7 +32,7 @@ export function render404(input: Omit<LayoutInput, "title" | "pagePath" | "bodyH
   return renderLayout({
     ...input,
     title: "Page not found",
-    // Neutral sentinel — breadcrumbs check this and render nothing for it.
+    // Neutral sentinel; breadcrumbs check this and render nothing for it.
     pagePath: "__404__.md",
     bodyHtml: body,
     backlinks: [],
@@ -48,7 +48,7 @@ export function renderLayout(input: LayoutInput): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(input.title)} — ${esc(input.vaultName)}</title>
+<title>${esc(input.title)} | ${esc(input.vaultName)}</title>
 <link rel="icon" href="/favicon.ico">
 <link rel="stylesheet" href="/styles.css">
 <link rel="stylesheet" href="/user.css">
@@ -119,11 +119,11 @@ function formatDate(unix: number): string {
 }
 
 function renderBreadcrumbs(pagePath: string, vaultName: string): string {
-  // Sentinel used by the 404 page — no real path to crumb out of.
+  // Sentinel used by the 404 page; no real path to crumb out of.
   if (pagePath === "__404__.md") return "";
   const parts = pagePath.replace(/\.md$/i, "").split("/");
   if (parts.length === 1 && parts[0] === "index") return "";
-  // Folder homepages end in /index — drop that trailing segment so the crumbs
+  // Folder homepages end in /index; drop that trailing segment so the crumbs
   // read "Vault › DM Notes" instead of "Vault › DM Notes › index".
   if (parts.length > 1 && parts[parts.length - 1] === "index") parts.pop();
   const crumbs = [`<a href="/">${esc(vaultName)}</a>`];
@@ -170,7 +170,7 @@ function renderSitemap(pages: PageMeta[], currentPath: string): string {
 
 function renderNode(node: FolderNode, parentPath: string, currentPath: string): string {
   let html = "";
-  // Folders first, then pages — matches Obsidian's file explorer convention.
+  // Folders first, then pages; matches Obsidian's file explorer convention.
   // Natural sort so "Page 2" comes before "Page 10" (instead of alphabetical).
   for (const [name, sub] of [...node.subfolders].sort((a, b) => natCompare(a[0], b[0]))) {
     const folderPath = parentPath ? `${parentPath}/${name}` : name;
@@ -240,7 +240,7 @@ const HOVER_PREVIEW_SCRIPT = `<script>
   }
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function render(data, anchor) {
-    // .summary is already sanitised HTML at build time — safe to inject.
+    // .summary is already sanitised HTML at build time; safe to inject.
     const section = anchor && data.headings && data.headings[anchor];
     if (section) {
       return '<div class="wiki-preview-title">' + esc(data.title) + '</div>' +
@@ -263,7 +263,7 @@ const HOVER_PREVIEW_SCRIPT = `<script>
   }
   function isInternal(el) {
     if (!(el instanceof HTMLAnchorElement)) return false;
-    // Only preview links inside the main article body — sitemap / backlinks /
+    // Only preview links inside the main article body; sitemap / backlinks /
     // breadcrumbs / TOC links shouldn't trigger popovers as the user navigates.
     if (!el.closest('article')) return false;
     const href = el.getAttribute('href');

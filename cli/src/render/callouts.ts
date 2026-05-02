@@ -12,7 +12,7 @@ import { visit, SKIP } from "unist-util-visit";
 //
 // Recognised types map to CSS classes via .callout.callout-<type>.
 // If the callout's type matches a name in `redactRoles`, the entire blockquote is
-// removed from the tree — used to strip role-gated callouts during lower-tier builds.
+// removed from the tree; used to strip role-gated callouts during lower-tier builds.
 
 const CALLOUT_RE = /^\[!(\w+)\][+-]?\s*(.*?)(?:\n|$)/;
 
@@ -31,7 +31,7 @@ export function calloutPlugin(opts: { redactRoles?: ReadonlySet<string> } = {}):
       const [fullMatch, type, rawTitle] = match;
       const lowerType = type!.toLowerCase();
 
-      // Role-gated callout — drop entirely from this tree.
+      // Role-gated callout; drop entirely from this tree.
       if (redact?.has(lowerType) && parent && index != null) {
         parent.children.splice(index, 1);
         return [SKIP, index];

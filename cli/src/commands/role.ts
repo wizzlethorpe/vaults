@@ -11,7 +11,7 @@ export async function roleAdd(name: string, vaultPath: string): Promise<void> {
   const cfg = await loadConfig(vaultPath, {});
   if (cfg.roles.includes(name)) throw new Error(`Role '${name}' already exists.`);
 
-  // First role added (or first ever role) is the default — no password.
+  // First role added (or first ever role) is the default; no password.
   // Subsequent roles need a password to gate access.
   const isDefault = cfg.roles.length === 0;
   cfg.roles.push(name);
@@ -33,7 +33,7 @@ export async function roleRemove(name: string, vaultPath: string): Promise<void>
     throw new Error(`Role '${name}' is not configured (${cfg.roles.join(", ") || "empty"}).`);
   }
   if (cfg.roles[0] === name && cfg.roles.length > 1) {
-    throw new Error(`Can't remove '${name}' — it's the default role. Remove the other roles first.`);
+    throw new Error(`Can't remove '${name}'; it's the default role. Remove the other roles first.`);
   }
 
   cfg.roles = cfg.roles.filter((r) => r !== name);
@@ -56,7 +56,7 @@ async function reorderRole(name: string, vaultPath: string, delta: 1 | -1): Prom
   const roles = cfg.roles;
   const i = roles.indexOf(name);
   if (i === -1) throw new Error(`Role '${name}' is not configured (${roles.join(", ") || "empty"}).`);
-  if (i === 0) throw new Error(`Can't reorder '${name}' — it's the default role.`);
+  if (i === 0) throw new Error(`Can't reorder '${name}'; it's the default role.`);
 
   const j = i + delta;
   if (j < 1 || j >= roles.length) {

@@ -40,9 +40,9 @@ Cloudflare Pages           ← per-user, your account
    └── functions/_middleware.js   ← auth gate (cookie/bearer based)
 ```
 
-- **Per-tier deploys.** A page tagged `role: dm` in its frontmatter only ships to the dm variant. Public visitors *cannot* fetch it — the file structurally doesn't exist in their variant.
+- **Per-tier deploys.** A page tagged `role: dm` in its frontmatter only ships to the dm variant. Public visitors *cannot* fetch it; the file structurally doesn't exist in their variant.
 - **Images are gated too.** Only images embedded by visible pages are copied into a given variant.
-- **Incremental sync.** External clients (the [Foundry VTT module](https://github.com/wizzlethorpe/vaults-foundry)) can pull changes via `/_manifest.json` + `/_batch` endpoints — the CLI computes content hashes so the diff is minimal.
+- **Incremental sync.** External clients (the [Foundry VTT module](https://github.com/wizzlethorpe/vaults-foundry)) can pull changes via `/_manifest.json` + `/_batch` endpoints; the CLI computes content hashes so the diff is minimal.
 
 ## Commands
 
@@ -82,7 +82,7 @@ ignore:
 ---
 ```
 
-Open it in Obsidian — the frontmatter shows up as a Properties form.
+Open it in Obsidian; the frontmatter shows up as a Properties form.
 
 ## Page frontmatter
 

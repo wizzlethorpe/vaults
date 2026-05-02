@@ -7,7 +7,7 @@ const ICON_SIZE = 32;
 /**
  * Render the favicon for a vault to an ICO buffer. If the user pointed
  * `settings.favicon` at a real file, we resize that image; otherwise we
- * generate a default — a rounded square in the vault's accent colour with
+ * generate a default; a rounded square in the vault's accent colour with
  * a single uppercase letter centred on it.
  */
 export async function buildFavicon(opts: {

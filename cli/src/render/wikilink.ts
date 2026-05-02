@@ -32,7 +32,7 @@ export function wikiLinkPlugin(opts: {
           //      generated folder index)
           //   4. Last path segment slug (so [[Scenarios/The Open Door]]
           //      still resolves when the file actually lives elsewhere
-          //      under that basename — Obsidian treats the slash form as
+          //      under that basename. Obsidian treats the slash form as
           //      a path; we're more lenient).
           const lastSegment = name.includes("/") ? name.split("/").pop()! : "";
           const page = opts.context.pages.get(slug)

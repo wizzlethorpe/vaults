@@ -9,7 +9,7 @@ import { slugify } from "./slug.js";
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?)$/i;
 const EMBED_INLINE_RE = /!\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]*))?\]\]/g;
-// A line that is *only* an embed — used for page transclusion.
+// A line that is *only* an embed; used for page transclusion.
 const EMBED_PARAGRAPH_RE = /^!\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]*))?\]\]$/;
 // Same shape but global, for recursive string expansion of nested embeds.
 const EMBED_LINE_RE_G = /^!\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]*))?\]\]$/gm;
@@ -25,7 +25,7 @@ export function embedPlugin(opts: {
   const { context, warnings } = opts;
 
   return () => (tree) => {
-    // 1. Page transclusion — paragraphs that are a single embed and not an image.
+    // 1. Page transclusion; paragraphs that are a single embed and not an image.
     const replacements: { index: number; node: RootContent }[] = [];
     for (let i = 0; i < tree.children.length; i++) {
       const child = tree.children[i];
@@ -59,7 +59,7 @@ export function embedPlugin(opts: {
           const path = image?.outputPath ?? name;
           const src = "/" + path.split("/").map(encodeURIComponent).join("/");
           const explicit = parseSizeHint(rawAlias?.trim());
-          // When no explicit |N hint, fall through to a class — the actual
+          // When no explicit |N hint, fall through to a class; the actual
           // width is set via a CSS variable on <body> so it stays configurable
           // and sanitize-safe (no inline styles on user-controlled HTML).
           const extra = explicit
@@ -97,7 +97,7 @@ function transcludePage(
     body = section;
   }
 
-  // Recursively expand nested embeds at the string level — no plugin recursion needed.
+  // Recursively expand nested embeds at the string level; no plugin recursion needed.
   const expanded = expandNestedEmbeds(body, context, 1, new Set([slug]));
   const childAst = subParser.parse(expanded) as Root;
 

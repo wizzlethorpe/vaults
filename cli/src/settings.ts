@@ -7,7 +7,7 @@ import matter from "gray-matter";
 // normalisation, the init template, and the warning for unknown keys.
 //
 // Auth config (roles, role_passwords, auth_type) lives in .vaultrc.json
-// instead — it's CLI-managed (`vaults role add/remove/promote/demote`,
+// instead; it's CLI-managed (`vaults role add/remove/promote/demote`,
 // `vaults password`) and shouldn't be hand-edited or git-tracked.
 export interface Settings {
   vault_name: string;

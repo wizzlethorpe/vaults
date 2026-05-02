@@ -16,7 +16,7 @@ const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
 
 /**
  * Builds the site, then runs `wrangler pages dev` against the output. Wrangler
- * spawns a local Workers runtime — Functions (auth middleware, MCP) execute
+ * spawns a local Workers runtime; functions (auth middleware, MCP) execute
  * exactly as they would on Cloudflare, so the preview is a faithful mirror of
  * production. To switch roles, click "Sign in" in the sidebar; preview honours
  * the same cookies that production does.
@@ -55,7 +55,7 @@ export async function preview(vaultPath: string, opts: PreviewOptions): Promise<
       console.log("Generated SESSION_SECRET (saved to .vaultrc.json).");
     }
     wranglerArgs.push(`--binding=SESSION_SECRET=${secret}`);
-    console.log(`  multi-role build — sign in at http://localhost:${port}/login.html`);
+    console.log(`  multi-role build; sign in at http://localhost:${port}/login.html`);
   }
 
   console.log(`\n  Starting wrangler pages dev on port ${port}...`);

@@ -5,7 +5,7 @@ export interface PageMeta {
   title: string;
   /** Minimum role required to view this page. Default = first role in settings.roles. */
   role: string;
-  /** Obsidian-style aliases — additional names that should resolve to this page. */
+  /** Obsidian-style aliases; additional names that should resolve to this page. */
   aliases?: string[];
   /** Unix-seconds; missing for synthesized folder indexes. */
   mtime?: number;

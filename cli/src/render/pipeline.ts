@@ -45,7 +45,7 @@ export async function renderMarkdown(
   const warnings: RenderWarning[] = [];
 
   // Pre-process the markdown source before parsing.
-  //   1. Strip Obsidian-style comments (%% ... %% — single- or multi-line).
+  //   1. Strip Obsidian-style comments (%% ... %%; single- or multi-line).
   //   2. Escape pipes inside wikilinks/embeds so they don't break GFM tables.
   //      CommonMark unescapes `\|` back to `|` in the resulting text node, so
   //      the wikilink regex still matches downstream. Negative lookbehind

@@ -10,11 +10,11 @@
     "ttrpg",
     "knowledge-base"
   ],
-  "homepage": "https://github.com/wizzlethorpe/vaults-template#readme",
-  "bugs": "https://github.com/wizzlethorpe/vaults-template/issues",
+  "homepage": "https://github.com/wizzlethorpe/vaults-cli#readme",
+  "bugs": "https://github.com/wizzlethorpe/vaults-cli/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wizzlethorpe/vaults-template.git",
+    "url": "git+https://github.com/wizzlethorpe/vaults-cli.git",
     "directory": "cli"
   },
   "license": "MIT",

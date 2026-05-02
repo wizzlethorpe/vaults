@@ -8,7 +8,7 @@ import { scanVault, type ScannedFile } from "./scan.js";
 import { compressImage, COMPRESSIBLE_EXT_RE } from "./images.js";
 import { buildFavicon } from "./favicon.js";
 
-// Any image format that can be referenced via ![[name.ext]] — superset of
+// Any image format that can be referenced via ![[name.ext]]; superset of
 // COMPRESSIBLE_EXT_RE since SVGs/GIFs ship as-is rather than being recoded.
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?)$/i;
 import { renderMarkdown } from "./render/pipeline.js";
@@ -138,7 +138,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   });
 
   // Parse role + title per page. Pages with an unrecognised role fall back to
-  // the default with a warning — better than silently dropping them.
+  // the default with a warning; better than silently dropping them.
   const allPageMetas: PageMeta[] = markdownFiles.map((f) => {
     const src = sources.get(f.path)!;
     const meta = parseFrontmatter(src);
@@ -161,7 +161,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // Compress once into a private staging dir under the deploy root. Each
   // variant's render pass copies whichever images its visible pages
   // reference. The staging dir is removed at the end so images only ship
-  // to the variants that need them — that's how DM-only art is kept off
+  // to the variants that need them; that's how DM-only art is kept off
   // the public deploy without a separate auth gate.
   const imageStagingDir = join(opts.outputDir, ".image-staging");
   const imageIndex = new Map<string, ImageEntry>();
@@ -195,7 +195,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // ── Passthrough files (PDFs, audio, etc.) ───────────────────────────────
   // Staged once, copied into every variant. We don't scan markdown to find
   // out which files are referenced (links can be plain text, embedded HTML,
-  // or arbitrary URLs), so we ship them into every tier — the trade-off is
+  // or arbitrary URLs), so we ship them into every tier; the trade-off is
   // that DM-only PDFs are reachable from any role's deploy. Document as a
   // known limitation.
   const otherStagingDir = join(opts.outputDir, ".other-staging");
@@ -220,7 +220,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   await writeFile(join(opts.outputDir, "user.css"), userCss);
   if (userCss) console.log(`  loaded user.css from .obsidian/snippets/`);
 
-  // Favicon — either user-supplied via settings.favicon, or a generated
+  // Favicon; either user-supplied via settings.favicon, or a generated
   // default with the vault's first letter on the accent colour.
   try {
     const favicon = await buildFavicon({
@@ -272,7 +272,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
 
     // Write a per-variant _manifest.json so external clients (Foundry, MCP,
     // etc.) can do an incremental diff. Includes EVERY file that variant
-    // serves — html, md, images (as relative paths into shared root), css.
+    // serves; html, md, images (as relative paths into shared root), css.
     const manifest = await buildManifest(opts.outputDir, variantDir);
     await writeFile(join(variantDir, "_manifest.json"), JSON.stringify(manifest));
   }
@@ -289,7 +289,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     });
     await writeFile(join(fnDir, "_middleware.js"), middleware);
 
-    // Login page — drop in the role list (everything above the default).
+    // Login page; drop in the role list (everything above the default).
     const protectedRoles = roles.slice(1);
     const opts_html = protectedRoles
       .map((r) => `<option value="${r}">${r}</option>`)
@@ -302,7 +302,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     }
   }
 
-  // Drop the staging dirs — their contents have been copied into each
+  // Drop the staging dirs; their contents have been copied into each
   // variant that needs them, so they're no longer required for the deploy.
   await rm(imageStagingDir, { recursive: true, force: true });
   await rm(otherStagingDir, { recursive: true, force: true });
@@ -454,7 +454,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
 
   progress.done(`${visibleMetas.length} rendered`);
 
-  // 404 page using the same layout shell — middleware fetches this when a
+  // 404 page using the same layout shell; middleware fetches this when a
   // variant rewrite returns 404 instead of leaking Pages's blank "Not found".
   await writeFile(join(a.variantDir, "404.html"), render404({
     pages: visibleMetas,
@@ -480,7 +480,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   // the public wiki structurally 404s.
   await copyReferencedImages(visibleSources, a.imageIndex, a.imageStagingDir, a.variantDir);
 
-  // Passthrough files (PDFs, audio, etc.) ship into every variant — the
+  // Passthrough files (PDFs, audio, etc.) ship into every variant; the
   // build doesn't scan markdown for arbitrary references, so we can't tell
   // which role-restricted pages link to a given PDF. Limitation: DM-only
   // data files in this category aren't role-gated.
@@ -622,7 +622,7 @@ function parseFrontmatter(source: string): PageFrontmatter {
 /**
  * Pull `aliases:` out of frontmatter. Supports the inline form
  * (`aliases: [Foo, Bar]`) and the block form (`aliases:\n- Foo\n- Bar`,
- * indented or not — Obsidian writes both shapes depending on version).
+ * indented or not. Obsidian writes both shapes depending on version).
  */
 function parseAliases(fm: string): string[] {
   const inline = /^aliases:\s*\[([^\]\n]*)\]\s*$/m.exec(fm);
@@ -635,7 +635,7 @@ function parseAliases(fm: string): string[] {
   const out: string[] = [];
   for (const line of after) {
     if (!line) continue;
-    // Allow zero or more leading spaces — Obsidian sometimes writes block
+    // Allow zero or more leading spaces. Obsidian sometimes writes block
     // arrays without indentation, which strict YAML wouldn't accept but
     // both Obsidian and gray-matter parse fine.
     const item = /^\s*-\s+(.+?)\s*$/.exec(line);
@@ -723,7 +723,7 @@ interface ManifestEntry {
 /**
  * Walk the variant directory and produce a manifest of every file with its MD5
  * hash + size + mtime + content type. Shared assets (anything OUTSIDE the
- * variant dir but inside the deploy root) are listed too — clients use a
+ * variant dir but inside the deploy root) are listed too; clients use a
  * single manifest to diff the entire site, not just the role-specific bits.
  */
 async function buildManifest(rootDir: string, variantDir: string): Promise<{ files: ManifestEntry[] }> {

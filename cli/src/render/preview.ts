@@ -14,7 +14,7 @@ import { slugify } from "./slug.js";
 
 export interface PagePreview {
   title: string;
-  /** Rendered HTML — already sanitised. Safe to insert via innerHTML. */
+  /** Rendered HTML; already sanitised. Safe to insert via innerHTML. */
   summary: string;
   /** anchor → { title, summary HTML } for [[Page#section]] hovers. */
   headings: Record<string, { title: string; summary: string }>;
@@ -82,7 +82,7 @@ function truncateMarkdown(source: string, maxChars: number): string {
     if (!p) continue;
     if (/^!\[\[/.test(p)) continue;                  // skip image embeds
     if (/^\|/.test(p)) continue;                     // skip tables
-    // Wikilinks aren't in the preview pipeline — render their display text inline.
+    // Wikilinks aren't in the preview pipeline; render their display text inline.
     p = p.replace(/!?\[\[([^\[\]|#\n]+?)(?:#[^\[\]|#\n]+?)?(?:\|([^\[\]#\n]+?))?\]\]/g,
       (_, name: string, alias?: string) => alias ?? name);
     out.push(p);

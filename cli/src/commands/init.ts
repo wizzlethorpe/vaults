@@ -25,7 +25,7 @@ export async function init(vaultPath: string, opts: InitOptions): Promise<void> 
       await stat(target);
       console.error(`${target} already exists. Use --force to overwrite.`);
       process.exit(1);
-    } catch { /* doesn't exist — we're good */ }
+    } catch { /* doesn't exist; we're good */ }
   }
 
   // loadSettings() returns defaults when the file is missing, so we can just
@@ -38,13 +38,13 @@ export async function init(vaultPath: string, opts: InitOptions): Promise<void> 
   // role passwords) and the build cache are excluded from the user's repo.
   await ensureGitignoreEntries(vaultPath, [".vaultrc.json", ".vault-cache"]);
 
-  console.log("Open it in Obsidian to edit the frontmatter — it'll show as a settings form.");
+  console.log("Open it in Obsidian to edit the frontmatter; it'll show as a settings form.");
 }
 
 /**
  * Add `entries` to `.gitignore` if they aren't already there. Only runs
  * when the vault looks like a git repo (`.git` present) or already has
- * a `.gitignore` — otherwise we'd be creating an orphan file in a vault
+ * a `.gitignore`; otherwise we'd be creating an orphan file in a vault
  * the user never intended to version.
  */
 async function ensureGitignoreEntries(vaultPath: string, entries: string[]): Promise<void> {
@@ -58,7 +58,7 @@ async function ensureGitignoreEntries(vaultPath: string, entries: string[]): Pro
 
   if (!gitignoreExists) {
     try { await stat(join(vaultPath, ".git")); }
-    catch { return; } // no .git and no .gitignore — vault isn't versioned
+    catch { return; } // no .git and no .gitignore; vault isn't versioned
   }
 
   const existing = new Set(current.split(/\r?\n/).map((l) => l.trim()));
