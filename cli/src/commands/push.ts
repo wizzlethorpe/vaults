@@ -2,6 +2,8 @@ import { basename, join } from "node:path";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
+import { homedir } from "node:os";
+import { cp, mkdir, rm, symlink } from "node:fs/promises";
 import { loadConfig, saveConfig, saveSessionSecret, type VaultConfig } from "../config.js";
 import { buildSite } from "../build.js";
 import { generateSessionSecret } from "../auth.js";
@@ -165,16 +167,35 @@ async function promptIfTty(question: string, fallback: string, nonTtyError: stri
 
 async function wranglerDeploy(outputDir: string, projectName: string): Promise<void> {
   console.log(`Deploying to Cloudflare Pages project '${projectName}'…`);
-  // wrangler resolves functions/ relative to cwd, not the deploy path arg —
-  // run it from outputDir so the generated middleware ships with the deploy.
-  // Force --branch=main so the deploy is tagged Production (matches the
-  // --production-branch=main we set during project create); without it
-  // wrangler reads the vault's current git branch and tags as Preview, which
-  // means the custom domain still serves the previous Production deploy.
+  // Wrangler writes a `.wrangler/` cache in cwd. Run it from a stable
+  // per-project location under HOME so that cache lives in one place
+  // regardless of where the user invoked `vaults push`. Wrangler also
+  // resolves functions/ relative to cwd (not the deploy path arg), so
+  // we link the build's functions/ into the cache dir.
+  //
+  // --branch=main ensures Production-tagged deploys (custom domains only
+  // serve Production); --commit-dirty silences a noisy git warning.
+  const cacheDir = join(homedir(), ".cache", "vaults", `wrangler-${projectName}`);
+  await mkdir(cacheDir, { recursive: true });
+  await linkOrCopy(join(outputDir, "functions"), join(cacheDir, "functions"));
+
   await runWranglerInteractive(
-    ["pages", "deploy", ".", `--project-name=${projectName}`, "--branch=main", "--commit-dirty=true"],
-    outputDir,
+    ["pages", "deploy", outputDir, `--project-name=${projectName}`, "--branch=main", "--commit-dirty=true"],
+    cacheDir,
   );
+}
+
+/**
+ * Refresh `dest` to point at `src`. Symlink first; fall back to copy on
+ * platforms where symlinks need elevation (Windows non-admin).
+ */
+async function linkOrCopy(src: string, dest: string): Promise<void> {
+  await rm(dest, { recursive: true, force: true });
+  try {
+    await symlink(src, dest, "dir");
+  } catch {
+    await cp(src, dest, { recursive: true });
+  }
 }
 
 async function wranglerSecret(projectName: string, name: string, value: string): Promise<void> {
