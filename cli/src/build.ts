@@ -13,6 +13,7 @@ import { buildPreview } from "./render/preview.js";
 import { DEFAULT_CSS } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./settings.js";
+import { loadConfig, type VaultConfig } from "./config.js";
 import { renderAuthMiddleware, LOGIN_HTML } from "./render/auth-template.js";
 import { renderMcpFunction } from "./render/mcp-template.js";
 import type { ImageEntry, PageMeta, RenderContext, RenderWarning } from "./render/types.js";
@@ -58,7 +59,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   const start = Date.now();
   const concurrency = Math.max(2, availableParallelism());
 
-  // ── Settings ─────────────────────────────────────────────────────────────
+  // ── Settings (user-editable) ─────────────────────────────────────────────
   const settings = await loadSettings(opts.vaultPath);
   for (const w of settings.warnings) console.warn(`  ${w}`);
   if (settings.exists && settings.changed) {
@@ -72,7 +73,9 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     maxFileBytes: opts.maxFileBytes === 25 * 1024 * 1024 ? settings.values.max_file_bytes : opts.maxFileBytes,
   };
 
-  const roles = settings.values.roles.length > 0 ? settings.values.roles : ["public"];
+  // ── CLI-managed state (auth) ─────────────────────────────────────────────
+  const cfg = await loadConfig(opts.vaultPath, {});
+  const roles = cfg.roles.length > 0 ? cfg.roles : ["public"];
   const defaultRole = roles[0]!;
   const allRoleSet = new Set(roles);
 
@@ -200,6 +203,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       sources,
       imageIndex,
       settings: settings.values,
+      authConfigured: roles.length > 1,
       concurrency,
     });
     perRolePageCount[role] = stats.pageCount;
@@ -222,7 +226,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   if (!collapseToRoot) {
     const middleware = renderAuthMiddleware({
       roles,
-      rolePasswords: settings.values.role_passwords,
+      rolePasswords: cfg.rolePasswords,
     });
     await writeFile(join(fnDir, "_middleware.js"), middleware);
 
@@ -233,7 +237,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       .join("");
     await writeFile(join(opts.outputDir, "login.html"), LOGIN_HTML.replace("__ROLE_OPTIONS__", opts_html));
 
-    const missing = protectedRoles.filter((r) => !settings.values.role_passwords[r]);
+    const missing = protectedRoles.filter((r) => !cfg.rolePasswords[r]);
     if (missing.length > 0) {
       console.warn(`  WARNING: no password set for role(s): ${missing.join(", ")}. Run 'vaults password <role>' before pushing.`);
     }
@@ -260,6 +264,8 @@ interface VariantArgs {
   sources: Map<string, string>;
   imageIndex: Map<string, ImageEntry>;
   settings: Settings;
+  /** Whether the deployment has more than one role (controls auth-box rendering). */
+  authConfigured: boolean;
   concurrency: number;
 }
 
@@ -351,7 +357,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
       defaultImageWidth: a.settings.default_image_width,
       centerImages: a.settings.center_images,
       backlinks,
-      authConfigured: a.settings.roles.length > 1,
+      authConfigured: a.authConfigured,
       ...(p.mtime != null ? { mtime: p.mtime } : {}),
       ...(p.birthtime != null ? { birthtime: p.birthtime } : {}),
     });

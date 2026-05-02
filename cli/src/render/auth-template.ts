@@ -34,6 +34,13 @@ export const onRequest = async (ctx) => {
   const { request, env, next } = ctx;
   const url = new URL(request.url);
 
+  // Block direct access to /_variants/<role>/* — those paths exist in storage
+  // for the rewrite below, but exposing them would let anyone fetch any
+  // variant's manifest, page, or markdown source by guessing the role name.
+  if (url.pathname.startsWith("/_variants/")) {
+    return new Response("Not found", { status: 404 });
+  }
+
   // /login — POST validates a password and sets the session cookie; GET 404
   // is fine because /login.html is a static page.
   if (url.pathname === "/login" && request.method === "POST") {

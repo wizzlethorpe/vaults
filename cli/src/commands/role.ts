@@ -1,46 +1,44 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { hashPassword } from "../auth.js";
-import { loadSettings, writeSettings } from "../settings.js";
+import { loadConfig, saveConfig } from "../config.js";
 
 export async function roleAdd(name: string, vaultPath: string): Promise<void> {
   if (!/^[a-z][a-z0-9_-]*$/i.test(name)) {
     throw new Error(`Invalid role name '${name}'. Use letters, digits, '_' or '-' (must start with a letter).`);
   }
 
-  const settings = await loadSettings(vaultPath);
-  if (settings.values.roles.includes(name)) {
-    throw new Error(`Role '${name}' already exists.`);
-  }
+  const cfg = await loadConfig(vaultPath, {});
+  if (cfg.roles.includes(name)) throw new Error(`Role '${name}' already exists.`);
 
   // First role added (or first ever role) is the default — no password.
   // Subsequent roles need a password to gate access.
-  const isDefault = settings.values.roles.length === 0;
-  settings.values.roles.push(name);
+  const isDefault = cfg.roles.length === 0;
+  cfg.roles.push(name);
 
   if (!isDefault) {
     console.log(`Adding role '${name}'. Set a password to gate access:`);
     const pw = await readPassword();
-    settings.values.role_passwords[name] = await hashPassword(pw);
+    cfg.rolePasswords[name] = await hashPassword(pw);
   }
 
-  await writeSettings(vaultPath, settings.values);
+  await saveConfig(vaultPath, cfg);
   console.log(`Added role '${name}'${isDefault ? " (default)" : ""}.`);
   console.log(`  Mark pages with 'role: ${name}' frontmatter or callouts with '> [!${name}]' to gate them.`);
 }
 
 export async function roleRemove(name: string, vaultPath: string): Promise<void> {
-  const settings = await loadSettings(vaultPath);
-  if (!settings.values.roles.includes(name)) {
-    throw new Error(`Role '${name}' is not in settings.roles (${settings.values.roles.join(", ") || "empty"}).`);
+  const cfg = await loadConfig(vaultPath, {});
+  if (!cfg.roles.includes(name)) {
+    throw new Error(`Role '${name}' is not configured (${cfg.roles.join(", ") || "empty"}).`);
   }
-  if (settings.values.roles[0] === name && settings.values.roles.length > 1) {
-    throw new Error(`Can't remove '${name}' — it's the default role. Remove the other roles first or reorder them in settings.md.`);
+  if (cfg.roles[0] === name && cfg.roles.length > 1) {
+    throw new Error(`Can't remove '${name}' — it's the default role. Remove the other roles first.`);
   }
 
-  settings.values.roles = settings.values.roles.filter((r) => r !== name);
-  delete settings.values.role_passwords[name];
-  await writeSettings(vaultPath, settings.values);
+  cfg.roles = cfg.roles.filter((r) => r !== name);
+  delete cfg.rolePasswords[name];
+  await saveConfig(vaultPath, cfg);
   console.log(`Removed role '${name}'.`);
   console.log(`  Pages tagged 'role: ${name}' will fall back to the default role on next build.`);
 }
@@ -53,16 +51,11 @@ export async function roleDemote(name: string, vaultPath: string): Promise<void>
   await reorderRole(name, vaultPath, -1);
 }
 
-/**
- * Move a role one position toward the higher (+1) or lower (-1) end of the
- * roles list. The first role (index 0) is the default and is locked in
- * place — promote/demote can shuffle positions 1+ but never cross 0.
- */
 async function reorderRole(name: string, vaultPath: string, delta: 1 | -1): Promise<void> {
-  const settings = await loadSettings(vaultPath);
-  const roles = settings.values.roles;
+  const cfg = await loadConfig(vaultPath, {});
+  const roles = cfg.roles;
   const i = roles.indexOf(name);
-  if (i === -1) throw new Error(`Role '${name}' is not in settings.roles (${roles.join(", ") || "empty"}).`);
+  if (i === -1) throw new Error(`Role '${name}' is not configured (${roles.join(", ") || "empty"}).`);
   if (i === 0) throw new Error(`Can't reorder '${name}' — it's the default role.`);
 
   const j = i + delta;
@@ -70,7 +63,7 @@ async function reorderRole(name: string, vaultPath: string, delta: 1 | -1): Prom
     throw new Error(`'${name}' is already at the ${delta > 0 ? "highest" : "lowest non-default"} rank.`);
   }
   [roles[i], roles[j]] = [roles[j]!, roles[i]!];
-  await writeSettings(vaultPath, settings.values);
+  await saveConfig(vaultPath, cfg);
 
   const action = delta > 0 ? "Promoted" : "Demoted";
   console.log(`${action} '${name}' to rank ${j} of ${roles.length - 1}.`);
@@ -78,15 +71,15 @@ async function reorderRole(name: string, vaultPath: string, delta: 1 | -1): Prom
 }
 
 export async function roleList(vaultPath: string): Promise<void> {
-  const settings = await loadSettings(vaultPath);
-  if (settings.values.roles.length === 0) {
+  const cfg = await loadConfig(vaultPath, {});
+  if (cfg.roles.length === 0) {
     console.log("No roles configured. Run `vaults role add <name>` to add one.");
     return;
   }
   console.log("Roles (lowest → highest):");
-  settings.values.roles.forEach((r, i) => {
+  cfg.roles.forEach((r, i) => {
     const isDefault = i === 0;
-    const hasPw = settings.values.role_passwords[r] != null;
+    const hasPw = cfg.rolePasswords[r] != null;
     const tag = isDefault ? " (default, public)" : hasPw ? "" : " (no password set!)";
     console.log(`  ${r}${tag}`);
   });
@@ -95,7 +88,6 @@ export async function roleList(vaultPath: string): Promise<void> {
 async function readPassword(): Promise<string> {
   const isTty = !!stdin.isTTY;
   if (!isTty) {
-    // Piped input: read all upfront, dispense lines (matches password.ts).
     const chunks: Buffer[] = [];
     for await (const chunk of stdin) chunks.push(chunk as Buffer);
     const lines = Buffer.concat(chunks).toString("utf8").split(/\r?\n/);
@@ -106,7 +98,6 @@ async function readPassword(): Promise<string> {
     return pw;
   }
 
-  // TTY: mask via stdout muting trick.
   const rl = createInterface({ input: stdin, output: stdout });
   try {
     const pw = await maskedRead(rl, "Password: ");
@@ -127,8 +118,7 @@ async function maskedRead(rl: ReturnType<typeof createInterface>, prompt: string
   (stdout as any).write = ((chunk: unknown, ...rest: unknown[]) =>
     muted ? true : realWrite(chunk as never, ...rest as [])) as typeof realWrite;
   try {
-    const answer = await rl.question("");
-    return answer;
+    return await rl.question("");
   } finally {
     muted = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

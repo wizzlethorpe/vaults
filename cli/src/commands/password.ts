@@ -1,21 +1,21 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { hashPassword } from "../auth.js";
-import { loadSettings, writeSettings } from "../settings.js";
+import { loadConfig, saveConfig } from "../config.js";
 
 interface PasswordOptions {}
 
 export async function password(vaultPath: string, role: string, _opts: PasswordOptions): Promise<void> {
-  const settings = await loadSettings(vaultPath);
+  const cfg = await loadConfig(vaultPath, {});
 
-  if (settings.values.roles.length === 0) {
-    throw new Error("settings.roles is empty — run `vaults init` or add roles to settings.md first.");
+  if (cfg.roles.length === 0) {
+    throw new Error("No roles configured. Run `vaults role add <name>` first.");
   }
-  if (!settings.values.roles.includes(role)) {
-    throw new Error(`Role '${role}' is not in settings.roles (${settings.values.roles.join(", ")}). Add it to settings.md first.`);
+  if (!cfg.roles.includes(role)) {
+    throw new Error(`Role '${role}' is not configured (${cfg.roles.join(", ")}). Add it with \`vaults role add ${role}\`.`);
   }
-  if (settings.values.roles[0] === role) {
-    throw new Error(`'${role}' is the default (lowest) role; it doesn't need a password.`);
+  if (cfg.roles[0] === role) {
+    throw new Error(`'${role}' is the default role; it doesn't need a password.`);
   }
 
   const isTty = !!stdin.isTTY;
@@ -27,10 +27,9 @@ export async function password(vaultPath: string, role: string, _opts: PasswordO
   if (pw !== confirm) throw new Error("Passwords don't match.");
   reader.close();
 
-  const encoded = await hashPassword(pw);
-  settings.values.role_passwords[role] = encoded;
-  await writeSettings(vaultPath, settings.values);
-  console.log(`\nUpdated settings.md with hash for '${role}'.`);
+  cfg.rolePasswords[role] = await hashPassword(pw);
+  await saveConfig(vaultPath, cfg);
+  console.log(`\nUpdated password for '${role}'.`);
   console.log("On next `vaults push`, this hash will be deployed to the Function.");
 }
 
