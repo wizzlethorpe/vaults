@@ -25,9 +25,20 @@ export function wikiLinkPlugin(opts: {
           const display = rawAlias?.trim() ?? name;
           const slug = slugify(name);
 
-          // Try basename slug first, then full-path slug (so [[NPCs/index]] works).
+          // Resolution order:
+          //   1. Slug of the full input (matches basename slugs and aliases)
+          //   2. Full-path slug (e.g. [[NPCs/Aldric]])
+          //   3. `<slug>/index` (so a bare [[NPCs]] picks up the auto-
+          //      generated folder index)
+          //   4. Last path segment slug (so [[Scenarios/The Open Door]]
+          //      still resolves when the file actually lives elsewhere
+          //      under that basename — Obsidian treats the slash form as
+          //      a path; we're more lenient).
+          const lastSegment = name.includes("/") ? name.split("/").pop()! : "";
           const page = opts.context.pages.get(slug)
-            ?? opts.context.pages.get(slugify(name.replace(/\.md$/i, "").replace(/\//g, "/")));
+            ?? opts.context.pages.get(slugify(name.replace(/\.md$/i, "").replace(/\//g, "/")))
+            ?? opts.context.pages.get(slugify(name + "/index"))
+            ?? (lastSegment ? opts.context.pages.get(slugify(lastSegment)) : undefined);
           const href = page != null
             ? "/" + page.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/") + (anchor ? `#${anchor}` : "")
             : "#";

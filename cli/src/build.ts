@@ -151,6 +151,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       path: f.path,
       title: meta.title ?? extractH1(src) ?? basenameNoExt(f.path),
       role,
+      ...(meta.aliases && meta.aliases.length > 0 ? { aliases: meta.aliases } : {}),
       mtime: f.mtime,
       birthtime: f.birthtime,
     };
@@ -357,8 +358,10 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     visibleSources.set(fi.path, fi.markdown);
   }
 
-  // Per-variant page index for wikilink resolution. Both basename and full-path
-  // slugs are keyed; folder-index basenames don't overwrite earlier entries.
+  // Per-variant page index for wikilink resolution. Basename, full-path,
+  // and Obsidian frontmatter aliases are all keyed. Folder-index basenames
+  // and aliases don't overwrite earlier entries (first-write-wins) so
+  // ambiguous shorthands resolve to whichever page sorted first.
   const pageIndex = new Map<string, PageMeta>();
   const markdownContent = new Map<string, string>();
   for (const p of visibleMetas) {
@@ -366,6 +369,10 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     const pathSlug = slugify(p.path.replace(/\.md$/i, ""));
     if (!pageIndex.has(basenameSlug)) pageIndex.set(basenameSlug, p);
     pageIndex.set(pathSlug, p);
+    for (const alias of p.aliases ?? []) {
+      const aliasSlug = slugify(alias);
+      if (aliasSlug && !pageIndex.has(aliasSlug)) pageIndex.set(aliasSlug, p);
+    }
     markdownContent.set(basenameSlug, visibleSources.get(p.path)!);
     markdownContent.set(pathSlug, visibleSources.get(p.path)!);
   }
@@ -597,7 +604,7 @@ async function compressImageCached(
   return { body: compressed.body, outputPath: compressed.outputPath };
 }
 
-interface PageFrontmatter { title?: string; role?: string; }
+interface PageFrontmatter { title?: string; role?: string; aliases?: string[]; }
 
 function parseFrontmatter(source: string): PageFrontmatter {
   const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(source);
@@ -608,7 +615,38 @@ function parseFrontmatter(source: string): PageFrontmatter {
   return {
     ...(titleMatch?.[1] ? { title: titleMatch[1].replace(/^["']|["']$/g, "") } : {}),
     ...(roleMatch?.[1] ? { role: roleMatch[1] } : {}),
+    ...({ aliases: parseAliases(fm) }),
   };
+}
+
+/**
+ * Pull `aliases:` out of frontmatter. Supports the inline form
+ * (`aliases: [Foo, Bar]`) and the block form (`aliases:\n- Foo\n- Bar`,
+ * indented or not — Obsidian writes both shapes depending on version).
+ */
+function parseAliases(fm: string): string[] {
+  const inline = /^aliases:\s*\[([^\]\n]*)\]\s*$/m.exec(fm);
+  if (inline) {
+    return inline[1]!.split(",").map((s) => unquote(s.trim())).filter(Boolean);
+  }
+  const blockHead = /^aliases:\s*$/m.exec(fm);
+  if (!blockHead) return [];
+  const after = fm.slice(blockHead.index + blockHead[0].length).split("\n");
+  const out: string[] = [];
+  for (const line of after) {
+    if (!line) continue;
+    // Allow zero or more leading spaces — Obsidian sometimes writes block
+    // arrays without indentation, which strict YAML wouldn't accept but
+    // both Obsidian and gray-matter parse fine.
+    const item = /^\s*-\s+(.+?)\s*$/.exec(line);
+    if (!item) break;
+    out.push(unquote(item[1]!));
+  }
+  return out;
+}
+
+function unquote(s: string): string {
+  return s.replace(/^["']|["']$/g, "");
 }
 
 function extractH1(source: string): string | null {

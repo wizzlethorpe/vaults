@@ -1,14 +1,40 @@
 {
-  "name": "@vault/cli",
+  "name": "@wizzlethorpe/vaults",
   "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "bin": {
-    "vaults": "./dist/index.js"
+  "description": "Sync an Obsidian vault to a Cloudflare-hosted wiki with role-based access. Renders locally, deploys to Cloudflare Pages.",
+  "keywords": [
+    "obsidian",
+    "vault",
+    "wiki",
+    "cloudflare-pages",
+    "ttrpg",
+    "knowledge-base"
+  ],
+  "homepage": "https://github.com/wizzlethorpe/vaults-template#readme",
+  "bugs": "https://github.com/wizzlethorpe/vaults-template/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wizzlethorpe/vaults-template.git",
+    "directory": "cli"
   },
+  "license": "MIT",
+  "author": "wizzlethorpe",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "vaults": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "commander": "^12.1.0",
