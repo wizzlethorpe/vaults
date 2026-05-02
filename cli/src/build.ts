@@ -13,7 +13,8 @@ import { buildPreview } from "./render/preview.js";
 import { DEFAULT_CSS } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./settings.js";
-import { loadConfig, type VaultConfig } from "./config.js";
+import { loadConfig, saveConfig, type VaultConfig } from "./config.js";
+import matter from "gray-matter";
 import { renderAuthMiddleware, LOGIN_HTML } from "./render/auth-template.js";
 import { renderMcpFunction } from "./render/mcp-template.js";
 import type { ImageEntry, PageMeta, RenderContext, RenderWarning } from "./render/types.js";
@@ -58,6 +59,11 @@ export interface BuildResult {
 export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   const start = Date.now();
   const concurrency = Math.max(2, availableParallelism());
+
+  // One-shot migration for vaults from before auth config moved to
+  // .vaultrc.json. If the user's settings.md still has roles/auth_type/
+  // role_passwords, copy them over before the canonicalizer strips them.
+  await migrateLegacyAuthFromSettings(opts.vaultPath);
 
   // ── Settings (user-editable) ─────────────────────────────────────────────
   const settings = await loadSettings(opts.vaultPath);
@@ -627,6 +633,64 @@ function contentTypeForExt(filename: string): string {
     ogg: "audio/ogg",
   };
   return map[ext] ?? "application/octet-stream";
+}
+
+/**
+ * Pre-canonicalisation migration. Earlier versions stored roles, auth_type,
+ * and role_passwords in settings.md frontmatter; they now live in
+ * .vaultrc.json. If we still see them in settings.md (legacy vault), copy
+ * over what's missing in .vaultrc.json so the imminent canonicaliser doesn't
+ * silently drop them.
+ *
+ * Idempotent: returns true and logs only if it actually moved something.
+ */
+async function migrateLegacyAuthFromSettings(vaultPath: string): Promise<boolean> {
+  const settingsPath = join(vaultPath, SETTINGS_FILE);
+  let raw: string;
+  try {
+    raw = await readFile(settingsPath, "utf8");
+  } catch {
+    return false;
+  }
+  const fm = (matter(raw).data ?? {}) as Record<string, unknown>;
+  const hasLegacy = "roles" in fm || "auth_type" in fm || "role_passwords" in fm;
+  if (!hasLegacy) return false;
+
+  const cfg = await loadConfig(vaultPath, {});
+  const moved: string[] = [];
+
+  // roles: only migrate if cfg is still at the default ["public"].
+  if (Array.isArray(fm.roles)) {
+    const list = fm.roles.filter((r): r is string => typeof r === "string");
+    const isDefault = cfg.roles.length === 0 || (cfg.roles.length === 1 && cfg.roles[0] === "public");
+    if (list.length > 0 && isDefault && !arraysEqual(list, ["public"])) {
+      cfg.roles = list;
+      moved.push("roles");
+    }
+  }
+  if (typeof fm.auth_type === "string" && cfg.authType === "password" && fm.auth_type !== "password") {
+    cfg.authType = fm.auth_type;
+    moved.push("auth_type");
+  }
+  if (fm.role_passwords && typeof fm.role_passwords === "object" && !Array.isArray(fm.role_passwords)
+      && Object.keys(cfg.rolePasswords).length === 0) {
+    const map = fm.role_passwords as Record<string, unknown>;
+    const cleaned: Record<string, string> = {};
+    for (const [k, v] of Object.entries(map)) if (typeof v === "string") cleaned[k] = v;
+    if (Object.keys(cleaned).length > 0) {
+      cfg.rolePasswords = cleaned;
+      moved.push("role_passwords");
+    }
+  }
+
+  if (moved.length === 0) return false;
+  await saveConfig(vaultPath, cfg);
+  console.log(`  migrated ${moved.join(", ")} from settings.md → .vaultrc.json`);
+  return true;
+}
+
+function arraysEqual(a: unknown[], b: unknown[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
 }
 
 function extractPlainText(source: string, max: number): string {
