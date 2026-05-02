@@ -100,7 +100,7 @@ async function handleToolCall(req, ctx) {
   const args = params.arguments ?? {};
 
   // Determine which variant to read from based on the user's role cookie.
-  const role = await readRole(ctx.request);
+  const role = await readRole(ctx.request, ctx.env);
   const manifestUrl = new URL("/_variants/" + role + "/_manifest.json", ctx.request.url).toString();
   const manifestRes = await ctx.env.ASSETS.fetch(manifestUrl);
   let manifest;
@@ -178,18 +178,47 @@ async function handleToolCall(req, ctx) {
   }
 }
 
-async function readRole(request) {
+async function readRole(request, env) {
   const fallback = ROLES[0] ?? "public";
+  if (!env.SESSION_SECRET) return fallback;
+
+  // Authorization: Bearer <token> first (Foundry, MCP-over-HTTP clients).
+  const auth = request.headers.get("Authorization") || "";
+  const bearerMatch = /^Bearer\\s+(.+)$/i.exec(auth);
+  if (bearerMatch) {
+    const role = await verifyToken(bearerMatch[1], env.SESSION_SECRET);
+    if (role && ROLES.includes(role)) return role;
+  }
+
+  // Then cookie (browser-based MCP clients, if any).
   const cookieHeader = request.headers.get("Cookie") || "";
   const cookies = {};
   for (const part of cookieHeader.split(/;\\s*/)) {
     const eq = part.indexOf("=");
     if (eq > 0) cookies[part.slice(0, eq)] = part.slice(eq + 1);
   }
-  // The auth middleware already validated the signed cookie before this Function
-  // ever runs, so trust the role string here.
-  const role = cookies[COOKIE_NAME]?.split(".")[0];
+  const cookie = cookies[COOKIE_NAME];
+  if (!cookie) return fallback;
+  const role = await verifyToken(cookie, env.SESSION_SECRET);
   return role && ROLES.includes(role) ? role : fallback;
+}
+
+async function verifyToken(token, secretHex) {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [role, expStr, sig] = parts;
+  const exp = Number(expStr);
+  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return null;
+  const keyBytes = new Uint8Array(secretHex.length / 2);
+  for (let i = 0; i < keyBytes.length; i++) keyBytes[i] = parseInt(secretHex.slice(i * 2, i * 2 + 2), 16);
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const macBytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(role + "." + expStr));
+  let macHex = "";
+  for (const b of new Uint8Array(macBytes)) macHex += b.toString(16).padStart(2, "0");
+  if (macHex.length !== sig.length) return null;
+  let diff = 0;
+  for (let i = 0; i < macHex.length; i++) diff |= macHex.charCodeAt(i) ^ sig.charCodeAt(i);
+  return diff === 0 ? role : null;
 }
 
 function rpcResult(id, result) {

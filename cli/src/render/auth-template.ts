@@ -26,6 +26,9 @@ const COOKIE_NAME = "vault_role";
 // uses COOKIE_NAME (which is signed and HttpOnly), this one is purely for UI.
 const DISPLAY_COOKIE_NAME = "vault_role_display";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+// Bearer tokens (used by Foundry, MCP clients) get a much longer lifetime
+// since refreshing means reopening a browser-based approval flow.
+const BEARER_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
 const PBKDF2_DEFAULT_ITERATIONS = 600000;
 
 // ── Public middleware entry ────────────────────────────────────────────────
@@ -52,6 +55,19 @@ export const onRequest = async (ctx) => {
     headers.append("Set-Cookie", clearCookie(DISPLAY_COOKIE_NAME));
     return new Response(null, { status: 302, headers });
   }
+
+  // /connect — OAuth-style approval flow for Foundry / MCP clients to obtain
+  // a long-lived bearer token. GET shows the approval page; POST signs the
+  // token and redirects back to the requesting app.
+  if (url.pathname === "/connect" && request.method === "GET") {
+    return handleConnectGet(request, env);
+  }
+  if (url.pathname === "/connect/approve" && request.method === "POST") {
+    return handleConnectApprove(request, env);
+  }
+
+  // /mcp is a separate Function (mcp.js); let it handle its own auth check.
+  if (url.pathname === "/mcp") return next();
 
   // Skip rewriting for static-asset paths that don't have a per-role variant.
   // Anything outside the variant tree (images, css, login page, search index
@@ -96,27 +112,169 @@ function loginRedirect(next, error) {
   return new Response(null, { status: 302, headers: { Location: url } });
 }
 
+// ── Connect (OAuth-style bearer token issuance) ──────────────────────────
+
+async function handleConnectGet(request, env) {
+  const url = new URL(request.url);
+  const returnTo = url.searchParams.get("return_to") || "";
+  const app = url.searchParams.get("app") || "an external app";
+  const state = url.searchParams.get("state") || "";
+
+  if (!returnTo || !isValidReturnTo(returnTo)) {
+    return new Response("Invalid or missing return_to. Must be an http(s) URL.", { status: 400 });
+  }
+
+  // Require login first — the user's role is what we're authorising.
+  const role = await readRole(request, env);
+  const isLoggedIn = role !== ROLES[0] || PASSWORDS[role] != null;
+  if (!isLoggedIn || role === ROLES[0]) {
+    // Default role; redirect to login first, come back here on success.
+    const next = url.pathname + url.search;
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/login.html?next=" + encodeURIComponent(next) },
+    });
+  }
+
+  const returnHost = (() => {
+    try { return new URL(returnTo).host; } catch { return returnTo; }
+  })();
+  const html = renderApprovePage({ app, role, returnTo, returnHost, state });
+  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+async function handleConnectApprove(request, env) {
+  const form = await request.formData();
+  const returnTo = String(form.get("return_to") || "");
+  const state = String(form.get("state") || "");
+
+  if (!returnTo || !isValidReturnTo(returnTo)) {
+    return new Response("Invalid return_to.", { status: 400 });
+  }
+  const role = await readRole(request, env);
+  if (role === ROLES[0]) {
+    // User is anonymous; reject (shouldn't reach here via normal UI flow).
+    return new Response("Not signed in.", { status: 401 });
+  }
+
+  const token = await signToken(role, env.SESSION_SECRET, BEARER_MAX_AGE);
+  const sep = returnTo.includes("?") ? "&" : "?";
+  const target = returnTo + sep + "token=" + encodeURIComponent(token)
+    + (state ? "&state=" + encodeURIComponent(state) : "");
+  return new Response(null, { status: 302, headers: { Location: target } });
+}
+
+function isValidReturnTo(s) {
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch { return false; }
+}
+
+function renderApprovePage({ app, role, returnTo, returnHost, state }) {
+  const escapedApp = escHtml(app);
+  const escapedRole = escHtml(role);
+  const escapedHost = escHtml(returnHost);
+  const escapedReturnTo = escAttr(returnTo);
+  const escapedState = escAttr(state);
+  return \`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Authorize \${escapedApp}</title>
+<link rel="stylesheet" href="/styles.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+  .approve-card {
+    max-width: 28rem; width: 90%; padding: 2rem;
+    border: 1px solid var(--rule); border-radius: 6px; background: var(--bg);
+  }
+  .approve-card h1 { margin: 0 0 1rem; font-size: 1.4rem; }
+  .approve-card .info { color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem; }
+  .approve-card .info strong { color: var(--accent); }
+  .approve-card .return-host {
+    display: block; margin: 0.75rem 0 1.25rem;
+    padding: 0.5rem 0.75rem; background: var(--wikilink-bg);
+    border: 1px solid var(--rule); border-radius: 4px;
+    font-family: ui-monospace, monospace; font-size: 0.85rem;
+    word-break: break-all;
+  }
+  .approve-card .actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; }
+  .approve-card button, .approve-card .deny {
+    flex: 1; padding: 0.55rem 1rem; font: inherit; font-size: 0.95rem;
+    border: 1px solid var(--rule); border-radius: 4px; cursor: pointer;
+    text-align: center; text-decoration: none;
+  }
+  .approve-card button { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .approve-card .deny { background: var(--bg); color: var(--muted); }
+  .approve-card .warning { color: #b94a3a; font-size: 0.78rem; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<form class="approve-card" method="POST" action="/connect/approve">
+  <h1>Authorize \${escapedApp}</h1>
+  <p class="info">
+    <strong>\${escapedApp}</strong> wants access to your vault as
+    <strong>\${escapedRole}</strong>.
+  </p>
+  <p class="info">After approval, you'll be redirected to:</p>
+  <code class="return-host">\${escapedHost}</code>
+  <p class="warning">
+    ⚠ Verify the destination above looks right. If you didn't initiate
+    this request, click Deny.
+  </p>
+  <input type="hidden" name="return_to" value="\${escapedReturnTo}">
+  <input type="hidden" name="state" value="\${escapedState}">
+  <div class="actions">
+    <a class="deny" href="/">Deny</a>
+    <button type="submit">Approve</button>
+  </div>
+</form>
+</body>
+</html>\`;
+}
+
+function escHtml(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+function escAttr(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
 // ── Cookie + role lookup ──────────────────────────────────────────────────
 
 async function readRole(request, env) {
   const fallback = ROLES[0];
+  if (!env.SESSION_SECRET) return fallback;
+
+  // Authorization: Bearer <token> — used by Foundry / MCP / CLI clients.
+  // Same signed-token format as the cookie, so verification is shared.
+  const auth = request.headers.get("Authorization") || "";
+  const bearerMatch = /^Bearer\\s+(.+)$/i.exec(auth);
+  if (bearerMatch) {
+    const role = await verifyToken(bearerMatch[1], env.SESSION_SECRET);
+    if (role && ROLES.includes(role)) return role;
+  }
+
   const cookie = parseCookie(request.headers.get("Cookie") || "")[COOKIE_NAME];
-  if (!cookie || !env.SESSION_SECRET) return fallback;
-  const role = await verifySessionCookie(cookie, env.SESSION_SECRET);
+  if (!cookie) return fallback;
+  const role = await verifyToken(cookie, env.SESSION_SECRET);
   return role && ROLES.includes(role) ? role : fallback;
 }
 
 // Format: <role>.<expiryUnix>.<hmacHex>
-async function signSessionCookie(role, secret) {
-  const exp = Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE;
+async function signToken(role, secret, maxAgeSeconds) {
+  const exp = Math.floor(Date.now() / 1000) + maxAgeSeconds;
   const payload = role + "." + exp;
   const sig = await hmac(payload, secret);
-  return COOKIE_NAME + "=" + payload + "." + sig
+  return payload + "." + sig;
+}
+
+async function signSessionCookie(role, secret) {
+  const value = await signToken(role, secret, COOKIE_MAX_AGE);
+  return COOKIE_NAME + "=" + value
     + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + COOKIE_MAX_AGE;
 }
 
-async function verifySessionCookie(cookie, secret) {
-  const parts = cookie.split(".");
+async function verifyToken(token, secret) {
+  const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [role, expStr, sig] = parts;
   const exp = Number(expStr);
