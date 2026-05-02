@@ -1,5 +1,5 @@
 #!/bin/bash
-# dev-install.sh — copy the current source tree into a Foundry VTT modules
+# dev-install.sh; copy the current source tree into a Foundry VTT modules
 # directory so you can test changes without cutting a release.
 #
 # Usage:

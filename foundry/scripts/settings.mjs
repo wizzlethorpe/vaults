@@ -3,12 +3,12 @@
 // Multi-vault: the canonical state lives in a single `vaults` setting (array
 // of vault entries). Legacy keys (`url`, `token`, etc) are kept registered
 // so existing worlds load cleanly; on first read they're auto-migrated into
-// a vaults[] entry — see migrateLegacyIfNeeded() below.
+// a vaults[] entry; see migrateLegacyIfNeeded() below.
 
 export const MODULE_ID = "vaults";
 
 export const SETTINGS = {
-  /** Array of vault entries — see VAULT_DEFAULTS for shape. */
+  /** Array of vault entries; see VAULT_DEFAULTS for shape. */
   vaults: "vaults",
 
   // Legacy single-vault keys (pre-0.4). Read once at migration, never
@@ -42,7 +42,7 @@ export function registerSettings() {
     scope: "world", config: false, type: Array, default: [],
   });
 
-  // Legacy keys — registered so existing worlds load without crashes.
+  // Legacy keys; registered so existing worlds load without crashes.
   // Migrated to vaults[] on first load.
   for (const key of [SETTINGS.url, SETTINGS.token, SETTINGS.role, SETTINGS.pendingState]) {
     g.register(MODULE_ID, key, { scope: "world", config: false, type: String, default: "" });

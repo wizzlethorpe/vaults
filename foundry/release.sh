@@ -3,8 +3,8 @@
 # and (optionally) publishes to the FoundryVTT package registry.
 #
 # Usage:
-#   ./release.sh           # interactive — prompts for new version
-#   ./release.sh 0.2.0     # one-shot — bumps to 0.2.0
+#   ./release.sh           # interactive; prompts for new version
+#   ./release.sh 0.2.0     # one-shot; bumps to 0.2.0
 #
 # Prereqs:
 #   - jq, gh, zip, curl on PATH
@@ -60,7 +60,7 @@ if [ "$NEW_VERSION" != "$CURRENT_VERSION" ]; then
 fi
 
 # manifest/download URLs in module.json point at /releases/latest/... so
-# Foundry's in-app update check keeps working across future releases — don't
+# Foundry's in-app update check keeps working across future releases; don't
 # rewrite them per release.
 
 BUILD_DIR=$(mktemp -d)

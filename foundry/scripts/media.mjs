@@ -1,13 +1,13 @@
 // Pull vault images into Foundry's user-data directory so journal pages can
 // reference them via plain local paths (worlds/<id>/...). The DM's bearer
 // token is used to authenticate the GETs against the vault, but the token
-// never ends up in journal HTML — once the file is local, Foundry serves
+// never ends up in journal HTML; once the file is local, Foundry serves
 // it like any other module asset.
 
 import { IMAGE_EXT_RE } from "./parser.mjs";
 import { updateVault } from "./vaults.mjs";
 
-// Where the cache lives inside the world data dir. No leading dot — Foundry's
+// Where the cache lives inside the world data dir. No leading dot. Foundry's
 // FilePicker validation hides dotfile paths from listings and may reject
 // uploads underneath them depending on the version.
 export const CACHE_DIR = "vaults-cache";
@@ -126,7 +126,7 @@ export async function syncImages(vault, manifestFiles) {
 }
 
 /**
- * Delete a vault's entire image cache directory. Best-effort — depends on
+ * Delete a vault's entire image cache directory. Best-effort; depends on
  * the Foundry version exposing FilePicker.deleteFile. Returns true on
  * complete success, false if anything was left behind.
  */
@@ -136,7 +136,7 @@ export async function deleteVaultCache(vaultId) {
   if (typeof impl.deleteFile !== "function") return false;
   try {
     // FilePicker doesn't expose recursive delete; walk and delete files
-    // before removing dirs. Easier: just try the dir — some Foundry
+    // before removing dirs. Easier: just try the dir; some Foundry
     // versions accept a directory and recurse.
     await impl.deleteFile("data", baseDir);
     return true;

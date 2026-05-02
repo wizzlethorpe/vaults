@@ -176,7 +176,7 @@ async function handleListAction(action, vaultId, dialog) {
 async function reRenderList(dialog) {
   const root = dialog.element?.querySelector(".dialog-content, .window-content");
   if (!root) return;
-  // Replace just the vault list block — leaves the surrounding action bar
+  // Replace just the vault list block; leaves the surrounding action bar
   // (Close button) intact.
   const listEl = root.querySelector(".vaults-list");
   if (listEl) {

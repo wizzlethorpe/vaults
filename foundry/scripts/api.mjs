@@ -1,6 +1,6 @@
 // HTTP client for talking to a deployed vault. The bearer token rides as
 // a `?_token=` query param (not an Authorization header) so cross-origin
-// GETs stay CORS-simple — no preflight per file.
+// GETs stay CORS-simple; no preflight per file.
 
 function url(vault, path) {
   if (!vault?.url) throw new Error("Vault URL is not configured.");

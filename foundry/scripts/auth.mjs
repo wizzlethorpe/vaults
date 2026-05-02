@@ -9,7 +9,7 @@ import { updateVault, getVault } from "./vaults.mjs";
 
 const CONNECT_TIMEOUT_MS = 5 * 60 * 1000;
 
-/** Decode a token's role + expiry without verifying — purely for UI. */
+/** Decode a token's role + expiry without verifying; purely for UI. */
 export function tokenInfo(token) {
   if (!token) return null;
   const parts = token.split(".");
@@ -24,7 +24,7 @@ export function tokenInfo(token) {
 /**
  * Build the connect URL for a vault and persist a fresh CSRF state on
  * the vault entry. The iframe lands on /logout first, which clears any
- * existing session for this vault before bouncing to /connect — so the
+ * existing session for this vault before bouncing to /connect; so the
  * user always sees the role chooser, even if they're connecting a vault
  * they're already signed into in another tab. Returns { src, vaultOrigin,
  * state }.
@@ -52,7 +52,7 @@ export async function prepareConnect(vault) {
 /**
  * Listen for the vault's approve postMessage, validate state, persist
  * the token onto the matching vault entry. Returns a { promise, cancel }
- * pair — cancel() detaches the listener if the host dialog closes.
+ * pair; cancel() detaches the listener if the host dialog closes.
  */
 export function awaitConnectMessage({ vault, vaultOrigin, state }) {
   let settled = false;

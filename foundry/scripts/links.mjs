@@ -8,7 +8,7 @@
 //                                            world's data dir.
 //
 // Unresolved wikilinks (rendered with `is-unresolved`) keep their markup
-// — Foundry shows them as broken-styled text.
+//. Foundry shows them as broken-styled text.
 
 import { entryId } from "./ids.mjs";
 import { localImageUrl } from "./media.mjs";
@@ -39,7 +39,7 @@ export function buildPathIndex(manifestFiles) {
  * `Places/Saint Andral's Church.md`.
  *
  * Handles both percent-encoding (e.g. `%27`) and HTML entity encoding
- * (`&#x27;`) — the vault renderer emits attribute-safe entities in
+ * (`&#x27;`); the vault renderer emits attribute-safe entities in
  * hrefs, and decodeURIComponent doesn't undo those.
  */
 function logicalPathFromHref(href) {
@@ -51,7 +51,7 @@ function logicalPathFromHref(href) {
 
 /**
  * Decode HTML-attribute entities into plain text. Browser does this
- * correctly via the textarea innerHTML trick — handles named entities,
+ * correctly via the textarea innerHTML trick; handles named entities,
  * numeric entities (decimal and hex) without us maintaining a table.
  */
 function decodeHtmlEntities(s) {
@@ -86,7 +86,7 @@ async function rewriteWikilinks(vaultId, html, index) {
     const inIndex = path != null && index.paths.has(path);
 
     if (isUnresolved || !inIndex) {
-      // Target isn't in this variant's manifest — could be vault-author
+      // Target isn't in this variant's manifest; could be vault-author
       // typo, an Obsidian convention we don't support, or (most often) a
       // page redacted by role filtering. Render the label as styled-broken
       // text rather than leaving an inert <a> that Foundry treats as an

@@ -5,7 +5,7 @@ import { MODULE_ID, SETTINGS, VAULT_DEFAULTS, get, set } from "./settings.mjs";
 
 let migrated = false;
 
-/** Run on init. Idempotent — safe to call repeatedly. */
+/** Run on init. Idempotent; safe to call repeatedly. */
 export async function migrateLegacyIfNeeded() {
   if (migrated) return;
   migrated = true;
@@ -33,7 +33,7 @@ export async function migrateLegacyIfNeeded() {
   console.info(`Vaults | migrated single-vault config to multi-vault registry: ${entry.label}`);
 }
 
-/** All registered vaults (a copy — mutate via update/remove). */
+/** All registered vaults (a copy; mutate via update/remove). */
 export function listVaults() {
   return [...(get(SETTINGS.vaults) || [])];
 }
@@ -81,7 +81,7 @@ export function deriveLabel(url) {
 }
 
 function newVaultId() {
-  // 12 hex chars — enough for collision avoidance, short enough to fit in
+  // 12 hex chars; enough for collision avoidance, short enough to fit in
   // file paths and journal-flag values without bloat.
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
