@@ -5,7 +5,7 @@ import { build } from "./commands/build.js";
 import { preview } from "./commands/preview.js";
 import { init } from "./commands/init.js";
 import { password } from "./commands/password.js";
-import { roleAdd, roleList, roleRemove } from "./commands/role.js";
+import { roleAdd, roleDemote, roleList, rolePromote, roleRemove } from "./commands/role.js";
 
 const program = new Command();
 
@@ -49,6 +49,26 @@ role
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .action(async (vaultPath: string) => {
     try { await roleList(vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+role
+  .command("promote")
+  .description("Increase a role's rank by one (move toward the highest tier)")
+  .argument("<name>", "Role name")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (name: string, vaultPath: string) => {
+    try { await rolePromote(name, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+role
+  .command("demote")
+  .description("Decrease a role's rank by one (move toward the default)")
+  .argument("<name>", "Role name")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (name: string, vaultPath: string) => {
+    try { await roleDemote(name, vaultPath); }
     catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
   });
 

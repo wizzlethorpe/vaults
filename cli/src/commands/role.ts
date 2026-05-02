@@ -45,6 +45,38 @@ export async function roleRemove(name: string, vaultPath: string): Promise<void>
   console.log(`  Pages tagged 'role: ${name}' will fall back to the default role on next build.`);
 }
 
+export async function rolePromote(name: string, vaultPath: string): Promise<void> {
+  await reorderRole(name, vaultPath, +1);
+}
+
+export async function roleDemote(name: string, vaultPath: string): Promise<void> {
+  await reorderRole(name, vaultPath, -1);
+}
+
+/**
+ * Move a role one position toward the higher (+1) or lower (-1) end of the
+ * roles list. The first role (index 0) is the default and is locked in
+ * place — promote/demote can shuffle positions 1+ but never cross 0.
+ */
+async function reorderRole(name: string, vaultPath: string, delta: 1 | -1): Promise<void> {
+  const settings = await loadSettings(vaultPath);
+  const roles = settings.values.roles;
+  const i = roles.indexOf(name);
+  if (i === -1) throw new Error(`Role '${name}' is not in settings.roles (${roles.join(", ") || "empty"}).`);
+  if (i === 0) throw new Error(`Can't reorder '${name}' — it's the default role.`);
+
+  const j = i + delta;
+  if (j < 1 || j >= roles.length) {
+    throw new Error(`'${name}' is already at the ${delta > 0 ? "highest" : "lowest non-default"} rank.`);
+  }
+  [roles[i], roles[j]] = [roles[j]!, roles[i]!];
+  await writeSettings(vaultPath, settings.values);
+
+  const action = delta > 0 ? "Promoted" : "Demoted";
+  console.log(`${action} '${name}' to rank ${j} of ${roles.length - 1}.`);
+  console.log(`  New order: ${roles.join(" < ")}`);
+}
+
 export async function roleList(vaultPath: string): Promise<void> {
   const settings = await loadSettings(vaultPath);
   if (settings.values.roles.length === 0) {
