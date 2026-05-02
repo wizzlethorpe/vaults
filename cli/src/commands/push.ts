@@ -2,8 +2,6 @@ import { basename, join } from "node:path";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { homedir } from "node:os";
-import { cp, mkdir, rm, symlink } from "node:fs/promises";
 import { loadConfig, saveConfig, saveSessionSecret, type VaultConfig } from "../config.js";
 import { buildSite } from "../build.js";
 import { generateSessionSecret } from "../auth.js";
@@ -167,35 +165,15 @@ async function promptIfTty(question: string, fallback: string, nonTtyError: stri
 
 async function wranglerDeploy(outputDir: string, projectName: string): Promise<void> {
   console.log(`Deploying to Cloudflare Pages project '${projectName}'…`);
-  // Wrangler writes a `.wrangler/` cache in cwd. Run it from a stable
-  // per-project location under HOME so that cache lives in one place
-  // regardless of where the user invoked `vaults push`. Wrangler also
-  // resolves functions/ relative to cwd (not the deploy path arg), so
-  // we link the build's functions/ into the cache dir.
-  //
-  // --branch=main ensures Production-tagged deploys (custom domains only
-  // serve Production); --commit-dirty silences a noisy git warning.
-  const cacheDir = join(homedir(), ".cache", "vaults", `wrangler-${projectName}`);
-  await mkdir(cacheDir, { recursive: true });
-  await linkOrCopy(join(outputDir, "functions"), join(cacheDir, "functions"));
-
+  // Wrangler resolves functions/ relative to cwd (not the deploy path arg),
+  // so run it from outputDir. The `.wrangler/` cache it creates lives
+  // inside the vault's .vault-cache/, which is already gitignored.
+  // --branch=main ensures Production-tagged deploys; --commit-dirty
+  // silences a noisy git warning.
   await runWranglerInteractive(
-    ["pages", "deploy", outputDir, `--project-name=${projectName}`, "--branch=main", "--commit-dirty=true"],
-    cacheDir,
+    ["pages", "deploy", ".", `--project-name=${projectName}`, "--branch=main", "--commit-dirty=true"],
+    outputDir,
   );
-}
-
-/**
- * Refresh `dest` to point at `src`. Symlink first; fall back to copy on
- * platforms where symlinks need elevation (Windows non-admin).
- */
-async function linkOrCopy(src: string, dest: string): Promise<void> {
-  await rm(dest, { recursive: true, force: true });
-  try {
-    await symlink(src, dest, "dir");
-  } catch {
-    await cp(src, dest, { recursive: true });
-  }
 }
 
 async function wranglerSecret(projectName: string, name: string, value: string): Promise<void> {
