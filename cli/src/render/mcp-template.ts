@@ -182,11 +182,18 @@ async function readRole(request, env) {
   const fallback = ROLES[0] ?? "public";
   if (!env.SESSION_SECRET) return fallback;
 
-  // Authorization: Bearer <token> first (Foundry, MCP-over-HTTP clients).
+  // Authorization: Bearer <token> first (curl, MCP-over-HTTP clients).
   const auth = request.headers.get("Authorization") || "";
   const bearerMatch = /^Bearer\\s+(.+)$/i.exec(auth);
   if (bearerMatch) {
     const role = await verifyToken(bearerMatch[1], env.SESSION_SECRET);
+    if (role && ROLES.includes(role)) return role;
+  }
+
+  // ?_token=<token> — keeps cross-origin GETs CORS-simple (no preflight).
+  const queryToken = new URL(request.url).searchParams.get("_token");
+  if (queryToken) {
+    const role = await verifyToken(queryToken, env.SESSION_SECRET);
     if (role && ROLES.includes(role)) return role;
   }
 

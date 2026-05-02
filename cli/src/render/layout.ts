@@ -21,6 +21,24 @@ export interface LayoutInput {
   birthtime?: number;
 }
 
+/**
+ * Standalone 404 page using the same shell as a regular article (sidebar,
+ * search, sitemap), so a missing page still leaves the reader inside the
+ * site and able to navigate out. Built once per variant.
+ */
+export function render404(input: Omit<LayoutInput, "title" | "pagePath" | "bodyHtml" | "backlinks">): string {
+  const body = `<p class="lead-404">The page you're looking for doesn't exist, or you don't have access to it.</p>
+<p><a class="internal" href="/">Return to ${esc(input.vaultName)} home →</a></p>`;
+  return renderLayout({
+    ...input,
+    title: "Page not found",
+    // Neutral sentinel — breadcrumbs check this and render nothing for it.
+    pagePath: "__404__.md",
+    bodyHtml: body,
+    backlinks: [],
+  });
+}
+
 export function renderLayout(input: LayoutInput): string {
   const breadcrumbs = renderBreadcrumbs(input.pagePath, input.vaultName);
   const sitemap = renderSitemap(input.pages, input.pagePath);
@@ -100,6 +118,8 @@ function formatDate(unix: number): string {
 }
 
 function renderBreadcrumbs(pagePath: string, vaultName: string): string {
+  // Sentinel used by the 404 page — no real path to crumb out of.
+  if (pagePath === "__404__.md") return "";
   const parts = pagePath.replace(/\.md$/i, "").split("/");
   if (parts.length === 1 && parts[0] === "index") return "";
   // Folder homepages end in /index — drop that trailing segment so the crumbs
@@ -304,7 +324,7 @@ const AUTH_SCRIPT = `<script>
   if (role) {
     box.innerHTML =
       '<div class="auth-status">Signed in as <strong>' + esc(role) + '</strong></div>' +
-      '<a class="auth-action" href="/logout">Sign out</a>';
+      '<a class="auth-action" href="/logout?next=' + next + '">Sign out</a>';
   } else {
     box.innerHTML = '<a class="auth-action" href="/login.html?next=' + next + '">Sign in</a>';
   }

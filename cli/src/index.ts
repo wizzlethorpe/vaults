@@ -116,6 +116,7 @@ program
   .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
   .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
   .option("--dry-run", "Render without deploying")
+  .option("--rotate-secret", "Generate a fresh SESSION_SECRET, invalidating all issued tokens")
   .action(wrap(push));
 
 program.parseAsync().catch((err) => {

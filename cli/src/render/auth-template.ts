@@ -29,7 +29,7 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 // Bearer tokens (used by Foundry, MCP clients) get a much longer lifetime
 // since refreshing means reopening a browser-based approval flow.
 const BEARER_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
-const PBKDF2_DEFAULT_ITERATIONS = 600000;
+const PBKDF2_DEFAULT_ITERATIONS = 100000;
 
 // ── Public middleware entry ────────────────────────────────────────────────
 
@@ -37,20 +37,32 @@ export const onRequest = async (ctx) => {
   const { request, env, next } = ctx;
   const url = new URL(request.url);
 
+  // CORS preflight — Foundry, the MCP server, and AI tooling fetch the
+  // manifest / source / search endpoints from a different origin with an
+  // 'Authorization: Bearer' header, which triggers a preflight OPTIONS.
+  // Allow * because the resource is gated by the bearer token, not by
+  // the origin (and we don't want to maintain an allowlist).
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+
   // Block direct access to /_variants/<role>/* — those paths exist in storage
   // for the rewrite below, but exposing them would let anyone fetch any
   // variant's manifest, page, or markdown source by guessing the role name.
   if (url.pathname.startsWith("/_variants/")) {
-    return new Response("Not found", { status: 404 });
+    return withCors(new Response("Not found", { status: 404 }), request);
   }
 
-  // /login — POST validates a password and sets the session cookie; GET 404
-  // is fine because /login.html is a static page.
-  if (url.pathname === "/login" && request.method === "POST") {
-    return handleLogin(request, env);
+  // /login — POST validates a password and sets the session cookie. GET
+  // serves the static login page from the deploy root; we have to pass it
+  // through explicitly because the variant-rewrite below would otherwise
+  // try to fetch /_variants/<role>/login (which doesn't exist).
+  if (url.pathname === "/login") {
+    if (request.method === "POST") return handleLogin(request, env);
+    return next();
   }
   if (url.pathname === "/logout") {
-    const headers = new Headers({ Location: "/" });
+    const headers = new Headers({ Location: safeNext(url.searchParams.get("next")) });
     headers.append("Set-Cookie", clearCookie(COOKIE_NAME));
     headers.append("Set-Cookie", clearCookie(DISPLAY_COOKIE_NAME));
     return new Response(null, { status: 302, headers });
@@ -66,6 +78,22 @@ export const onRequest = async (ctx) => {
     return handleConnectApprove(request, env);
   }
 
+  // /_batch — bulk source fetch for sync clients (Foundry). Body is
+  // newline-separated paths under text/plain so the request stays CORS-
+  // simple (no preflight per file → no OPTIONS rate-limit). Response is
+  // JSON: { files: { path: content }, missing: [path, ...] }.
+  if (url.pathname === "/_batch" && request.method === "POST") {
+    return withCors(await handleBatch(request, env), request);
+  }
+
+  // /_batch-images — bulk *binary* fetch (images, etc). Same input shape as
+  // /_batch but each file is base64-encoded so it can ride in JSON. Used by
+  // the Foundry image cache so a 300-image sync is a handful of HTTP calls
+  // instead of 300 GETs that hit Cloudflare's per-IP rate limit.
+  if (url.pathname === "/_batch-images" && request.method === "POST") {
+    return withCors(await handleBatchBinary(request, env), request);
+  }
+
   // /mcp is a separate Function (mcp.js); let it handle its own auth check.
   if (url.pathname === "/mcp") return next();
 
@@ -77,12 +105,60 @@ export const onRequest = async (ctx) => {
   // Determine the user's role from the session cookie (default = lowest).
   const role = await readRole(request, env);
 
-  // env.ASSETS resolves clean URLs (and emits 308s if you use .html), so just
-  // pass the request path through. Root maps to /index.html via Pages defaults.
-  const target = "/_variants/" + role + (url.pathname === "/" ? "/index.html" : url.pathname);
-  const rewritten = new Request(new URL(target, url.origin).toString(), request);
-  return env.ASSETS.fetch(rewritten);
+  // env.ASSETS canonicalizes URLs (strips .html, strips index.html, redirects
+  // with 308s) — passing those redirects through to the browser would expose
+  // the /_variants/<role>/ path, which the guard at the top of this function
+  // explicitly blocks. So: rewrite to a clean URL, and if ASSETS still returns
+  // a redirect, follow it server-side instead of leaking it to the client.
+  const target = "/_variants/" + role + (url.pathname === "/" ? "/" : url.pathname);
+  let rewritten = new Request(new URL(target, url.origin).toString(), request);
+  let response = await env.ASSETS.fetch(rewritten);
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get("Location");
+    if (location && location.startsWith("/_variants/")) {
+      rewritten = new Request(new URL(location, url.origin).toString(), request);
+      response = await env.ASSETS.fetch(rewritten);
+    }
+  }
+  // Replace bare 404s with the variant's styled 404 page so the reader stays
+  // inside the site (sidebar, search, sitemap intact). Only HTML navigation
+  // requests get the page; asset/API requests get the bare 404 unchanged.
+  if (response.status === 404 && wantsHtml(request)) {
+    const fallback = await env.ASSETS.fetch(new URL("/_variants/" + role + "/404.html", url.origin).toString());
+    if (fallback.ok) {
+      return withCors(new Response(await fallback.text(), {
+        status: 404,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }), request);
+    }
+  }
+  return withCors(response, request);
 };
+
+// Headers added for cross-origin clients (Foundry module, MCP). Origin: *
+// is safe because the resources are gated by bearer token, not by origin.
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin",
+  };
+}
+
+function withCors(response, request) {
+  if (!request.headers.get("Origin")) return response;
+  // Response from env.ASSETS.fetch is immutable — clone before mutating.
+  const headers = new Headers(response.headers);
+  for (const [k, v] of Object.entries(corsHeaders())) headers.set(k, v);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+function wantsHtml(request) {
+  const accept = request.headers.get("Accept") || "";
+  return accept.includes("text/html") || accept === "*/*" || accept === "";
+}
 
 // ── Login ─────────────────────────────────────────────────────────────────
 
@@ -90,7 +166,7 @@ async function handleLogin(request, env) {
   const form = await request.formData();
   const role = String(form.get("role") || "");
   const password = String(form.get("password") || "");
-  const next = String(form.get("next") || "/");
+  const next = safeNext(form.get("next"));
 
   if (!ROLES.includes(role) || !PASSWORDS[role]) {
     return loginRedirect(next, "invalid_role");
@@ -103,13 +179,119 @@ async function handleLogin(request, env) {
   const headers = new Headers({ Location: next });
   headers.append("Set-Cookie", cookie);
   headers.append("Set-Cookie", DISPLAY_COOKIE_NAME + "=" + encodeURIComponent(role)
-    + "; Path=/; Secure; SameSite=Lax; Max-Age=" + COOKIE_MAX_AGE);
+    + "; Path=/; Secure; SameSite=None; Partitioned; Max-Age=" + COOKIE_MAX_AGE);
   return new Response(null, { status: 302, headers });
+}
+
+// Sanitise a 'next' redirect target. Only same-origin relative paths are
+// allowed — anything else (absolute URLs, protocol-relative '//evil.com',
+// the protected /_variants/ tree) is replaced with '/'. Prevents the login
+// and logout endpoints from being weaponised as open redirects.
+function safeNext(value) {
+  const s = typeof value === "string" ? value : "";
+  if (!s.startsWith("/")) return "/";
+  if (s.startsWith("//")) return "/";
+  if (s.startsWith("/_variants/")) return "/";
+  return s;
 }
 
 function loginRedirect(next, error) {
   const url = "/login.html?error=" + encodeURIComponent(error) + "&next=" + encodeURIComponent(next);
   return new Response(null, { status: 302, headers: { Location: url } });
+}
+
+// ── Batch source fetch ────────────────────────────────────────────────────
+//
+// Bulk-read endpoint used by sync clients to avoid making one HTTP request
+// per .md file. The body is newline-separated paths (text/plain, so the
+// request stays CORS-simple — no preflight). The handler resolves each
+// path against the caller's role variant and bundles the results into a
+// single JSON response.
+//
+// Caps:
+//   - max 200 paths per call (cap concurrent ASSETS reads inside the worker)
+//   - paths must not contain '..' or query/fragment, must not start with '_'
+//     (would escape the variant or hit metadata files)
+
+const BATCH_MAX_PATHS = 200;
+// Smaller cap for binary — base64 inflates ~4/3x and we don't want to
+// blow the worker response budget. ~30 images at 200KB avg ≈ 8MB JSON.
+const BATCH_BINARY_MAX_PATHS = 30;
+
+async function handleBatch(request, env) {
+  return handleBatchInner(request, env, BATCH_MAX_PATHS, async (res) => res.text());
+}
+
+async function handleBatchBinary(request, env) {
+  return handleBatchInner(request, env, BATCH_BINARY_MAX_PATHS, async (res) => {
+    return base64Encode(new Uint8Array(await res.arrayBuffer()));
+  });
+}
+
+async function handleBatchInner(request, env, maxPaths, encode) {
+  const role = await readRole(request, env);
+  if (!ROLES.includes(role)) return batchError(401, "Unauthorized");
+
+  let body;
+  try { body = await request.text(); }
+  catch { return batchError(400, "Could not read request body."); }
+
+  const paths = body.split(/\\r?\\n/).map((s) => s.trim()).filter(Boolean);
+  if (paths.length === 0) return batchError(400, "No paths in request body.");
+  if (paths.length > maxPaths) return batchError(400, "Too many paths (max " + maxPaths + ").");
+  for (const p of paths) {
+    if (!isSafePath(p)) return batchError(400, "Invalid path: " + p);
+  }
+
+  // ASSETS.fetch is internal to the worker, so fan-out is cheap.
+  const url = new URL(request.url);
+  const entries = await Promise.all(paths.map(async (p) => {
+    const target = new URL("/_variants/" + role + "/" + encodeVariantPath(p), url.origin).toString();
+    const res = await env.ASSETS.fetch(target);
+    if (!res.ok) return [p, null];
+    return [p, await encode(res)];
+  }));
+
+  const files = {};
+  const missing = [];
+  for (const [p, content] of entries) {
+    if (content == null) missing.push(p);
+    else files[p] = content;
+  }
+  return new Response(JSON.stringify({ files, missing }), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function batchError(status, message) {
+  return new Response(JSON.stringify({ error: message }), {
+    status, headers: { "Content-Type": "application/json" },
+  });
+}
+
+function base64Encode(bytes) {
+  // btoa wants a binary string. Build it in chunks so we don't blow the
+  // call-stack on String.fromCharCode for big payloads.
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+function isSafePath(p) {
+  if (!p || p.length > 1024) return false;
+  if (p.includes("..") || p.includes("?") || p.includes("#")) return false;
+  if (p.startsWith("/") || p.startsWith("_")) return false;
+  // Reject control chars / bare backslashes.
+  if (/[\\x00-\\x1f]/.test(p) || p.includes("\\\\")) return false;
+  return true;
+}
+
+function encodeVariantPath(p) {
+  // Each segment is URI-encoded so spaces / unicode round-trip cleanly.
+  return p.split("/").map(encodeURIComponent).join("/");
 }
 
 // ── Connect (OAuth-style bearer token issuance) ──────────────────────────
@@ -158,10 +340,75 @@ async function handleConnectApprove(request, env) {
   }
 
   const token = await signToken(role, env.SESSION_SECRET, BEARER_MAX_AGE);
-  const sep = returnTo.includes("?") ? "&" : "?";
-  const target = returnTo + sep + "token=" + encodeURIComponent(token)
+  // Render a page that delivers the token via postMessage when running
+  // inside an iframe or popup — that avoids a cross-site top-level
+  // navigation back to the host app, which can blow away SPA sessions
+  // (Foundry logs the user out on full reloads). Falls back to a top-
+  // level redirect with the token in the query string for CLI / direct
+  // browser flows that have neither a parent nor an opener.
+  const html = renderConnectDeliveryPage({ token, state, returnTo });
+  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+function renderConnectDeliveryPage({ token, state, returnTo }) {
+  const returnOrigin = (() => { try { return new URL(returnTo).origin; } catch { return ""; } })();
+  const tokenAttr = escAttr(token);
+  const stateAttr = escAttr(state);
+  const originAttr = escAttr(returnOrigin);
+  const returnAttr = escAttr(returnTo);
+  return \`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Connecting…</title>
+<link rel="stylesheet" href="/styles.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; font-family: inherit; }
+  .card { max-width: 24rem; padding: 2rem; text-align: center; color: var(--muted); }
+  .card h1 { margin: 0 0 0.5rem; font-size: 1.1rem; color: var(--fg); }
+  .card a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Authorising…</h1>
+  <p id="status">You can close this window.</p>
+  <p><a id="manual" href="#">Continue manually</a> if it doesn't close on its own.</p>
+</div>
+<script>
+(function () {
+  var token = "\${tokenAttr}";
+  var state = "\${stateAttr}";
+  var origin = "\${originAttr}";
+  var returnTo = "\${returnAttr}";
+
+  // Iframe flow: parent window is the host (Foundry inside DialogV2).
+  // Popup flow: opener is the host. In both cases we postMessage to the
+  // host's origin (not '*') so the token can't be intercepted by anything
+  // else with a window reference.
+  var target = null;
+  if (window.parent && window.parent !== window) target = window.parent;
+  else if (window.opener && !window.opener.closed) target = window.opener;
+  if (target && origin) {
+    try {
+      target.postMessage({ type: "vaults-connect", token: token, state: state }, origin);
+      // Popup self-closes; iframe is dismissed by the host on receipt.
+      if (target === window.opener) { try { window.close(); } catch (e) {} }
+      return;
+    } catch (e) { /* fall through to redirect */ }
+  }
+
+  // No parent or opener — fall back to the original redirect flow.
+  var sep = returnTo.indexOf("?") === -1 ? "?" : "&";
+  var target = returnTo + sep + "token=" + encodeURIComponent(token)
     + (state ? "&state=" + encodeURIComponent(state) : "");
-  return new Response(null, { status: 302, headers: { Location: target } });
+  document.getElementById("manual").href = target;
+  document.getElementById("status").textContent = "Redirecting back…";
+  window.location.replace(target);
+})();
+</script>
+</body>
+</html>\`;
 }
 
 function isValidReturnTo(s) {
@@ -244,12 +491,22 @@ async function readRole(request, env) {
   const fallback = ROLES[0];
   if (!env.SESSION_SECRET) return fallback;
 
-  // Authorization: Bearer <token> — used by Foundry / MCP / CLI clients.
-  // Same signed-token format as the cookie, so verification is shared.
+  // Authorization: Bearer <token> — used by curl / the MCP server / any
+  // client that can set request headers freely. Same signed-token format
+  // as the cookie, so verification is shared.
   const auth = request.headers.get("Authorization") || "";
   const bearerMatch = /^Bearer\\s+(.+)$/i.exec(auth);
   if (bearerMatch) {
     const role = await verifyToken(bearerMatch[1], env.SESSION_SECRET);
+    if (role && ROLES.includes(role)) return role;
+  }
+
+  // ?_token=<token> — used by the Foundry module so cross-origin GETs stay
+  // CORS-simple and don't trigger a preflight per file (Cloudflare rate-
+  // limits OPTIONS bursts and a sync is hundreds of unique URLs).
+  const queryToken = new URL(request.url).searchParams.get("_token");
+  if (queryToken) {
+    const role = await verifyToken(queryToken, env.SESSION_SECRET);
     if (role && ROLES.includes(role)) return role;
   }
 
@@ -269,8 +526,13 @@ async function signToken(role, secret, maxAgeSeconds) {
 
 async function signSessionCookie(role, secret) {
   const value = await signToken(role, secret, COOKIE_MAX_AGE);
+  // SameSite=None + Partitioned (CHIPS) — required so the cookie persists
+  // when the vault is loaded inside a cross-origin iframe (the Foundry
+  // connect dialog). Partitioned scopes the cookie per parent origin, so
+  // it isn't a general third-party tracking cookie. Top-level browsing
+  // still works normally.
   return COOKIE_NAME + "=" + value
-    + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + COOKIE_MAX_AGE;
+    + "; Path=/; HttpOnly; Secure; SameSite=None; Partitioned; Max-Age=" + COOKIE_MAX_AGE;
 }
 
 async function verifyToken(token, secret) {
@@ -285,8 +547,10 @@ async function verifyToken(token, secret) {
 
 function clearCookie(name) {
   // HttpOnly only on the auth cookie; the display cookie is JS-readable.
+  // Attributes must match the set-time attributes (incl. Partitioned) so
+  // the browser actually evicts the right cookie.
   const attrs = name === COOKIE_NAME ? "HttpOnly; " : "";
-  return name + "=; Path=/; " + attrs + "Secure; SameSite=Lax; Max-Age=0";
+  return name + "=; Path=/; " + attrs + "Secure; SameSite=None; Partitioned; Max-Age=0";
 }
 
 // ── Crypto primitives (Web Crypto API) ────────────────────────────────────
@@ -345,17 +609,16 @@ function parseCookie(header) {
 }
 
 function isSharedAsset(pathname) {
-  // Per-variant files: HTML pages (with or without .html), markdown source,
-  // hover preview JSON, search index, and manifest. Everything else (images,
-  // css, login.html, audio, etc.) lives at the deploy root and is shared.
-  if (pathname === "/" || pathname === "/index.html") return false;
-  if (pathname.endsWith(".html") && pathname !== "/login.html") return false;
-  if (pathname.endsWith(".md")) return false;
-  if (pathname.endsWith(".preview.json")) return false;
-  if (pathname === "/_manifest.json" || pathname === "/_search-index.json") return false;
-  // Clean URLs (no extension) — wiki pages
-  if (!/\\.[^/]+$/.test(pathname)) return false;
-  return true;
+  // Allowlist of root-served files that are intentionally public to every
+  // visitor (no role gate). Everything else — including images — goes
+  // through the variant rewrite so role-restricted content is structurally
+  // unreachable on under-tier deploys.
+  if (pathname === "/styles.css") return true;
+  if (pathname === "/user.css") return true;
+  if (pathname === "/login.html") return true;
+  if (pathname === "/favicon.ico" || pathname === "/favicon.svg") return true;
+  if (pathname === "/robots.txt") return true;
+  return false;
 }
 `;
 }

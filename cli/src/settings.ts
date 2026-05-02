@@ -17,6 +17,9 @@ export interface Settings {
   inline_title: boolean;
   default_image_width: string;
   center_images: boolean;
+  default_role: string;
+  accent_color: string;
+  accent_color_dark: string;
 }
 
 type SettingType = "string" | "number" | "boolean" | "string[]";
@@ -66,6 +69,24 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     type: "boolean",
     description:
       "Center images in the article body. Set false to leave them flush left.",
+  },
+  default_role: {
+    default: "",
+    type: "string",
+    description:
+      "Role assigned to pages with no 'role:' frontmatter. Empty string means the lowest-tier role (typically 'public'). Set to e.g. 'dm' for a private-by-default vault. Must be one of your configured roles.",
+  },
+  accent_color: {
+    default: "",
+    type: "string",
+    description:
+      "Override the light-theme accent color (links, headings, highlights). Any CSS color works: '#a8201a', 'crimson', 'rgb(168 32 26)'. Empty = use the built-in scarlet.",
+  },
+  accent_color_dark: {
+    default: "",
+    type: "string",
+    description:
+      "Override the dark-theme accent color. Empty = use the built-in emerald.",
   },
 };
 

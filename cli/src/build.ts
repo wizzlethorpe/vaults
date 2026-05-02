@@ -6,11 +6,15 @@ import { availableParallelism } from "node:os";
 import picomatch from "picomatch";
 import { scanVault, type ScannedFile } from "./scan.js";
 import { compressImage, COMPRESSIBLE_EXT_RE } from "./images.js";
+
+// Any image format that can be referenced via ![[name.ext]] — superset of
+// COMPRESSIBLE_EXT_RE since SVGs/GIFs ship as-is rather than being recoded.
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?)$/i;
 import { renderMarkdown } from "./render/pipeline.js";
-import { renderLayout } from "./render/layout.js";
+import { renderLayout, render404 } from "./render/layout.js";
 import { slugify } from "./render/slug.js";
 import { buildPreview } from "./render/preview.js";
-import { DEFAULT_CSS } from "./render/styles.js";
+import { DEFAULT_CSS, renderThemeOverride } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./settings.js";
 import { loadConfig, saveConfig, type VaultConfig } from "./config.js";
@@ -82,8 +86,20 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // ── CLI-managed state (auth) ─────────────────────────────────────────────
   const cfg = await loadConfig(opts.vaultPath, {});
   const roles = cfg.roles.length > 0 ? cfg.roles : ["public"];
-  const defaultRole = roles[0]!;
   const allRoleSet = new Set(roles);
+  // Pages without a 'role:' frontmatter fall back to settings.default_role
+  // when set (and valid); otherwise the lowest-tier role. This lets a
+  // DM-by-default vault flip the polarity instead of tagging every private
+  // page individually.
+  let defaultRole = roles[0]!;
+  if (settings.values.default_role) {
+    if (allRoleSet.has(settings.values.default_role)) {
+      defaultRole = settings.values.default_role;
+    } else {
+      console.warn(`  settings.md: default_role "${settings.values.default_role}" `
+        + `not in configured roles [${roles.join(", ")}], using "${defaultRole}"`);
+    }
+  }
 
   // ── Scan + filter ────────────────────────────────────────────────────────
   console.log(`Scanning ${opts.vaultPath}...`);
@@ -108,9 +124,9 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   await mkdir(opts.outputDir, { recursive: true });
 
   const markdownFiles = withinLimit.filter((f) => /\.md$/i.test(f.path));
-  const imageFiles = withinLimit.filter((f) => COMPRESSIBLE_EXT_RE.test(f.path));
+  const imageFiles = withinLimit.filter((f) => IMAGE_EXT_RE.test(f.path));
   const otherFiles = withinLimit.filter(
-    (f) => !/\.md$/i.test(f.path) && !COMPRESSIBLE_EXT_RE.test(f.path),
+    (f) => !/\.md$/i.test(f.path) && !IMAGE_EXT_RE.test(f.path),
   );
 
   // ── Shared content (read once, reused across roles) ─────────────────────
@@ -138,7 +154,13 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     };
   });
 
-  // ── Image compression (shared across all variants) ──────────────────────
+  // ── Image compression (staged; copied per-variant later) ────────────────
+  // Compress once into a private staging dir under the deploy root. Each
+  // variant's render pass copies whichever images its visible pages
+  // reference. The staging dir is removed at the end so images only ship
+  // to the variants that need them — that's how DM-only art is kept off
+  // the public deploy without a separate auth gate.
+  const imageStagingDir = join(opts.outputDir, ".image-staging");
   const imageIndex = new Map<string, ImageEntry>();
   if (imageFiles.length > 0) {
     const cacheDir = join(opts.vaultPath, ".vault-cache", "images", `q${opts.imageQuality}`);
@@ -148,11 +170,13 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     progress.update(0, imageFiles.length);
 
     await pMap(imageFiles, concurrency, async (f) => {
-      const compressed = opts.imageQuality > 0
+      // SVGs / non-compressible images pass through; everything else gets
+      // recoded to webp for size. Either way they land in the staging dir.
+      const compressed = opts.imageQuality > 0 && COMPRESSIBLE_EXT_RE.test(f.path)
         ? await compressImageCached(f, opts.imageQuality, cacheDir, () => { cacheHits++; })
         : { body: await readFile(f.absolute), outputPath: f.path };
 
-      const dest = join(opts.outputDir, compressed.outputPath);
+      const dest = join(imageStagingDir, compressed.outputPath);
       await mkdir(dirname(dest), { recursive: true });
       await writeFile(dest, compressed.body);
 
@@ -165,12 +189,18 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     progress.done(`${imageFiles.length} processed (${cacheHits} cached, ${imageFiles.length - cacheHits} compressed)`);
   }
 
-  // ── Passthrough files (shared) ──────────────────────────────────────────
+  // ── Passthrough files (PDFs, audio, etc.) ───────────────────────────────
+  // Staged once, copied into every variant. We don't scan markdown to find
+  // out which files are referenced (links can be plain text, embedded HTML,
+  // or arbitrary URLs), so we ship them into every tier — the trade-off is
+  // that DM-only PDFs are reachable from any role's deploy. Document as a
+  // known limitation.
+  const otherStagingDir = join(opts.outputDir, ".other-staging");
   if (otherFiles.length > 0) {
     const progress = new Progress("Other");
     progress.update(0, otherFiles.length);
     await pMap(otherFiles, concurrency, async (f) => {
-      const dest = join(opts.outputDir, f.path);
+      const dest = join(otherStagingDir, f.path);
       await mkdir(dirname(dest), { recursive: true });
       await copyFile(f.absolute, dest);
     }, (done, total) => progress.update(done, total));
@@ -178,7 +208,11 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   }
 
   // Shared CSS bundle
-  await writeFile(join(opts.outputDir, "styles.css"), DEFAULT_CSS);
+  const themeOverride = renderThemeOverride({
+    lightAccent: settings.values.accent_color,
+    darkAccent: settings.values.accent_color_dark,
+  });
+  await writeFile(join(opts.outputDir, "styles.css"), DEFAULT_CSS + themeOverride);
   const userCss = await loadObsidianSnippets(opts.vaultPath);
   await writeFile(join(opts.outputDir, "user.css"), userCss);
   if (userCss) console.log(`  loaded user.css from .obsidian/snippets/`);
@@ -208,6 +242,9 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       allPageMetas,
       sources,
       imageIndex,
+      imageStagingDir,
+      otherFiles,
+      otherStagingDir,
       settings: settings.values,
       authConfigured: roles.length > 1,
       concurrency,
@@ -249,6 +286,11 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     }
   }
 
+  // Drop the staging dirs — their contents have been copied into each
+  // variant that needs them, so they're no longer required for the deploy.
+  await rm(imageStagingDir, { recursive: true, force: true });
+  await rm(otherStagingDir, { recursive: true, force: true });
+
   console.log(`Built in ${formatDuration(Date.now() - start)}.`);
   return {
     files,
@@ -269,6 +311,11 @@ interface VariantArgs {
   allPageMetas: PageMeta[];
   sources: Map<string, string>;
   imageIndex: Map<string, ImageEntry>;
+  /** Staging dir holding compressed images; we copy what's referenced. */
+  imageStagingDir: string;
+  /** Passthrough files (PDFs, audio, etc.) staged once, copied per variant. */
+  otherFiles: ScannedFile[];
+  otherStagingDir: string;
   settings: Settings;
   /** Whether the deployment has more than one role (controls auth-box rendering). */
   authConfigured: boolean;
@@ -383,6 +430,17 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
 
   progress.done(`${visibleMetas.length} rendered`);
 
+  // 404 page using the same layout shell — middleware fetches this when a
+  // variant rewrite returns 404 instead of leaking Pages's blank "Not found".
+  await writeFile(join(a.variantDir, "404.html"), render404({
+    pages: visibleMetas,
+    vaultName: a.vaultName,
+    inlineTitle: a.settings.inline_title,
+    defaultImageWidth: a.settings.default_image_width,
+    centerImages: a.settings.center_images,
+    authConfigured: a.authConfigured,
+  }));
+
   // Per-variant search index.
   const searchIndex = visibleMetas.map((p) => ({
     title: p.title,
@@ -393,7 +451,56 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   }));
   await writeFile(join(a.variantDir, "_search-index.json"), JSON.stringify(searchIndex));
 
+  // Copy whichever images this variant's pages reference. Images live only
+  // under the variants that need them so guessing a DM-only image URL on
+  // the public wiki structurally 404s.
+  await copyReferencedImages(visibleSources, a.imageIndex, a.imageStagingDir, a.variantDir);
+
+  // Passthrough files (PDFs, audio, etc.) ship into every variant — the
+  // build doesn't scan markdown for arbitrary references, so we can't tell
+  // which role-restricted pages link to a given PDF. Limitation: DM-only
+  // data files in this category aren't role-gated.
+  for (const f of a.otherFiles) {
+    const src = join(a.otherStagingDir, f.path);
+    const dst = join(a.variantDir, f.path);
+    await mkdir(dirname(dst), { recursive: true });
+    try { await copyFile(src, dst); }
+    catch (err) {
+      console.warn(`  warning: could not copy ${f.path}: ${(err as Error).message}`);
+    }
+  }
+
   return { pageCount: visibleMetas.length };
+}
+
+const EMBED_RE = /!\[\[([^\[\]|#\n]+?)(?:\|[^\[\]#\n]*)?\]\]/g;
+
+async function copyReferencedImages(
+  visibleSources: Map<string, string>,
+  imageIndex: Map<string, ImageEntry>,
+  stagingDir: string,
+  variantDir: string,
+): Promise<void> {
+  const refs = new Set<string>();
+  for (const source of visibleSources.values()) {
+    for (const m of source.matchAll(EMBED_RE)) {
+      const name = m[1]!.trim();
+      if (!IMAGE_EXT_RE.test(name)) continue;
+      const image = imageIndex.get(slugify(name));
+      if (image) refs.add(image.outputPath);
+    }
+  }
+  for (const outputPath of refs) {
+    const src = join(stagingDir, outputPath);
+    const dst = join(variantDir, outputPath);
+    await mkdir(dirname(dst), { recursive: true });
+    try { await copyFile(src, dst); }
+    catch (err) {
+      // Source may legitimately be missing if the file is in the index but
+      // wasn't compressed (e.g. quality=0 path). Surface but don't crash.
+      console.warn(`  warning: could not copy image ${outputPath}: ${(err as Error).message}`);
+    }
+  }
 }
 
 interface FolderIndex {
@@ -573,7 +680,9 @@ async function buildManifest(rootDir: string, variantDir: string): Promise<{ fil
   // Shared assets under the deploy root (attachments, css). Skip the variant
   // tree itself and anything inside `functions/` (Function code isn't served).
   if (rootDir !== variantDir) {
-    await walkAndIndex(rootDir, rootDir, files, seen, ["_variants", "functions"]);
+    await walkAndIndex(rootDir, rootDir, files, seen, [
+      "_variants", "functions", ".image-staging", ".other-staging",
+    ]);
   }
 
   files.sort((a, b) => a.path.localeCompare(b.path));

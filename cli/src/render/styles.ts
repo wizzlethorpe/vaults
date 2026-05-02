@@ -1,6 +1,30 @@
 // Theme + layout styles for the rendered wiki. Self-contained, no build step.
 // Light: parchment + scarlet, Dark: charcoal + emerald (auto by prefers-color-scheme).
 
+/**
+ * Per-vault accent overrides. When `accent_color` (light) or `accent_color_dark`
+ * is set in settings.md, append this block after DEFAULT_CSS so it wins. The
+ * derived shades (--accent-soft, --wikilink-bg) are recomputed via color-mix
+ * so they stay coherent with whatever color the user picked.
+ */
+export function renderThemeOverride(opts: { lightAccent: string; darkAccent: string }): string {
+  const blocks: string[] = [];
+  if (opts.lightAccent) blocks.push(accentBlock(":root", opts.lightAccent));
+  if (opts.darkAccent) {
+    blocks.push(`@media (prefers-color-scheme: dark) {\n${accentBlock(":root", opts.darkAccent)}\n}`);
+  }
+  return blocks.length === 0 ? "" : "\n\n/* User accent overrides (settings.md) */\n" + blocks.join("\n");
+}
+
+function accentBlock(selector: string, color: string): string {
+  return `${selector} {
+  --accent: ${color};
+  --accent-soft: color-mix(in srgb, ${color} 70%, white);
+  --wikilink-bg: color-mix(in srgb, ${color} 10%, transparent);
+  --wikilink-bg-hover: color-mix(in srgb, ${color} 20%, transparent);
+}`;
+}
+
 export const DEFAULT_CSS = `:root {
   --bg: #f4ecd8; --fg: #1d1a17; --muted: #6b665e;
   --accent: #a8201a; --accent-soft: #c8423d; --accent-fg: #fbf6e8;
@@ -30,13 +54,12 @@ article a.internal {
 article a.internal:hover { background: var(--wikilink-bg-hover); text-decoration: none; }
 article a.internal.new, article a.internal.is-unresolved { opacity: 0.7; font-style: italic; }
 
-/* Brand sits at the top of the left sidebar in place of the old top nav. */
+/* Brand sits at the top of the left sidebar in place of the old top nav.
+   The sidebar's flex gap handles spacing — no extra margin or rule needed. */
 .sidebar > .brand {
-  display: block; padding: 0.4rem 0.5rem 0.9rem;
+  display: block; padding: 0 0.5rem;
   font-weight: 700; font-size: 1.05rem; letter-spacing: 0.04em;
   color: var(--fg); text-decoration: none;
-  border-bottom: 1px solid var(--rule);
-  margin-bottom: 0.25rem;
 }
 .sidebar > .brand:hover { color: var(--accent); text-decoration: none; }
 
@@ -45,7 +68,9 @@ article a.internal.new, article a.internal.is-unresolved { opacity: 0.7; font-st
   gap: 2.5rem; max-width: 96rem; margin: 0 auto; padding: 1.5rem;
 }
 main { padding: 2rem 0 4rem; min-width: 0; }
-.sidebar { padding: 1.5rem 1.5rem 1.5rem 0; border-right: 1px solid var(--rule); font-size: 0.9rem; display: flex; flex-direction: column; gap: 1.25rem; }
+.sidebar { padding: 1.5rem 1.5rem 1.5rem 0; border-right: 1px solid var(--rule); font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.6rem; }
+/* Visual break between the header group (brand/search/auth) and the sitemap. */
+.sidebar > nav:last-child { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid var(--rule); }
 .rightbar { padding: 1.5rem 0 1.5rem 1.5rem; border-left: 1px solid var(--rule); font-size: 0.9rem; }
 .sidebar h4, .rightbar h4 {
   margin: 0 0 0.5rem; font-size: 0.75rem; text-transform: uppercase;
@@ -100,11 +125,26 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 
 .toc { display: block; }
 .toc-summary {
-  list-style: none; cursor: default; background: transparent; border: none; padding: 0;
+  list-style: none; cursor: pointer; background: transparent; border: none; padding: 0;
   margin-bottom: 0.5rem; font-size: 0.75rem; text-transform: uppercase;
   letter-spacing: 0.08em; color: var(--muted); font-weight: 600;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  transition: color 0.12s ease;
 }
+.toc-summary:hover { color: var(--accent); }
 .toc-summary::-webkit-details-marker { display: none; }
+/* CSS-drawn chevron — same shape as the sitemap-folder toggles. Rotates
+   when [open] so the affordance reads as "click to collapse / expand". */
+.toc-summary::before {
+  content: ''; display: inline-block;
+  width: 5px; height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  opacity: 0.7;
+}
+.toc[open] > .toc-summary::before { transform: rotate(45deg); }
 .toc ul { list-style: none; padding: 0; margin: 0; }
 .toc li { margin: 0.25rem 0; }
 .toc a { color: var(--muted); display: block; padding: 0.1rem 0 0.1rem 0.5rem; border-left: 2px solid transparent; transition: color 0.12s, border-color 0.12s; }
@@ -140,7 +180,7 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 .crumbs { color: var(--muted); font-size: 0.875rem; margin-bottom: 1rem; }
 .crumbs a { color: var(--muted); text-decoration: none; }
 .crumbs a:hover { color: var(--accent); text-decoration: underline; }
-.crumb-sep { color: var(--rule); }
+.crumb-sep { color: var(--muted); font-weight: 600; opacity: 0.7; padding: 0 0.05rem; }
 
 article h1 { margin-top: 0; font-size: 2.75rem; line-height: 1.15; }
 article h2 { margin-top: 2rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.25rem; }
@@ -287,6 +327,9 @@ article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
 .sidebar .sitemap-folder > details > .sitemap-list {
   padding-left: 0.75rem;
 }
+
+/* 404 page — leans on the standard article layout but bumps the lead text. */
+.lead-404 { font-size: 1.05rem; color: var(--muted); margin-top: 0.5rem; }
 
 /* Auto-generated folder index pages */
 .folder-count { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.9rem; }

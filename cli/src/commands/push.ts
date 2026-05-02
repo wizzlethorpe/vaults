@@ -11,6 +11,7 @@ interface PushOptions {
   imageQuality?: number;
   vaultName?: string;
   dryRun?: boolean;
+  rotateSecret?: boolean;
 }
 
 export async function push(vaultPath: string, opts: PushOptions): Promise<void> {
@@ -49,12 +50,18 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
   // auth middleware can sign cookies. Reuse the secret in .vaultrc.json (the
   // one preview also uses) so a logged-in browser session survives across
   // preview ↔ push.
+  //
+  // --rotate-secret forces a fresh secret, which invalidates every issued
+  // bearer token + cookie immediately (HMAC verification fails). Use it
+  // when a token has leaked or you want to lock everyone out.
   if (result.roles.length > 1) {
     let secret = cfg.sessionSecret;
-    if (!secret) {
+    if (opts.rotateSecret || !secret) {
       secret = generateSessionSecret();
       await saveSessionSecret(vaultPath, secret);
-      console.log("Generated SESSION_SECRET (saved to .vaultrc.json).");
+      console.log(opts.rotateSecret
+        ? "Rotated SESSION_SECRET — all existing tokens are now invalid."
+        : "Generated SESSION_SECRET (saved to .vaultrc.json).");
     }
     await wranglerSecret(cfg.projectName!, "SESSION_SECRET", secret);
   }
@@ -158,7 +165,16 @@ async function promptIfTty(question: string, fallback: string, nonTtyError: stri
 
 async function wranglerDeploy(outputDir: string, projectName: string): Promise<void> {
   console.log(`Deploying to Cloudflare Pages project '${projectName}'…`);
-  await runWranglerInteractive(["pages", "deploy", outputDir, `--project-name=${projectName}`]);
+  // wrangler resolves functions/ relative to cwd, not the deploy path arg —
+  // run it from outputDir so the generated middleware ships with the deploy.
+  // Force --branch=main so the deploy is tagged Production (matches the
+  // --production-branch=main we set during project create); without it
+  // wrangler reads the vault's current git branch and tags as Preview, which
+  // means the custom domain still serves the previous Production deploy.
+  await runWranglerInteractive(
+    ["pages", "deploy", ".", `--project-name=${projectName}`, "--branch=main", "--commit-dirty=true"],
+    outputDir,
+  );
 }
 
 async function wranglerSecret(projectName: string, name: string, value: string): Promise<void> {
@@ -176,11 +192,12 @@ async function wranglerSecret(projectName: string, name: string, value: string):
   });
 }
 
-function runWranglerInteractive(args: string[]): Promise<void> {
+function runWranglerInteractive(args: string[], cwd?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn("npx", ["wrangler", ...args], {
       stdio: "inherit",
       shell: process.platform === "win32",
+      ...(cwd ? { cwd } : {}),
     });
     proc.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`wrangler ${args[0]} exited ${code}`))));
     proc.on("error", reject);

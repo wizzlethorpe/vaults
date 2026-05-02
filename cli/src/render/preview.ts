@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkRehype from "remark-rehype";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeStringify from "rehype-stringify";
+import { slugify } from "./slug.js";
 
 // Builds compact JSON preview blobs at build time for hover popovers.
 // One file per page, served alongside the rendered .html as `<path>.preview.json`.
@@ -95,12 +96,3 @@ function stripFrontmatter(s: string): string {
   return s.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
 }
 
-function slugify(name: string): string {
-  return name
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/\.md$/i, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
