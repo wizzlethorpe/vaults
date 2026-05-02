@@ -17,9 +17,9 @@ program
   .command("password")
   .description("Set the password for a role (writes a PBKDF2 hash to settings.md)")
   .argument("<role>", "Role name (must already exist in settings.roles)")
-  .option("--vault-path <path>", "Path to the vault", process.cwd())
-  .action(async (role: string, opts: { vaultPath: string }) => {
-    try { await password(opts.vaultPath, role, {}); }
+  .argument("[vault-path]", "Path to the Obsidian vault", process.cwd())
+  .action(async (role: string, vaultPath: string) => {
+    try { await password(vaultPath, role, {}); }
     catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
   });
 
