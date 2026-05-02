@@ -63,8 +63,15 @@ export const onRequest = async (ctx) => {
   }
   if (url.pathname === "/logout") {
     const headers = new Headers({ Location: safeNext(url.searchParams.get("next")) });
-    headers.append("Set-Cookie", clearCookie(COOKIE_NAME));
-    headers.append("Set-Cookie", clearCookie(DISPLAY_COOKIE_NAME));
+    // Emit the cookie-clear in two variants so we delete the cookie
+    // regardless of which form was set: the new SameSite=None+Partitioned
+    // form (used by current iframes / direct browsing), and the old
+    // SameSite=Lax form (in case the cookie predates the partition switch).
+    for (const name of [COOKIE_NAME, DISPLAY_COOKIE_NAME]) {
+      for (const variant of clearCookieVariants(name)) {
+        headers.append("Set-Cookie", variant);
+      }
+    }
     return new Response(null, { status: 302, headers });
   }
 
@@ -542,12 +549,17 @@ async function verifyToken(token, secret) {
   return constantTimeEqual(sig, expected) ? role : null;
 }
 
-function clearCookie(name) {
-  // HttpOnly only on the auth cookie; the display cookie is JS-readable.
-  // Attributes must match the set-time attributes (incl. Partitioned) so
-  // the browser actually evicts the right cookie.
-  const attrs = name === COOKIE_NAME ? "HttpOnly; " : "";
-  return name + "=; Path=/; " + attrs + "Secure; SameSite=None; Partitioned; Max-Age=0";
+function clearCookieVariants(name) {
+  // Browsers match cookies for deletion on (Path, Domain, Secure, SameSite,
+  // Partitioned). A single Set-Cookie attempt only matches one configuration,
+  // so we emit two — one that matches cookies set by the current
+  // (SameSite=None+Partitioned) signSessionCookie, and one that matches the
+  // older Lax form. Both are safe to send; the unmatched one is a no-op.
+  const httpOnly = name === COOKIE_NAME ? "HttpOnly; " : "";
+  return [
+    name + "=; Path=/; " + httpOnly + "Secure; SameSite=None; Partitioned; Max-Age=0",
+    name + "=; Path=/; " + httpOnly + "Secure; SameSite=Lax; Max-Age=0",
+  ];
 }
 
 // ── Crypto primitives (Web Crypto API) ────────────────────────────────────

@@ -20,6 +20,7 @@ export interface Settings {
   default_role: string;
   accent_color: string;
   accent_color_dark: string;
+  favicon: string;
 }
 
 type SettingType = "string" | "number" | "boolean" | "string[]";
@@ -87,6 +88,12 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     type: "string",
     description:
       "Override the dark-theme accent color. Empty = use the built-in emerald.",
+  },
+  favicon: {
+    default: "",
+    type: "string",
+    description:
+      "Vault-relative path to an image used as the site favicon (png/jpg/svg/webp). Empty = generated default with the vault's accent color.",
   },
 };
 

@@ -6,6 +6,7 @@ interface BuildOptions {
   imageQuality?: number;
   vaultName?: string;
   maxFileBytes?: number;
+  allWarnings?: boolean;
 }
 
 const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
@@ -22,6 +23,7 @@ export async function build(vaultPath: string, opts: BuildOptions): Promise<void
     vaultName: opts.vaultName ?? "Vault",
     imageQuality: opts.imageQuality ?? 85,
     maxFileBytes: opts.maxFileBytes ?? DEFAULT_MAX_BYTES,
+    allWarnings: opts.allWarnings,
   });
   const summary = Object.entries(result.perRolePageCount)
     .map(([role, n]) => `${role}: ${n}`)

@@ -238,7 +238,6 @@ article code { background: color-mix(in srgb, var(--muted) 12%, transparent); pa
 article pre { background: color-mix(in srgb, var(--muted) 12%, transparent); padding: 1rem; border-radius: 6px; overflow-x: auto; }
 article pre code { background: none; padding: 0; }
 article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px solid var(--rule); color: var(--muted); }
-article :is(h1,h2,h3,h4,h5,h6) > a { text-decoration: none; color: inherit; }
 
 /* Sitemap nav (in left sidebar). Tree-view layout: folder rows split into a
    chevron toggle column and a folder-link column with a divider between;

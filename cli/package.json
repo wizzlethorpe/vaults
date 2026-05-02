@@ -13,9 +13,8 @@
   "dependencies": {
     "commander": "^12.1.0",
     "gray-matter": "^4.0.3",
-    "picomatch": "^4.0.2",
     "mdast-util-find-and-replace": "^3.0.1",
-    "rehype-autolink-headings": "^7.1.0",
+    "picomatch": "^4.0.2",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "rehype-slug": "^6.0.0",

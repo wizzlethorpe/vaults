@@ -6,6 +6,7 @@ import { availableParallelism } from "node:os";
 import picomatch from "picomatch";
 import { scanVault, type ScannedFile } from "./scan.js";
 import { compressImage, COMPRESSIBLE_EXT_RE } from "./images.js";
+import { buildFavicon } from "./favicon.js";
 
 // Any image format that can be referenced via ![[name.ext]] — superset of
 // COMPRESSIBLE_EXT_RE since SVGs/GIFs ship as-is rather than being recoded.
@@ -29,6 +30,8 @@ export interface BuildOptions {
   vaultName: string;
   imageQuality: number;
   maxFileBytes: number;
+  /** Show every page with warnings instead of truncating at 20. */
+  allWarnings?: boolean;
 }
 
 export interface BuildResult {
@@ -216,6 +219,20 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   await writeFile(join(opts.outputDir, "user.css"), userCss);
   if (userCss) console.log(`  loaded user.css from .obsidian/snippets/`);
 
+  // Favicon — either user-supplied via settings.favicon, or a generated
+  // default with the vault's first letter on the accent colour.
+  try {
+    const favicon = await buildFavicon({
+      vaultPath: opts.vaultPath,
+      faviconPath: settings.values.favicon,
+      letter: (opts.vaultName || "V").trim().charAt(0).toUpperCase() || "V",
+      accentColor: settings.values.accent_color || "#a8201a",
+    });
+    await writeFile(join(opts.outputDir, "favicon.ico"), favicon);
+  } catch (err) {
+    console.warn(`  warning: could not generate favicon: ${(err as Error).message}`);
+  }
+
   // ── Per-role variant builds ─────────────────────────────────────────────
   const perRolePageCount: Record<string, number> = {};
   const collapseToRoot = roles.length === 1;
@@ -247,6 +264,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       settings: settings.values,
       authConfigured: roles.length > 1,
       concurrency,
+      allWarnings: opts.allWarnings,
     });
     perRolePageCount[role] = stats.pageCount;
     if (!collapseToRoot) console.log(`  variant '${role}': ${stats.pageCount} pages`);
@@ -317,6 +335,7 @@ interface VariantArgs {
   /** Whether the deployment has more than one role (controls auth-box rendering). */
   authConfigured: boolean;
   concurrency: number;
+  allWarnings: boolean | undefined;
 }
 
 interface VariantStats { pageCount: number; }
@@ -375,7 +394,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     });
   }, (done, total) => progress.update(done, total));
 
-  reportWarnings(a.role, rendered);
+  reportWarnings(a.role, rendered, a.allWarnings);
 
   // Invert outlinks → backlinks. (Cross-role links can only point downwards
   // because higher-role pages aren't in this variant's index.)
@@ -606,7 +625,11 @@ function basenameNoExt(path: string): string {
  * images, missing transclusions) for the given variant. Truncates at 20
  * pages-with-issues to avoid scrolling off the screen for large vaults.
  */
-function reportWarnings(role: string, rendered: Map<string, { warnings: RenderWarning[] }>): void {
+function reportWarnings(
+  role: string,
+  rendered: Map<string, { warnings: RenderWarning[] }>,
+  allWarnings: boolean | undefined,
+): void {
   interface Issue { kind: string; target: string; }
   const issuesByPage = new Map<string, Issue[]>();
   let total = 0;
@@ -625,10 +648,9 @@ function reportWarnings(role: string, rendered: Map<string, { warnings: RenderWa
   console.warn(`  ⚠ ${role}: ${summary} across ${issuesByPage.size} page(s)`);
 
   const pages = [...issuesByPage].sort((a, b) => a[0].localeCompare(b[0]));
-  const shown = pages.slice(0, 20);
+  const shown = allWarnings ? pages : pages.slice(0, 20);
   for (const [path, issues] of shown) {
     console.warn(`    ${path}`);
-    // Dedupe within a page so a heavily repeated link only shows once.
     const seen = new Set<string>();
     for (const i of issues) {
       const key = `${i.kind}:${i.target}`;
@@ -638,7 +660,7 @@ function reportWarnings(role: string, rendered: Map<string, { warnings: RenderWa
     }
   }
   if (pages.length > shown.length) {
-    console.warn(`    … and ${pages.length - shown.length} more page(s) with warnings`);
+    console.warn(`    … and ${pages.length - shown.length} more page(s) with warnings (use --all-warnings to show)`);
   }
 }
 

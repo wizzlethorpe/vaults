@@ -49,6 +49,7 @@ export function renderLayout(input: LayoutInput): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(input.title)} — ${esc(input.vaultName)}</title>
+<link rel="icon" href="/favicon.ico">
 <link rel="stylesheet" href="/styles.css">
 <link rel="stylesheet" href="/user.css">
 </head>

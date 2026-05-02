@@ -96,6 +96,7 @@ program
   .option("-o, --output <dir>", "Output directory (default: <vault>/.vault-cache/rendered)")
   .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
   .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
+  .option("--all-warnings", "Print every page with warnings instead of truncating at 20")
   .action(wrap(build));
 
 program
@@ -117,6 +118,7 @@ program
   .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
   .option("--dry-run", "Render without deploying")
   .option("--rotate-secret", "Generate a fresh SESSION_SECRET, invalidating all issued tokens")
+  .option("--all-warnings", "Print every page with warnings instead of truncating at 20")
   .action(wrap(push));
 
 program.parseAsync().catch((err) => {

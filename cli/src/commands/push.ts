@@ -12,6 +12,7 @@ interface PushOptions {
   vaultName?: string;
   dryRun?: boolean;
   rotateSecret?: boolean;
+  allWarnings?: boolean;
 }
 
 export async function push(vaultPath: string, opts: PushOptions): Promise<void> {
@@ -30,6 +31,7 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
     vaultName,
     imageQuality: cfg.imageQuality,
     maxFileBytes: cfg.maxFileBytes,
+    allWarnings: opts.allWarnings,
   });
   const summary = Object.entries(result.perRolePageCount)
     .map(([r, n]) => `${r}: ${n}`)
