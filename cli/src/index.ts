@@ -5,6 +5,7 @@ import { build } from "./commands/build.js";
 import { preview } from "./commands/preview.js";
 import { init } from "./commands/init.js";
 import { password } from "./commands/password.js";
+import { roleAdd, roleList, roleRemove } from "./commands/role.js";
 
 const program = new Command();
 
@@ -13,10 +14,43 @@ program
   .description("Sync an Obsidian vault to a Cloudflare-hosted wiki")
   .version("0.1.0");
 
+const role = program
+  .command("role")
+  .description("Manage roles (access tiers) in the vault");
+
+role
+  .command("add")
+  .description("Add a role and (for non-default roles) set its password")
+  .argument("<name>", "Role name")
+  .argument("[vault-path]", "Path to the Obsidian vault", process.cwd())
+  .action(async (name: string, vaultPath: string) => {
+    try { await roleAdd(name, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+role
+  .command("remove")
+  .description("Remove a role and its password")
+  .argument("<name>", "Role name")
+  .argument("[vault-path]", "Path to the Obsidian vault", process.cwd())
+  .action(async (name: string, vaultPath: string) => {
+    try { await roleRemove(name, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+role
+  .command("list")
+  .description("Show roles configured for this vault")
+  .argument("[vault-path]", "Path to the Obsidian vault", process.cwd())
+  .action(async (vaultPath: string) => {
+    try { await roleList(vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
 program
   .command("password")
-  .description("Set the password for a role (writes a PBKDF2 hash to settings.md)")
-  .argument("<role>", "Role name (must already exist in settings.roles)")
+  .description("Reset the password for an existing role")
+  .argument("<role>", "Role name (must already exist)")
   .argument("[vault-path]", "Path to the Obsidian vault", process.cwd())
   .action(async (role: string, vaultPath: string) => {
     try { await password(vaultPath, role, {}); }
