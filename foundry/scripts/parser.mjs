@@ -12,10 +12,9 @@ export function parseFrontmatter(source) {
   return { frontmatter: fm, body };
 }
 
-/**
- * Tiny YAML subset — handles "key: value" and arrays. Frontmatter rarely
- * needs more, and avoiding a YAML dep keeps the bundle small.
- */
+// Tiny YAML subset — avoids a runtime dep on a Foundry-incompatible YAML
+// parser. Handles "key: value" and "  - item" arrays; rejects anything
+// fancier rather than failing weirdly.
 function parseSimpleYaml(text) {
   const out = {};
   let currentArrayKey = null;

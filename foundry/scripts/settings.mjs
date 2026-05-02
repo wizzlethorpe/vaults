@@ -11,6 +11,8 @@ export const SETTINGS = {
   rootFolder: "rootFolder",
   /** Last seen { path → hash } map from the vault's _manifest.json. */
   lastManifest: "lastManifest",
+  /** Last-downloaded { imagePath → hash } so image sync is incremental. */
+  lastImageManifest: "lastImageManifest",
   /** Random nonce used to round-trip state through the /connect flow. */
   pendingState: "pendingState",
 };
@@ -41,6 +43,10 @@ export function registerSettings() {
   });
 
   g.register(MODULE_ID, SETTINGS.lastManifest, {
+    scope: "world", config: false, type: Object, default: {},
+  });
+
+  g.register(MODULE_ID, SETTINGS.lastImageManifest, {
     scope: "world", config: false, type: Object, default: {},
   });
 

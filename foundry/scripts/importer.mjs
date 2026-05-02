@@ -98,3 +98,4 @@ export async function deleteFile(path) {
   const entry = game.journal.get(eId);
   if (entry) await entry.delete();
 }
+

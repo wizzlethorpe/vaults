@@ -1,12 +1,14 @@
-// Browser-redirect /connect flow for getting a vault bearer token.
+// Iframe-based /connect flow for getting a vault bearer token.
 //
-// Foundry has no place to register a localhost callback, but it doesn't need
-// one — the user is already on Foundry's domain. We send them to the vault's
-// /connect, the vault signs a token, and redirects them back to the same
-// Foundry URL with `?token=...&state=...` in the query. This module's
-// page-load hook reads those params, validates state, saves the token.
+// We host the vault's /connect endpoint in an iframe inside a Foundry
+// dialog. The vault's approve page postMessages the issued token back
+// to window.parent (us) on the vault origin. Foundry's tab never
+// navigates away — so its SPA session and world cookies stay intact.
 
-import { MODULE_ID, SETTINGS, get, set } from "./settings.mjs";
+import { SETTINGS, get, set } from "./settings.mjs";
+
+// Long enough for the user to sign in to the vault first.
+const CONNECT_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Decode a token's role + expiry without verifying — used purely for UI
@@ -24,63 +26,96 @@ export function tokenInfo(token) {
 }
 
 /**
- * Redirect the browser to the vault's /connect endpoint. After approval,
- * the vault redirects back here with ?token=...&state=... — handleCallback()
- * picks them up.
+ * Build the /connect URL for a given vault, including a fresh CSRF state
+ * persisted to settings. Returns { src, vaultOrigin, state }.
  */
-export async function startConnect(vaultUrl) {
+export async function prepareConnect(vaultUrl) {
   if (!vaultUrl) throw new Error("Vault URL is required.");
+  const vaultOrigin = new URL(vaultUrl).origin;
   const state = crypto.randomUUID();
   await set(SETTINGS.pendingState, state);
 
-  // Where to come back. Strip any pre-existing token/state from the URL so
-  // we don't loop into a stale state on the round-trip.
-  const here = new URL(window.location.href);
-  here.searchParams.delete("token");
-  here.searchParams.delete("state");
-  const returnTo = here.toString();
-
   const target = new URL("/connect", vaultUrl);
-  target.searchParams.set("return_to", returnTo);
+  target.searchParams.set("return_to", window.location.origin + "/");
   target.searchParams.set("app", "Foundry VTT");
   target.searchParams.set("state", state);
 
-  window.location.href = target.toString();
+  return { src: target.toString(), vaultOrigin, state };
 }
 
 /**
- * Run on every Foundry page load. If the URL has token + state, validate
- * the state, persist the token, clean up the URL.
+ * Listen for the vault's approve postMessage, validate state, persist
+ * the token. Returns a { promise, cancel } pair — cancel() detaches the
+ * listener (call it when the host dialog closes without approval).
  */
-export async function handleCallback() {
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get("token");
-  const state = params.get("state");
-  if (!token || !state) return;
+export function awaitConnectMessage({ vaultOrigin, state }) {
+  let settled = false;
+  let onMessage = null;
+  let timeout = null;
 
-  const expected = get(SETTINGS.pendingState);
-  if (!expected || state !== expected) {
-    ui.notifications.error(game.i18n.localize("VAULTS.Connect.StateMismatch"));
-    cleanUrl();
-    return;
-  }
+  const promise = new Promise((resolve, reject) => {
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("message", onMessage);
+      clearTimeout(timeout);
+      resolve(value);
+    };
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("message", onMessage);
+      clearTimeout(timeout);
+      reject(err);
+    };
 
-  await set(SETTINGS.token, token);
-  await set(SETTINGS.pendingState, "");
-  const info = tokenInfo(token);
-  if (info?.role) await set(SETTINGS.role, info.role);
+    onMessage = async (event) => {
+      const data = event.data;
+      if (!data || data.type !== "vaults-connect") return;
+      // Normally event.origin is the vault's origin. Foundry's runtime
+      // applies `sandbox` to nested browsing contexts via its CSP, which
+      // gives the iframe an opaque origin reported here as the literal
+      // string "null". In that case we fall back to validating the
+      // message via the CSRF state — a UUID we just generated and only
+      // sent to the vault, so an attacker can't guess it.
+      const originOk = event.origin === vaultOrigin || event.origin === "null";
+      if (!originOk) return;
 
-  ui.notifications.info(
-    game.i18n.format("VAULTS.Connect.Success", { role: info?.role ?? "?" }),
-  );
-  cleanUrl();
-}
+      const expected = get(SETTINGS.pendingState);
+      if (!expected || data.state !== expected) {
+        ui.notifications.error(game.i18n.localize("VAULTS.Connect.StateMismatch"));
+        fail(new Error("State mismatch"));
+        return;
+      }
+      if (!data.token) {
+        fail(new Error("No token in connect response"));
+        return;
+      }
 
-function cleanUrl() {
-  const u = new URL(window.location.href);
-  u.searchParams.delete("token");
-  u.searchParams.delete("state");
-  history.replaceState(null, "", u.pathname + u.search + u.hash);
+      await set(SETTINGS.token, data.token);
+      await set(SETTINGS.pendingState, "");
+      const info = tokenInfo(data.token);
+      if (info?.role) await set(SETTINGS.role, info.role);
+
+      ui.notifications.info(
+        game.i18n.format("VAULTS.Connect.Success", { role: info?.role ?? "?" }),
+      );
+      finish(info);
+    };
+
+    timeout = setTimeout(() => fail(new Error("Connect flow timed out.")), CONNECT_TIMEOUT_MS);
+    window.addEventListener("message", onMessage);
+  });
+
+  return {
+    promise,
+    cancel() {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("message", onMessage);
+      clearTimeout(timeout);
+    },
+  };
 }
 
 /** Clear the saved token + role. */

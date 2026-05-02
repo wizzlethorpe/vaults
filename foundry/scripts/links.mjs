@@ -8,24 +8,38 @@
 // loads images directly from the deployment.
 
 import { entryId } from "./ids.mjs";
-import { attachmentUrl } from "./api.mjs";
+import { localImageUrl } from "./media.mjs";
 import { slugify, IMAGE_EXT_RE } from "./parser.mjs";
 
 /**
- * Build a slug → vault-path index from the manifest's .md entries. Both
- * basename slug and full-path slug are keyed so [[Aghash]] and
- * [[NPCs/Aghash]] both resolve.
+ * Build slug → vault-path indexes from the manifest. Three maps so we can
+ * resolve every Obsidian reference shape:
+ *   byBasename   slugified page basename       (`[[Aghash]]`)
+ *   byPath       slugified full path           (`[[NPCs/Aghash]]`)
+ *   images       slugified image basename      (`![[foo.png]]`)
+ *
+ * The image index is the only way to find images that live outside an
+ * `attachments/` folder — vaults often scatter portraits next to the
+ * pages that reference them, and the build preserves source paths.
  */
 export function buildPathIndex(manifestFiles) {
   const byBasename = new Map();
   const byPath = new Map();
+  const images = new Map();
   for (const f of manifestFiles) {
-    if (!f.path.endsWith(".md")) continue;
-    const basename = f.path.split("/").pop().replace(/\.md$/, "");
-    if (!byBasename.has(slugify(basename))) byBasename.set(slugify(basename), f.path);
-    byPath.set(slugify(f.path.replace(/\.md$/, "")), f.path);
+    if (f.path.endsWith(".md")) {
+      const basename = f.path.split("/").pop().replace(/\.md$/, "");
+      if (!byBasename.has(slugify(basename))) byBasename.set(slugify(basename), f.path);
+      byPath.set(slugify(f.path.replace(/\.md$/, "")), f.path);
+    } else if (IMAGE_EXT_RE.test(f.path)) {
+      const basename = f.path.split("/").pop();
+      const noExt = basename.replace(/\.[^.]+$/, "");
+      // First-write-wins so an image earlier in the tree (typically the
+      // canonical one) takes precedence over a duplicate basename deeper.
+      if (!images.has(slugify(noExt))) images.set(slugify(noExt), f.path);
+    }
   }
-  return { byBasename, byPath };
+  return { byBasename, byPath, images };
 }
 
 /** Resolve a wikilink target name to a vault path, if the page exists. */
@@ -43,15 +57,24 @@ export function resolvePath(name, index) {
  * Done at the markdown level (before render) so marked produces clean output.
  */
 export async function transformLinks(source, index) {
-  // Image embeds first (so they don't get caught by the wikilink regex)
+  // Image embeds first (so they don't get caught by the wikilink regex).
+  // Resolve the actual deployed path from the manifest — Obsidian users
+  // reference images by basename, but the build preserves the vault's
+  // folder structure (Characters/Portraits/foo.webp, etc).
   let out = source.replace(
     /!\[\[([^\[\]|#\n]+?)(?:\|([^\[\]#\n]*))?\]\]/g,
     (_, name, alias) => {
       if (!IMAGE_EXT_RE.test(name)) return ""; // page transclusion → drop for now
-      // Match the build's webp output for compressible images. Plain hotlink
-      // means Foundry loads from the deployment URL on render.
-      const compressed = name.replace(IMAGE_EXT_RE, ".webp");
-      const url = attachmentUrl(`/attachments/${compressed}`);
+      const noExt = name.replace(/\.[^.]+$/, "");
+      const realPath = index.images?.get(slugify(noExt));
+      if (!realPath) {
+        // Image isn't in the manifest — render a styled broken marker
+        // rather than emit a guess that's just going to 404.
+        return `<span class="vaults-broken">missing image: ${escapeText(name)}</span>`;
+      }
+      // Local Foundry path — image was downloaded into the world's data
+      // dir during sync, so no token / cross-origin fetch at view time.
+      const url = localImageUrl(realPath);
       const sizeAttrs = parseSize(alias);
       return `<img src="${url}" alt="${escapeAttr(name)}" loading="lazy"${sizeAttrs}>`;
     },

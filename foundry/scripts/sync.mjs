@@ -6,9 +6,10 @@
 // a key-by-key compare of two flat objects.
 
 import { SETTINGS, get, set } from "./settings.mjs";
-import { fetchManifest, fetchSource } from "./api.mjs";
+import { fetchManifest, fetchSourceBatch } from "./api.mjs";
 import { upsertFile, deleteFile } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
+import { syncImages } from "./media.mjs";
 
 export async function sync({ forceFull = false } = {}) {
   const url = get(SETTINGS.url);
@@ -32,7 +33,19 @@ export async function sync({ forceFull = false } = {}) {
   const toUpsert = mdPaths.filter((p) => remote.get(p) !== local.get(p));
   const toDelete = [...local.keys()].filter((p) => p.endsWith(".md") && !remote.has(p));
 
-  if (toUpsert.length === 0 && toDelete.length === 0) {
+  // Pull any new/changed images into the world's data dir before upserting
+  // journals — that way the freshly-rendered <img src="worlds/…"> URLs
+  // resolve immediately. forceFull blanks the local image manifest so a
+  // Reset re-downloads everything.
+  if (forceFull) await set(SETTINGS.lastImageManifest, {});
+  let imageStats = { downloaded: 0, removed: 0, errors: 0 };
+  try {
+    imageStats = await syncImages(manifest.files);
+  } catch (err) {
+    console.warn("Vaults | image sync failed:", err);
+  }
+
+  if (toUpsert.length === 0 && toDelete.length === 0 && imageStats.downloaded === 0 && imageStats.removed === 0) {
     ui.notifications.info(game.i18n.localize("VAULTS.Sync.NothingToDo"));
     return;
   }
@@ -45,10 +58,29 @@ export async function sync({ forceFull = false } = {}) {
         }),
   );
 
+  // Fetch all sources in bulk via /_batch — one HTTP round trip per ~100
+  // files instead of one per file. Avoids the per-URL CORS preflight that
+  // tripped Cloudflare's OPTIONS rate limit on full syncs.
+  let sources;
+  try {
+    sources = await fetchSourceBatch(toUpsert);
+  } catch (err) {
+    console.error("Vaults | batch fetch failed:", err);
+    ui.notifications.error(game.i18n.format("VAULTS.Sync.Error", { message: err.message }));
+    return;
+  }
+
+  // Upserts run sequentially — Foundry's data layer doesn't love concurrent
+  // JournalEntry.create() on the same world, and the bottleneck has moved
+  // off the network anyway.
   let added = 0, modified = 0;
   for (const path of toUpsert) {
+    const source = sources.get(path);
+    if (source == null) {
+      console.warn(`Vaults | server returned no content for ${path}`);
+      continue;
+    }
     try {
-      const source = await fetchSource(path);
       const result = await upsertFile(path, source, pathIndex);
       if (result === "added") added++; else modified++;
     } catch (err) {
@@ -68,4 +100,8 @@ export async function sync({ forceFull = false } = {}) {
 
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
   ui.notifications.info(game.i18n.format("VAULTS.Sync.Done", { added, modified, removed, seconds }));
+  if (imageStats.downloaded > 0 || imageStats.removed > 0) {
+    console.info(`Vaults | images: ${imageStats.downloaded} downloaded, ${imageStats.removed} removed`
+      + (imageStats.errors ? `, ${imageStats.errors} failed` : ""));
+  }
 }
