@@ -20,7 +20,6 @@ import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./set
 import { loadConfig, saveConfig, type VaultConfig } from "./config.js";
 import matter from "gray-matter";
 import { renderAuthMiddleware, LOGIN_HTML } from "./render/auth-template.js";
-import { renderMcpFunction } from "./render/mcp-template.js";
 import type { ImageEntry, PageMeta, RenderContext, RenderWarning } from "./render/types.js";
 import { formatDuration, pMap, Progress } from "./util.js";
 
@@ -260,13 +259,11 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   }
 
   // ── Pages Functions ─────────────────────────────────────────────────────
-  // MCP function ships always (it's the AI-tooling surface). Auth middleware
-  // is generated only when there are multiple roles.
-  const fnDir = join(opts.outputDir, "functions");
-  await mkdir(fnDir, { recursive: true });
-  await writeFile(join(fnDir, "mcp.js"), renderMcpFunction({ roles }));
-
+  // Auth middleware ships only for multi-role builds. Single-role deploys
+  // are pure static and need no functions.
   if (!collapseToRoot) {
+    const fnDir = join(opts.outputDir, "functions");
+    await mkdir(fnDir, { recursive: true });
     const middleware = renderAuthMiddleware({
       roles,
       rolePasswords: cfg.rolePasswords,
@@ -419,11 +416,12 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     await mkdir(dirname(htmlDest), { recursive: true });
     await writeFile(htmlDest, html);
 
-    // Ship the raw markdown source alongside the rendered HTML so MCP clients
-    // (and Foundry, if it wants source) can pull .md without going through R2.
-    const source = visibleSources.get(p.path)!;
-    await writeFile(join(a.variantDir, p.path), source);
+    // .body.html holds just the rendered article content (no layout shell).
+    // Foundry imports this so callouts/embeds rendered by the vault's
+    // remark/rehype pipeline land in journals as-is, no client-side render.
+    await writeFile(join(a.variantDir, outputBase + ".body.html"), r.html);
 
+    const source = visibleSources.get(p.path)!;
     const preview = await buildPreview(source, r.title);
     await writeFile(join(a.variantDir, outputBase + ".preview.json"), JSON.stringify(preview));
   });

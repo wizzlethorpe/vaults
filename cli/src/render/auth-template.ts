@@ -94,9 +94,6 @@ export const onRequest = async (ctx) => {
     return withCors(await handleBatchBinary(request, env), request);
   }
 
-  // /mcp is a separate Function (mcp.js); let it handle its own auth check.
-  if (url.pathname === "/mcp") return next();
-
   // Skip rewriting for static-asset paths that don't have a per-role variant.
   // Anything outside the variant tree (images, css, login page, search index
   // for the default role on root, etc.) is served as-is by Pages.
