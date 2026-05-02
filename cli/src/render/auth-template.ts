@@ -54,9 +54,9 @@ export const onRequest = async (ctx) => {
   // Determine the user's role from the session cookie (default = lowest).
   const role = await readRole(request, env);
 
-  // Rewrite to the matching variant. If the variant doesn't have this page,
-  // a static 404 falls through.
-  const target = "/_variants/" + role + url.pathname;
+  // env.ASSETS resolves clean URLs (and emits 308s if you use .html), so just
+  // pass the request path through. Root maps to /index.html via Pages defaults.
+  const target = "/_variants/" + role + (url.pathname === "/" ? "/index.html" : url.pathname);
   const rewritten = new Request(new URL(target, url.origin).toString(), request);
   return env.ASSETS.fetch(rewritten);
 };

@@ -100,13 +100,12 @@ program
 
 program
   .command("preview")
-  .description("Render the vault and serve it locally for preview")
+  .description("Render the vault and serve it locally via `wrangler pages dev` (Functions run)")
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .option("-o, --output <dir>", "Output directory (default: <vault>/.vault-cache/rendered)")
   .option("-p, --port <n>", "Port for the preview server", (v) => parseInt(v, 10), 4173)
   .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
   .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
-  .option("-r, --role <name>", "Which role variant to serve (default = highest role)")
   .action(wrap(preview));
 
 program
