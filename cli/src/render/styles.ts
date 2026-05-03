@@ -1,19 +1,15 @@
 // Theme + layout styles for the rendered wiki. Self-contained, no build step.
-// Light: parchment + scarlet, Dark: charcoal + emerald (auto by prefers-color-scheme).
+// Single light theme: parchment + scarlet.
 
 /**
- * Per-vault accent overrides. When `accent_color` (light) or `accent_color_dark`
- * is set in settings.md, append this block after DEFAULT_CSS so it wins. The
- * derived shades (--accent-soft, --wikilink-bg) are recomputed via color-mix
- * so they stay coherent with whatever color the user picked.
+ * Per-vault accent override. When `accent_color` is set in settings.md,
+ * append this block after DEFAULT_CSS so it wins. The derived shades
+ * (--accent-soft, --wikilink-bg) are recomputed via color-mix so they
+ * stay coherent with whatever color the user picked.
  */
-export function renderThemeOverride(opts: { lightAccent: string; darkAccent: string }): string {
-  const blocks: string[] = [];
-  if (opts.lightAccent) blocks.push(accentBlock(":root", opts.lightAccent));
-  if (opts.darkAccent) {
-    blocks.push(`@media (prefers-color-scheme: dark) {\n${accentBlock(":root", opts.darkAccent)}\n}`);
-  }
-  return blocks.length === 0 ? "" : "\n\n/* User accent overrides (settings.md) */\n" + blocks.join("\n");
+export function renderThemeOverride(opts: { lightAccent: string }): string {
+  if (!opts.lightAccent) return "";
+  return "\n\n/* User accent override (settings.md) */\n" + accentBlock(":root", opts.lightAccent);
 }
 
 function accentBlock(selector: string, color: string): string {
@@ -32,14 +28,6 @@ export const DEFAULT_CSS = `:root {
   --wikilink-bg: rgba(168,32,26,0.10); --wikilink-bg-hover: rgba(168,32,26,0.20);
   --max-width: 56rem;
   font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #181a1a; --fg: #e6e3dc; --muted: #8a908c;
-    --accent: #2ecc71; --accent-soft: #58e08c; --accent-fg: #0d1411;
-    --rule: #2a2e2c;
-    --wikilink-bg: rgba(46,204,113,0.12); --wikilink-bg-hover: rgba(46,204,113,0.22);
-  }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); line-height: 1.6; }
@@ -78,10 +66,54 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 }
 
 @media (max-width: 1100px) {
-  .app-grid { grid-template-columns: 1fr; gap: 0; }
-  .sidebar { border: none; padding: 0.75rem 0 0; }
-  .rightbar { border: none; padding: 1rem 0; border-top: 1px solid var(--rule); margin-top: 2rem; }
-  main { padding: 0.75rem 0 3rem; }
+  .app-grid { grid-template-columns: 1fr; gap: 0; padding: 0.75rem; max-width: 100%; }
+  .sidebar { border: none; padding: 0.5rem 0 0; }
+  .rightbar { display: none; }
+  main { padding: 0.5rem 0 2.5rem; }
+  article h1 { font-size: 2rem; }
+  article h2 { font-size: 1.4rem; }
+}
+
+/* Explorer: collapsible <details> wrapper. On desktop the toggle is hidden
+   (the Explorer is always shown). On mobile it acts as a real disclosure
+   widget so the long sitemap doesn't push the article off-screen. The
+   default state is closed; an inline script in the layout opens it on
+   desktop after first paint. */
+.sidebar > details.explorer { margin: 0; }
+.sidebar > details.explorer > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 600;
+  border-radius: 3px;
+}
+.sidebar > details.explorer > summary::-webkit-details-marker { display: none; }
+.sidebar > details.explorer > summary::before {
+  content: ''; display: inline-block;
+  width: 5px; height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  opacity: 0.7;
+}
+.sidebar > details.explorer[open] > summary::before { transform: rotate(45deg); }
+.sidebar > details.explorer > summary:hover { color: var(--accent); }
+@media (min-width: 1101px) {
+  /* On desktop, force the Explorer to behave as if always open: hide the
+     toggle affordance, and reveal the sitemap regardless of [open] state. */
+  .sidebar > details.explorer > summary { cursor: default; pointer-events: none; }
+  .sidebar > details.explorer > summary::before { display: none; }
+  .sidebar > details.explorer > .sitemap-list { display: block; }
 }
 
 .search-box { position: relative; }

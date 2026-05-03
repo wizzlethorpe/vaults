@@ -80,6 +80,7 @@ export function renderLayout(input: LayoutInput): string {
     ${renderBacklinks(input.backlinks)}
   </aside>
 </div>
+${EXPLORER_INIT_SCRIPT}
 ${HOVER_PREVIEW_SCRIPT}
 ${TOC_SCRIPT}
 ${SEARCH_SCRIPT}
@@ -166,7 +167,10 @@ function renderSitemap(pages: PageMeta[], currentPath: string): string {
     node.pages.push(p);
   }
 
-  return `<nav><h4>Explorer</h4><ul class="sitemap-list">${renderNode(root, "", currentPath)}</ul></nav>`;
+  // <details> wrapper is the disclosure widget on mobile; CSS forces it
+  // visible on desktop. EXPLORER_INIT_SCRIPT opens it after load on
+  // wide viewports so the [open] state matches what the user sees.
+  return `<nav><details class="explorer"><summary>Explorer</summary><ul class="sitemap-list">${renderNode(root, "", currentPath)}</ul></details></nav>`;
 }
 
 function renderNode(node: FolderNode, parentPath: string, currentPath: string): string {
@@ -211,8 +215,23 @@ function attr(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
+// Opens the Explorer <details> on desktop so its [open] state matches the
+// CSS-forced visibility. On mobile we leave it closed so the user has a
+// collapsed sitemap by default.
+const EXPLORER_INIT_SCRIPT = `<script>
+(function () {
+  if (!window.matchMedia('(min-width: 1101px)').matches) return;
+  const explorer = document.querySelector('.sidebar > details.explorer');
+  if (explorer) explorer.open = true;
+})();
+</script>`;
+
 const HOVER_PREVIEW_SCRIPT = `<script>
 (function () {
+  // No hover previews on touch devices or narrow viewports. Emulated
+  // hover events from a tap make the popover flicker on top of the link
+  // the user actually wants to follow.
+  if (window.matchMedia('(hover: none)').matches || window.matchMedia('(max-width: 1100px)').matches) return;
   const cache = new Map();
   let popover = null, showTimer = null, hideTimer = null, activeLink = null;
   const HOVER_DELAY = 220, HIDE_DELAY = 180;

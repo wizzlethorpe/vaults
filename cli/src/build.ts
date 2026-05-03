@@ -228,7 +228,6 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // Shared CSS bundle
   const themeOverride = renderThemeOverride({
     lightAccent: settings.values.accent_color,
-    darkAccent: settings.values.accent_color_dark,
   });
   await writeFile(join(opts.outputDir, "styles.css"), DEFAULT_CSS + themeOverride);
   const userCss = await loadObsidianSnippets(opts.vaultPath);

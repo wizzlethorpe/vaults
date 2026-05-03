@@ -19,7 +19,6 @@ export interface Settings {
   center_images: boolean;
   default_role: string;
   accent_color: string;
-  accent_color_dark: string;
   favicon: string;
 }
 
@@ -81,13 +80,7 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     default: "",
     type: "string",
     description:
-      "Override the light-theme accent color (links, headings, highlights). Any CSS color works: '#a8201a', 'crimson', 'rgb(168 32 26)'. Empty = use the built-in scarlet.",
-  },
-  accent_color_dark: {
-    default: "",
-    type: "string",
-    description:
-      "Override the dark-theme accent color. Empty = use the built-in emerald.",
+      "Override the accent color (links, headings, highlights). Any CSS color works: '#a8201a', 'crimson', 'rgb(168 32 26)'. Empty = use the built-in scarlet.",
   },
   favicon: {
     default: "",
