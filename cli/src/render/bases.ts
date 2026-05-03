@@ -1,12 +1,16 @@
-// Minimum-viable Obsidian Bases support.
+// Obsidian Bases support.
 //
-// Parses ```base / ```bases code fences inside markdown, evaluates the
-// query against the variant's visible page set, and emits a sortable +
-// filterable HTML table.
+// Two entry points:
+//   1. The remark plugin parses ```base / ```bases code fences inline.
+//   2. renderBase() is exported so embed.ts can render ![[Foo]] when
+//      Foo.base exists in the vault.
 //
-// Supported (v1):
+// Both paths share the same parser + evaluator + view renderers.
+//
+// Supported (v2):
 //   - filters:   string expression OR { and|or|not: [expr|tree] } tree
-//   - views:     [{ type: table, name?, limit?, order?: [identifiers] }]
+//   - views:     table | cards. table renders sortable HTML; cards
+//                renders a grid of clickable cards with cover image.
 //   - properties: { <id>: { displayName? } }
 //   - identifiers: file.{name,basename,path,folder,ext,mtime,ctime,tags}
 //                  note.X / bare X (frontmatter)
@@ -15,13 +19,12 @@
 //                 stringValue.contains("..."), .startsWith, .endsWith,
 //                 .lower, .upper
 //   - literals:   strings (double or single quoted), numbers, true/false, null
+//   - cards-only: image: <prop>, imageFit: cover|contain, imageAspectRatio
 //
-// Deferred (TODO):
-//   - .base standalone files (only inline code fences for now)
+// Deferred:
 //   - formulas, summaries, groupBy
-//   - cards/list/map view types
+//   - list, map view types
 //   - duration arithmetic (now() - "1 week" etc.)
-//   - regex / list filter chains
 //
 // Unknown view types and unknown YAML keys are warned-on, not fatal —
 // real .base files in the wild include undocumented fields.
@@ -74,9 +77,23 @@ interface ViewSpec {
   order?: string[];
   filters?: FilterTree;
   sort?: { column: string; direction?: "ASC" | "DESC" }[];
+  // Cards-only options.
+  image?: string;            // frontmatter property to use for the cover (e.g. "cover")
+  imageFit?: "cover" | "contain";
+  imageAspectRatio?: string; // CSS aspect-ratio value (e.g. "1/1", "3/4")
 }
 
-function renderBase(source: string, context: RenderContext, warnings?: RenderWarning[]): string {
+/**
+ * Public entry point. Renders a base's YAML source as HTML. If `viewName`
+ * is given, only the matching view is rendered (used for the
+ * `![[MyBase#ViewName]]` embed form).
+ */
+export function renderBase(
+  source: string,
+  context: RenderContext,
+  warnings?: RenderWarning[],
+  viewName?: string,
+): string {
   let doc: BaseDoc;
   try {
     doc = (yaml.load(source) as BaseDoc) ?? {};
@@ -84,7 +101,6 @@ function renderBase(source: string, context: RenderContext, warnings?: RenderWar
     return errorBlock(`Failed to parse base YAML: ${(err as Error).message}`);
   }
 
-  // Evaluate filters once for the whole doc; views can additionally narrow.
   const allRows = collectRows(context);
   let baseRows: Row[];
   try {
@@ -93,15 +109,25 @@ function renderBase(source: string, context: RenderContext, warnings?: RenderWar
     return errorBlock(`Filter error: ${(err as Error).message}`);
   }
 
-  const views = doc.views && doc.views.length > 0 ? doc.views : [{ type: "table" }];
+  let views = doc.views && doc.views.length > 0 ? doc.views : [{ type: "table" }];
+  if (viewName) {
+    const matched = views.filter((v) => v.name === viewName);
+    if (matched.length === 0) {
+      return errorBlock(`Bases: no view named '${esc(viewName)}'.`);
+    }
+    views = matched;
+  }
+
   const blocks: string[] = [];
   for (const view of views) {
-    if (view.type !== "table") {
-      if (warnings) warnings.push({ kind: "broken-link", target: `bases view type '${view.type}' (only 'table' is supported)` });
-      blocks.push(errorBlock(`Bases: view type '${esc(view.type)}' is not supported (use 'table').`));
-      continue;
+    if (view.type === "table") {
+      blocks.push(renderTableView(view, baseRows, doc, context));
+    } else if (view.type === "cards") {
+      blocks.push(renderCardsView(view, baseRows, doc, context));
+    } else {
+      if (warnings) warnings.push({ kind: "broken-link", target: `bases view type '${view.type}'` });
+      blocks.push(errorBlock(`Bases: view type '${esc(view.type)}' is not supported.`));
     }
-    blocks.push(renderTableView(view, baseRows, doc, context));
   }
   return blocks.join("\n");
 }
@@ -518,6 +544,100 @@ function renderTableView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: 
     </table>
   </div>
 </div>`;
+}
+
+// ── Cards view ─────────────────────────────────────────────────────────────
+
+const COVER_IMG_RE = /!\[\[([^\[\]\n|#]+\.(?:png|jpe?g|webp|gif|svg|avif|tiff?))(?:\|[^\]]*)?\]\]/i;
+
+function renderCardsView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: RenderContext): string {
+  let rows = allRows;
+  if (view.filters) rows = rows.filter((row) => evalFilter(view.filters!, row));
+
+  // Default ordering: alphabetical by file.name.
+  rows = [...rows].sort((a, b) => compare(a.page.title, b.page.title));
+  if (view.limit && view.limit > 0) rows = rows.slice(0, view.limit);
+
+  // Up to 2 metadata fields shown under the title (skipping file.name).
+  const metaCols = (view.order ?? []).filter((c) => c !== "file.name").slice(0, 2);
+
+  const aspectStyle = view.imageAspectRatio ? `aspect-ratio: ${escAttr(view.imageAspectRatio)};` : "";
+  const fit = view.imageFit === "contain" ? "contain" : "cover";
+
+  const cards = rows.map((row) => {
+    const href = "/" + row.page.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/");
+    const cover = findCoverImage(row, view.image, context);
+    const coverHtml = cover
+      ? `<div class="bases-card-cover" style="${aspectStyle}background-image: url('${escAttr(cover)}'); background-size: ${fit}; background-position: center;"></div>`
+      : "";
+    const metaHtml = metaCols
+      .map((id) => renderValue(resolveIdentifier(id, row)))
+      .filter(Boolean)
+      .map((v) => `<div class="bases-card-meta">${v}</div>`)
+      .join("");
+    return `<a class="bases-card" href="${escAttr(href)}">
+      ${coverHtml}
+      <div class="bases-card-body">
+        <div class="bases-card-title">${esc(row.page.title)}</div>
+        ${metaHtml}
+      </div>
+    </a>`;
+  }).join("");
+
+  const caption = view.name ? `<div class="bases-caption">${esc(view.name)}</div>` : "";
+  return `<div class="bases-block bases-cards-block">
+  ${caption}
+  <div class="bases-toolbar">
+    <input type="search" class="bases-filter" placeholder="Filter…" aria-label="Filter cards">
+    <span class="bases-count" data-total="${rows.length}">${rows.length} ${rows.length === 1 ? "card" : "cards"}</span>
+  </div>
+  <div class="bases-cards">${cards}</div>
+</div>`;
+}
+
+/**
+ * Cover-image source for a card. Preference order:
+ *   1. The view's `image:` setting names a frontmatter property → use that.
+ *   2. Look for the first `![[image.ext]]` embed in the page body.
+ * Returns the served (post-compression) URL, or null.
+ */
+function findCoverImage(row: Row, prop: string | undefined, context: RenderContext): string | null {
+  let raw: string | null = null;
+  if (prop) {
+    const v = row.fm[prop];
+    if (typeof v === "string" && v.length > 0) raw = v;
+  }
+  if (!raw) {
+    // Look up the page's markdown source via context.markdownContent (keyed
+    // by basename or path slug; we use path slug for uniqueness).
+    const slug = slugifySimple(row.page.path.replace(/\.md$/i, ""));
+    const source = context.markdownContent.get(slug);
+    if (source) {
+      const m = COVER_IMG_RE.exec(source);
+      if (m && m[1]) raw = m[1];
+    }
+  }
+  if (!raw) return null;
+
+  // Strip a leading `![[` / trailing `]]` if the user set a wikilink-style
+  // value (`cover: ![[portrait.webp]]`), then look up in the image index.
+  raw = raw.replace(/^!\[\[/, "").replace(/\]\]$/, "").split("|")[0]!.trim();
+  const image = context.images.get(slugifySimple(raw.split("/").pop() || raw));
+  if (image) return "/" + image.outputPath.split("/").map(encodeURIComponent).join("/");
+  // Already a URL or path: use as-is.
+  return raw.startsWith("http") ? raw : "/" + raw.split("/").map(encodeURIComponent).join("/");
+}
+
+// Mirror the slugify in build.ts without taking a dependency on the renderer's
+// slug.ts (which imports from a sibling module). Same algorithm.
+function slugifySimple(s: string): string {
+  return s
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\.md$/i, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 interface Cell { html: string; raw: unknown; }

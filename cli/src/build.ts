@@ -127,14 +127,25 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
 
   const markdownFiles = withinLimit.filter((f) => /\.md$/i.test(f.path));
   const imageFiles = withinLimit.filter((f) => IMAGE_EXT_RE.test(f.path));
+  // .base files are consumed at build time (rendered into HTML where embedded)
+  // and never shipped to the deploy.
+  const baseFiles = withinLimit.filter((f) => /\.base$/i.test(f.path));
   const otherFiles = withinLimit.filter(
-    (f) => !/\.md$/i.test(f.path) && !IMAGE_EXT_RE.test(f.path),
+    (f) => !/\.md$/i.test(f.path) && !IMAGE_EXT_RE.test(f.path) && !/\.base$/i.test(f.path),
   );
 
   // ── Shared content (read once, reused across roles) ─────────────────────
   const sources = new Map<string, string>();
   await pMap(markdownFiles, concurrency, async (f) => {
     sources.set(f.path, await readFile(f.absolute, "utf8"));
+  });
+
+  // .base files: keyed by basename slug so `![[Foo]]` (where Foo.base exists)
+  // and `![[Foo#ViewName]]` resolve to the YAML source.
+  const baseSources = new Map<string, string>();
+  await pMap(baseFiles, concurrency, async (f) => {
+    const basename = f.path.split("/").pop()!.replace(/\.base$/i, "");
+    baseSources.set(slugify(basename), await readFile(f.absolute, "utf8"));
   });
 
   // Parse role + title per page. Pages with an unrecognised role fall back
@@ -262,6 +273,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       vaultName: opts.vaultName,
       allPageMetas,
       sources,
+      baseSources,
       imageIndex,
       imageStagingDir,
       otherFiles,
@@ -330,6 +342,8 @@ interface VariantArgs {
   vaultName: string;
   allPageMetas: PageMeta[];
   sources: Map<string, string>;
+  /** slugified basename → raw YAML for standalone `.base` files. */
+  baseSources: Map<string, string>;
   imageIndex: Map<string, ImageEntry>;
   /** Staging dir holding compressed images; we copy what's referenced. */
   imageStagingDir: string;
@@ -385,6 +399,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     pages: pageIndex,
     images: a.imageIndex,
     markdownContent,
+    bases: a.baseSources,
     defaultImageWidth: a.settings.default_image_width,
     redactRoles: a.redactRoles,
   };

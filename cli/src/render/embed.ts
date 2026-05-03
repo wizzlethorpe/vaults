@@ -6,6 +6,7 @@ import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import type { RenderContext, RenderWarning } from "./types.js";
 import { slugify } from "./slug.js";
+import { renderBase } from "./bases.js";
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?)$/i;
 const EMBED_INLINE_RE = /!\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]*))?\]\]/g;
@@ -38,6 +39,16 @@ export function embedPlugin(opts: {
       const [, rawName, rawAnchor] = m;
       const name = rawName!.trim();
       if (IMAGE_EXT_RE.test(name)) continue;
+
+      // ![[Foo]] or ![[Foo#ViewName]] — if Foo.base exists, render that
+      // base inline instead of looking up a page transclusion.
+      const baseSlug = slugify(name);
+      const baseSource = context.bases.get(baseSlug);
+      if (baseSource != null) {
+        const html = renderBase(baseSource, context, warnings, rawAnchor?.trim());
+        replacements.push({ index: i, node: { type: "html", value: html } as Html });
+        continue;
+      }
 
       replacements.push({ index: i, node: transcludePage(slugify(name), rawAnchor?.trim(), context, warnings, name) });
     }

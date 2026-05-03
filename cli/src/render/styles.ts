@@ -399,6 +399,49 @@ article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px soli
   font-size: 0.9rem;
 }
 
+/* Cards view */
+.bases-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  padding: 0.75rem;
+}
+.bases-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg);
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.bases-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.bases-card-cover {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background-color: color-mix(in srgb, var(--muted) 8%, transparent);
+}
+.bases-card-body {
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.bases-card-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+.bases-card-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 /* Auto-generated folder index pages */
 .folder-count { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.9rem; }
 .folder-listing { list-style: none; padding: 0; margin: 0; }

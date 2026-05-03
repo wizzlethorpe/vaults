@@ -1,6 +1,6 @@
 {
   "name": "@wizzlethorpe/vaults",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Sync an Obsidian vault to a Cloudflare-hosted wiki with role-based access. Renders locally, deploys to Cloudflare Pages.",
   "keywords": [
     "obsidian",
