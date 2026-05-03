@@ -7,13 +7,20 @@
 //
 // Both paths share the same parser + evaluator + view renderers.
 //
-// Supported (v2):
+// Supported (v3):
 //   - filters:   string expression OR { and|or|not: [expr|tree] } tree
-//   - views:     table | cards. table renders sortable HTML; cards
-//                renders a grid of clickable cards with cover image.
-//   - properties: { <id>: { displayName? } }
+//   - views:     table | cards | list. table is sortable; cards is a
+//                grid of clickable cards with cover images; list is a
+//                compact bulleted list.
+//   - sort:      [{ column, direction }] honored on every view type;
+//                multi-key (later entries break ties from earlier ones).
+//   - formulas:  top-level `formulas: { name: expr }` block. Reference
+//                as `formula.name` from order, filters, and other
+//                formulas. Memoized per row; cycles raise an error.
+//   - properties: { <id>: { displayName? } }; works for note.X,
+//                 file.X, and formula.X column ids.
 //   - identifiers: file.{name,basename,path,folder,ext,mtime,ctime,tags}
-//                  note.X / bare X (frontmatter)
+//                  note.X / bare X (frontmatter), formula.X
 //   - operators:  == != < <= > >= && || !  + (string concat / numeric add)
 //   - methods:    file.hasTag("..."), file.inFolder("..."),
 //                 stringValue.contains("..."), .startsWith, .endsWith,
@@ -22,8 +29,8 @@
 //   - cards-only: image: <prop>, imageFit: cover|contain, imageAspectRatio
 //
 // Deferred:
-//   - formulas, summaries, groupBy
-//   - list, map view types
+//   - summaries, groupBy
+//   - map view type
 //   - duration arithmetic (now() - "1 week" etc.)
 //
 // Unknown view types and unknown YAML keys are warned-on, not fatal —
@@ -60,8 +67,8 @@ interface BaseDoc {
   filters?: FilterTree;
   views?: ViewSpec[];
   properties?: Record<string, { displayName?: string }>;
-  // formulas / summaries: parsed but not evaluated in v1
   formulas?: Record<string, string>;
+  // summaries: parsed, not evaluated yet.
   summaries?: Record<string, string>;
 }
 type FilterTree =
@@ -102,6 +109,11 @@ export function renderBase(
   }
 
   const allRows = collectRows(context);
+  try {
+    setupFormulas(allRows, doc);
+  } catch (err) {
+    return errorBlock(`Formula error: ${(err as Error).message}`);
+  }
   let baseRows: Row[];
   try {
     baseRows = doc.filters ? allRows.filter((row) => evalFilter(doc.filters!, row)) : allRows;
@@ -120,13 +132,22 @@ export function renderBase(
 
   const blocks: string[] = [];
   for (const view of views) {
-    if (view.type === "table") {
-      blocks.push(renderTableView(view, baseRows, doc, context));
-    } else if (view.type === "cards") {
-      blocks.push(renderCardsView(view, baseRows, doc, context));
-    } else {
-      if (warnings) warnings.push({ kind: "broken-link", target: `bases view type '${view.type}'` });
-      blocks.push(errorBlock(`Bases: view type '${esc(view.type)}' is not supported.`));
+    try {
+      if (view.type === "table") {
+        blocks.push(renderTableView(view, baseRows, doc, context));
+      } else if (view.type === "cards") {
+        blocks.push(renderCardsView(view, baseRows, doc, context));
+      } else if (view.type === "list") {
+        blocks.push(renderListView(view, baseRows, doc));
+      } else {
+        if (warnings) warnings.push({ kind: "broken-link", target: `bases view type '${view.type}'` });
+        blocks.push(errorBlock(`Bases: view type '${esc(view.type)}' is not supported.`));
+      }
+    } catch (err) {
+      // Errors here come from formula evaluation, expression parsing, or
+      // bad sort keys; surface them inline so the rest of the page still
+      // renders rather than aborting the build.
+      blocks.push(errorBlock(`Bases: ${(err as Error).message}`));
     }
   }
   return blocks.join("\n");
@@ -137,6 +158,48 @@ export function renderBase(
 interface Row {
   page: PageMeta;
   fm: Record<string, unknown>;
+  /** Parsed formula expressions, shared across rows in the same base. */
+  formulaExprs?: Record<string, Expr>;
+  /** Per-row memoized formula results; values may be FORMULA_VISITING during eval. */
+  formulaCache?: Map<string, unknown>;
+}
+
+const FORMULA_VISITING = Symbol("formula-visiting");
+
+/**
+ * Parse the doc's formulas once and attach them to each row alongside an
+ * empty memo cache. Lazily evaluated by `resolveFormula` on first access.
+ */
+function setupFormulas(rows: Row[], doc: BaseDoc): void {
+  if (!doc.formulas) return;
+  const exprs: Record<string, Expr> = {};
+  for (const [k, v] of Object.entries(doc.formulas)) {
+    if (typeof v !== "string") continue;
+    try {
+      exprs[k] = parseExpr(v);
+    } catch (err) {
+      throw new Error(`'${k}': ${(err as Error).message}`);
+    }
+  }
+  for (const row of rows) {
+    row.formulaExprs = exprs;
+    row.formulaCache = new Map();
+  }
+}
+
+function resolveFormula(key: string, row: Row): unknown {
+  if (!row.formulaExprs || !row.formulaCache) return undefined;
+  const expr = row.formulaExprs[key];
+  if (!expr) return undefined;
+  if (row.formulaCache.has(key)) {
+    const v = row.formulaCache.get(key);
+    if (v === FORMULA_VISITING) throw new Error(`Formula cycle: ${key}`);
+    return v;
+  }
+  row.formulaCache.set(key, FORMULA_VISITING);
+  const value = evalExpr(expr, row);
+  row.formulaCache.set(key, value);
+  return value;
 }
 
 function collectRows(context: RenderContext): Row[] {
@@ -407,6 +470,7 @@ function compare(a: unknown, b: unknown): number {
 function resolveIdentifier(name: string, row: Row): unknown {
   if (name.startsWith("file.")) return fileProperty(name.slice(5), row);
   if (name.startsWith("note.")) return row.fm[name.slice(5)];
+  if (name.startsWith("formula.")) return resolveFormula(name.slice(8), row);
   // Bare identifier: resolve against frontmatter (Obsidian shorthand).
   return row.fm[name];
 }
@@ -513,14 +577,13 @@ function renderTableView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: 
   const columns = view.order && view.order.length > 0 ? view.order : ["file.name"];
   const labels = columns.map((id) => columnLabel(id, doc));
 
-  // Pre-compute every row's display + raw value per column.
+  // Apply view-level sort (or default to alphabetical by title) before
+  // materializing cells; sort needs raw values, not rendered HTML.
+  rows = applySort(rows, view.sort);
+
+  if (view.limit && view.limit > 0) rows = rows.slice(0, view.limit);
+
   const tbl = rows.map((row) => columns.map((id) => valueForColumn(id, row, context)));
-
-  // Default sort: by first column, ascending.
-  const sortIdx = 0;
-  tbl.sort((a, b) => compare(a[sortIdx]!.raw, b[sortIdx]!.raw));
-
-  if (view.limit && view.limit > 0) tbl.length = Math.min(tbl.length, view.limit);
 
   const header = labels.map((l, i) =>
     `<th data-col="${i}" tabindex="0">${esc(l)}</th>`
@@ -554,8 +617,7 @@ function renderCardsView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: 
   let rows = allRows;
   if (view.filters) rows = rows.filter((row) => evalFilter(view.filters!, row));
 
-  // Default ordering: alphabetical by file.name.
-  rows = [...rows].sort((a, b) => compare(a.page.title, b.page.title));
+  rows = applySort(rows, view.sort);
   if (view.limit && view.limit > 0) rows = rows.slice(0, view.limit);
 
   // Up to 2 metadata fields shown under the title (skipping file.name).
@@ -593,6 +655,66 @@ function renderCardsView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: 
   </div>
   <div class="bases-cards">${cards}</div>
 </div>`;
+}
+
+// ── List view ──────────────────────────────────────────────────────────────
+
+function renderListView(view: ViewSpec, allRows: Row[], doc: BaseDoc): string {
+  let rows = allRows;
+  if (view.filters) rows = rows.filter((row) => evalFilter(view.filters!, row));
+  rows = applySort(rows, view.sort);
+  if (view.limit && view.limit > 0) rows = rows.slice(0, view.limit);
+
+  // Optional inline meta after the title (joined with bullets).
+  const metaCols = (view.order ?? []).filter((c) => c !== "file.name");
+
+  const items = rows.map((row) => {
+    const href = "/" + row.page.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/");
+    const meta = metaCols
+      .map((id) => renderValue(resolveIdentifier(id, row)))
+      .filter(Boolean)
+      .join(' <span class="bases-list-sep">·</span> ');
+    const metaSpan = meta ? `<span class="bases-list-meta">${meta}</span>` : "";
+    return `<li><a class="internal internal-link" href="${escAttr(href)}">${esc(row.page.title)}</a>${metaSpan}</li>`;
+  }).join("");
+
+  // Keep `doc` in the signature for symmetry with the other view renderers,
+  // even though list rendering doesn't currently consult properties.
+  void doc;
+
+  const caption = view.name ? `<div class="bases-caption">${esc(view.name)}</div>` : "";
+  return `<div class="bases-block bases-list-block">
+  ${caption}
+  <ul class="bases-list">${items}</ul>
+</div>`;
+}
+
+// ── Sorting ────────────────────────────────────────────────────────────────
+
+/**
+ * Multi-key stable sort honoring `view.sort`. Each entry contributes one
+ * comparison; later entries break ties from earlier ones. Direction
+ * defaults to ASC. With no spec, sort alphabetically by page title so
+ * output stays deterministic regardless of which view first ran.
+ */
+function applySort(rows: Row[], spec: ViewSpec["sort"]): Row[] {
+  if (!spec || spec.length === 0) {
+    return [...rows].sort((a, b) => compare(a.page.title, b.page.title));
+  }
+  return [...rows].sort((a, b) => {
+    for (const s of spec) {
+      const av = sortKeyFor(s.column, a);
+      const bv = sortKeyFor(s.column, b);
+      const c = compare(av, bv);
+      if (c !== 0) return s.direction === "DESC" ? -c : c;
+    }
+    return 0;
+  });
+}
+
+function sortKeyFor(id: string, row: Row): unknown {
+  if (id === "file.name" || id === "file.basename") return row.page.title;
+  return resolveIdentifier(id, row);
 }
 
 /**
@@ -678,6 +800,7 @@ function columnLabel(id: string, doc: BaseDoc): string {
   const explicit = doc.properties?.[id]?.displayName;
   if (explicit) return explicit;
   if (id.startsWith("note.")) return id.slice(5);
+  if (id.startsWith("formula.")) return id.slice(8);
   if (id.startsWith("file.")) {
     const tail = id.slice(5);
     return tail.charAt(0).toUpperCase() + tail.slice(1);

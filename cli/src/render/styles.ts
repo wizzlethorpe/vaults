@@ -474,6 +474,26 @@ article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px soli
   color: var(--muted);
 }
 
+/* List view */
+.bases-list {
+  list-style: none;
+  padding: 0.25rem 0;
+  margin: 0;
+}
+.bases-list > li {
+  padding: 0.4rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.bases-list > li:last-child { border-bottom: none; }
+.bases-list-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.bases-list-sep { opacity: 0.5; }
+
 /* Auto-generated folder index pages */
 .folder-count { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.9rem; }
 .folder-listing { list-style: none; padding: 0; margin: 0; }
