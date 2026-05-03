@@ -228,6 +228,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // Shared CSS bundle
   const themeOverride = renderThemeOverride({
     lightAccent: settings.values.accent_color,
+    lightBg: settings.values.bg_color,
   });
   await writeFile(join(opts.outputDir, "styles.css"), DEFAULT_CSS + themeOverride);
   const userCss = await loadObsidianSnippets(opts.vaultPath);
@@ -235,12 +236,13 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   if (userCss) console.log(`  loaded user.css from .obsidian/snippets/`);
 
   // Favicon; either user-supplied via settings.favicon, or a generated
-  // default with the vault's first letter on the accent colour.
+  // default with the vault's first letter in accent on the theme background.
   try {
     const favicon = await buildFavicon({
       vaultPath: opts.vaultPath,
       faviconPath: settings.values.favicon,
       letter: (opts.vaultName || "V").trim().charAt(0).toUpperCase() || "V",
+      backgroundColor: settings.values.bg_color || "#f4ecd8",
       accentColor: settings.values.accent_color || "#a8201a",
     });
     await writeFile(join(opts.outputDir, "favicon.ico"), favicon);

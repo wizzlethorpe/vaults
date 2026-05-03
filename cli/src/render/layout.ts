@@ -170,7 +170,7 @@ function renderSitemap(pages: PageMeta[], currentPath: string): string {
   // <details> wrapper is the disclosure widget on mobile; CSS forces it
   // visible on desktop. EXPLORER_INIT_SCRIPT opens it after load on
   // wide viewports so the [open] state matches what the user sees.
-  return `<nav><details class="explorer"><summary>Explorer</summary><ul class="sitemap-list">${renderNode(root, "", currentPath)}</ul></details></nav>`;
+  return `<nav><details class="explorer"><summary class="toc-summary">Explorer</summary><ul class="sitemap-list">${renderNode(root, "", currentPath)}</ul></details></nav>`;
 }
 
 function renderNode(node: FolderNode, parentPath: string, currentPath: string): string {
@@ -221,7 +221,7 @@ function attr(s: string): string {
 const EXPLORER_INIT_SCRIPT = `<script>
 (function () {
   if (!window.matchMedia('(min-width: 1101px)').matches) return;
-  const explorer = document.querySelector('.sidebar > details.explorer');
+  const explorer = document.querySelector('.sidebar > nav > details.explorer');
   if (explorer) explorer.open = true;
 })();
 </script>`;
@@ -343,11 +343,15 @@ const AUTH_SCRIPT = `<script>
   const role = readCookie('vault_role_display');
   const next = encodeURIComponent(location.pathname + location.search + location.hash);
   if (role) {
+    box.classList.remove('auth-signed-out');
+    box.classList.add('auth-signed-in');
     box.innerHTML =
       '<div class="auth-status">Signed in as <strong>' + esc(role) + '</strong></div>' +
       '<a class="auth-action" href="/logout?next=' + next + '">Sign out</a>';
   } else {
-    box.innerHTML = '<a class="auth-action" href="/login.html?next=' + next + '">Sign in</a>';
+    box.classList.remove('auth-signed-in');
+    box.classList.add('auth-signed-out');
+    box.innerHTML = '<a class="auth-action auth-action-primary" href="/login.html?next=' + next + '">Sign in</a>';
   }
   function readCookie(name) {
     for (const part of document.cookie.split(/;\\s*/)) {

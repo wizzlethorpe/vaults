@@ -2,14 +2,24 @@
 // Single light theme: parchment + scarlet.
 
 /**
- * Per-vault accent override. When `accent_color` is set in settings.md,
- * append this block after DEFAULT_CSS so it wins. The derived shades
- * (--accent-soft, --wikilink-bg) are recomputed via color-mix so they
- * stay coherent with whatever color the user picked.
+ * Per-vault theme overrides. When `accent_color` or `bg_color` are set in
+ * settings.md, append this block after DEFAULT_CSS so it wins. The derived
+ * shades (--accent-soft, --wikilink-bg, --rule, etc) are recomputed via
+ * color-mix so they stay coherent with whatever colors the user picked.
  */
-export function renderThemeOverride(opts: { lightAccent: string }): string {
-  if (!opts.lightAccent) return "";
-  return "\n\n/* User accent override (settings.md) */\n" + accentBlock(":root", opts.lightAccent);
+export function renderThemeOverride(opts: { lightAccent?: string; lightBg?: string }): string {
+  const blocks: string[] = [];
+  if (opts.lightAccent) blocks.push(accentBlock(":root", opts.lightAccent));
+  if (opts.lightBg) blocks.push(bgBlock(":root", opts.lightBg));
+  if (!blocks.length) return "";
+  return "\n\n/* User theme overrides (settings.md) */\n" + blocks.join("\n");
+}
+
+function bgBlock(selector: string, color: string): string {
+  return `${selector} {
+  --bg: ${color};
+  --rule: color-mix(in srgb, ${color} 85%, #000);
+}`;
 }
 
 function accentBlock(selector: string, color: string): string {
@@ -46,7 +56,7 @@ article a.internal.new, article a.internal.is-unresolved { opacity: 0.7; font-st
    The sidebar's flex gap handles spacing; no extra margin or rule needed. */
 .sidebar > .brand {
   display: block; padding: 0 0.5rem;
-  font-weight: 700; font-size: 1.05rem; letter-spacing: 0.04em;
+  font-weight: 700; font-size: 1.25rem; letter-spacing: 0.04em;
   color: var(--fg); text-decoration: none;
 }
 .sidebar > .brand:hover { color: var(--accent); text-decoration: none; }
@@ -78,42 +88,20 @@ main { padding: 2rem 0 4rem; min-width: 0; }
    (the Explorer is always shown). On mobile it acts as a real disclosure
    widget so the long sitemap doesn't push the article off-screen. The
    default state is closed; an inline script in the layout opens it on
-   desktop after first paint. */
-.sidebar > details.explorer { margin: 0; }
-.sidebar > details.explorer > summary {
-  list-style: none;
-  cursor: pointer;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.5rem;
-  margin: 0 0 0.5rem;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  font-weight: 600;
-  border-radius: 3px;
+   desktop after first paint. The summary reuses the TOC styling so both
+   sidebars present the same dropdown affordance. */
+.sidebar > nav > details.explorer { margin: 0; }
+.sidebar > nav > details.explorer > .toc-summary {
+  margin-bottom: 0.5rem;
+  display: inline-flex;
 }
-.sidebar > details.explorer > summary::-webkit-details-marker { display: none; }
-.sidebar > details.explorer > summary::before {
-  content: ''; display: inline-block;
-  width: 5px; height: 5px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(-45deg);
-  transition: transform 0.15s ease;
-  opacity: 0.7;
-}
-.sidebar > details.explorer[open] > summary::before { transform: rotate(45deg); }
-.sidebar > details.explorer > summary:hover { color: var(--accent); }
+.sidebar > nav > details.explorer[open] > .toc-summary::before { transform: rotate(45deg); }
 @media (min-width: 1101px) {
   /* On desktop, force the Explorer to behave as if always open: hide the
      toggle affordance, and reveal the sitemap regardless of [open] state. */
-  .sidebar > details.explorer > summary { cursor: default; pointer-events: none; }
-  .sidebar > details.explorer > summary::before { display: none; }
-  .sidebar > details.explorer > .sitemap-list { display: block; }
+  .sidebar > nav > details.explorer > .toc-summary { cursor: default; pointer-events: none; }
+  .sidebar > nav > details.explorer > .toc-summary::before { display: none; }
+  .sidebar > nav > details.explorer > .sitemap-list { display: block; }
 }
 
 .search-box { position: relative; }
@@ -146,6 +134,67 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 .auth-box .auth-status strong { color: var(--accent); font-weight: 600; }
 .auth-box .auth-action { color: var(--accent); text-decoration: none; font-weight: 500; }
 .auth-box .auth-action:hover { text-decoration: underline; }
+
+/* Signed-out auth UI: present Sign in as a full-width button rather than
+   a lightweight text link. */
+.auth-box.auth-signed-out {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+}
+.auth-box .auth-action-primary {
+  width: 100%;
+  display: block;
+  text-align: center;
+  padding: 0.52rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.06s ease;
+}
+.auth-box .auth-action-primary:hover {
+  text-decoration: none;
+  background: var(--wikilink-bg);
+  border-color: var(--accent-soft);
+  color: var(--accent);
+}
+.auth-box .auth-action-primary:active { transform: translateY(1px); }
+
+/* Signed-in auth UI: keep status on the left and present Sign out as a
+   right-side action split by a divider. */
+.auth-box.auth-signed-in {
+  padding: 0.3rem 0.35rem 0.3rem 0.65rem;
+  flex-wrap: nowrap;
+  gap: 0;
+}
+.auth-box.auth-signed-in .auth-status {
+  flex: 1;
+  min-width: 0;
+  padding-right: 0.55rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.auth-box.auth-signed-in .auth-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0.32rem 0.6rem;
+  border-left: 1px solid var(--rule);
+  border-radius: 0;
+  text-decoration: none;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.auth-box.auth-signed-in .auth-action:hover {
+  text-decoration: none;
+  background: var(--wikilink-bg);
+}
 .search-result-summary {
   font-size: 0.78rem; color: var(--muted); margin-top: 0.25rem; line-height: 1.4;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;

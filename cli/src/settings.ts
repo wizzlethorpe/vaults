@@ -19,6 +19,7 @@ export interface Settings {
   center_images: boolean;
   default_role: string;
   accent_color: string;
+  bg_color: string;
   favicon: string;
 }
 
@@ -82,12 +83,19 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     description:
       "Override the accent color (links, headings, highlights). Any CSS color works: '#a8201a', 'crimson', 'rgb(168 32 26)'. Empty = use the built-in scarlet.",
   },
+  bg_color: {
+    default: "",
+    type: "string",
+    description:
+      "Override the background color. Any CSS color works: '#f4ecd8', 'wheat', 'rgb(244 236 216)'. Empty = use the built-in parchment.",
+  },
   favicon: {
     default: "",
     type: "string",
     description:
       "Vault-relative path to an image used as the site favicon (png/jpg/svg/webp). Empty = generated default with the vault's accent color.",
   },
+
 };
 
 export const SETTINGS_FILE = "settings.md";
