@@ -397,7 +397,13 @@ function evalExpr(e: Expr, row: Row): unknown {
       // Otherwise generic property access. Methods like .lower / .contains
       // are handled in `call` below; here we just unwrap the value.
       if (obj == null) return undefined;
-      if (typeof obj === "object" && !Array.isArray(obj)) {
+      if (typeof obj === "string" || Array.isArray(obj)) {
+        // Expose .length on strings and arrays so `name.length` works as
+        // a sort key without needing the explicit method-call form.
+        if (e.name === "length") return obj.length;
+        return undefined;
+      }
+      if (typeof obj === "object") {
         return (obj as Record<string, unknown>)[e.name];
       }
       return undefined;
