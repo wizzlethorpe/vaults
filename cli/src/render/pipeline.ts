@@ -11,17 +11,31 @@ import type { RenderContext, RenderWarning } from "./types.js";
 import { wikiLinkPlugin } from "./wikilink.js";
 import { embedPlugin } from "./embed.js";
 import { calloutPlugin } from "./callouts.js";
+import { basesPlugin } from "./bases.js";
 
 const sanitizeSchema = {
   ...defaultSchema,
   clobberPrefix: "",
+  // The Bases plugin emits a small filterable table; the default schema
+  // strips <input> and most data-* attributes, so we permit them here.
+  tagNames: [...(defaultSchema.tagNames ?? []), "input"],
   attributes: {
     ...defaultSchema.attributes,
     "*": [...(defaultSchema.attributes?.["*"] ?? []), "className"],
     img: ["src", "alt", "width", "height", "loading"],
     a: ["href", "title", "className", "id"],
     div: ["className", "data*"],
+    span: ["className", "data*"],
+    table: ["className"],
+    th: ["className", "data*", "tabindex"],
+    td: ["className", "data*"],
+    tr: ["className", "data*"],
+    input: ["type", "placeholder", "className", "ariaLabel"],
   },
+  // The default schema forces <input> to type=checkbox and disabled=true
+  // to safely render GFM task lists. We don't render task lists here, and
+  // the Bases filter input needs to be a writable search box, so reset.
+  required: { ...(defaultSchema.required ?? {}), input: {} },
 };
 
 export interface RenderResult {
@@ -58,6 +72,10 @@ export async function renderMarkdown(
     .use(remarkParse)
     .use(remarkGfm)
     .use(calloutPlugin({ redactRoles: context.redactRoles }))
+    // Bases runs before wikilink/embed: it consumes ```base code fences
+    // wholesale and emits raw HTML, so downstream plugins won't try to
+    // process anything inside the table.
+    .use(basesPlugin({ context, warnings }))
     .use(embedPlugin({ context, warnings }))
     .use(wikiLinkPlugin({ context, outlinks, warnings }))
     .use(remarkRehype, { allowDangerousHtml: true })

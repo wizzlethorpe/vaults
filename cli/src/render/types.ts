@@ -7,6 +7,8 @@ export interface PageMeta {
   role: string;
   /** Obsidian-style aliases; additional names that should resolve to this page. */
   aliases?: string[];
+  /** Full parsed frontmatter; used by the Bases plugin for property queries. */
+  frontmatter?: Record<string, unknown>;
   /** Unix-seconds; missing for synthesized folder indexes. */
   mtime?: number;
   birthtime?: number;

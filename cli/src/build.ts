@@ -137,11 +137,14 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     sources.set(f.path, await readFile(f.absolute, "utf8"));
   });
 
-  // Parse role + title per page. Pages with an unrecognised role fall back to
-  // the default with a warning; better than silently dropping them.
+  // Parse role + title per page. Pages with an unrecognised role fall back
+  // to the default with a warning; better than silently dropping them. We
+  // also stash the full frontmatter on each PageMeta so the Bases plugin
+  // can query arbitrary properties.
   const allPageMetas: PageMeta[] = markdownFiles.map((f) => {
     const src = sources.get(f.path)!;
     const meta = parseFrontmatter(src);
+    const fullFm = parseFullFrontmatter(src);
     let role = meta.role ?? defaultRole;
     if (!allRoleSet.has(role)) {
       console.warn(`  ${f.path}: role "${role}" not in settings.roles, using "${defaultRole}"`);
@@ -152,6 +155,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       title: meta.title ?? extractH1(src) ?? basenameNoExt(f.path),
       role,
       ...(meta.aliases && meta.aliases.length > 0 ? { aliases: meta.aliases } : {}),
+      ...(Object.keys(fullFm).length > 0 ? { frontmatter: fullFm } : {}),
       mtime: f.mtime,
       birthtime: f.birthtime,
     };
@@ -563,25 +567,74 @@ function generateFolderIndexes(existing: PageMeta[], _role: string): FolderIndex
   for (const [folder, { folders: subfolders, pages }] of folders) {
     const indexPath = folder === "" ? "index.md" : `${folder}/index.md`;
     if (existingPaths.has(indexPath)) continue;
-
-    const title = folder === "" ? "" : folder.split("/").pop()!;
-    const lines: string[] = [];
-    if (subfolders.size > 0) {
-      lines.push("");
-      const sorted = [...subfolders].sort((x, y) => x.localeCompare(y, undefined, { numeric: true, sensitivity: "base" }));
-      for (const sub of sorted) lines.push(`- [[${folder ? folder + "/" : ""}${sub}/index|${sub}]]`);
-    }
-    if (pages.length > 0) {
-      lines.push("");
-      const sorted = [...pages].sort((x, y) => x.title.localeCompare(y.title, undefined, { numeric: true, sensitivity: "base" }));
-      for (const p of sorted) lines.push(`- [[${p.path.replace(/\.md$/i, "")}|${p.title}]]`);
-    }
     if (subfolders.size === 0 && pages.length === 0) continue;
 
-    const heading = title ? `# ${title}\n` : "";
-    out.push({ path: indexPath, title: title || "Home", markdown: `${heading}${lines.join("\n")}\n` });
+    const title = folder === "" ? "" : folder.split("/").pop()!;
+    const sections: string[] = [];
+
+    if (subfolders.size > 0) {
+      const sorted = [...subfolders].sort((x, y) => x.localeCompare(y, undefined, { numeric: true, sensitivity: "base" }));
+      const bullets = sorted.map((sub) => `- [[${folder ? folder + "/" : ""}${sub}/index|${sub}]]`).join("\n");
+      sections.push(`## Subfolders\n\n${bullets}`);
+    }
+
+    if (pages.length > 0) {
+      const columns = chooseColumns(pages);
+      const orderYaml = columns.map((c) => `      - ${c}`).join("\n");
+      const propsYaml = columns
+        .filter((c) => c.startsWith("note."))
+        .map((c) => `  ${c}: { displayName: ${prettyLabel(c.slice(5))} }`)
+        .join("\n");
+      // Filter to direct children of this folder, excluding the auto-
+      // generated index page itself. JSON-encode the folder so a name
+      // with quotes/special chars survives.
+      const folderLiteral = JSON.stringify(folder);
+      const filtersBlock = `filters:\n  and:\n    - 'file.folder == ${folderLiteral}'\n    - 'file.name != "index"'`;
+      const propsBlock = propsYaml ? `properties:\n${propsYaml}\n` : "";
+      sections.push(`## Pages\n\n\`\`\`base\n${filtersBlock}\n${propsBlock}views:\n  - type: table\n    name: Contents\n    order:\n${orderYaml}\n\`\`\``);
+    }
+
+    const heading = title ? `# ${title}\n\n` : "";
+    out.push({ path: indexPath, title: title || "Home", markdown: `${heading}${sections.join("\n\n")}\n` });
   }
   return out;
+}
+
+/**
+ * Pick a small set of columns for an auto-generated folder index based on
+ * what frontmatter the pages in that folder actually have. The first
+ * column is always file.name; we then add any property that's set on
+ * ≥ 50% of the folder's pages, capped at 3 extras to keep the table
+ * legible. Falls back to file.mtime when no useful frontmatter exists.
+ */
+function chooseColumns(pages: PageMeta[]): string[] {
+  const counts = new Map<string, number>();
+  for (const page of pages) {
+    const fm = page.frontmatter ?? {};
+    for (const key of Object.keys(fm)) {
+      // Skip control / display keys that aren't meaningful as columns.
+      if (["title", "role", "aliases", "tags"].includes(key)) continue;
+      const v = fm[key];
+      if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  const threshold = Math.ceil(pages.length / 2);
+  const popular = [...counts.entries()]
+    .filter(([, n]) => n >= threshold)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 3)
+    .map(([k]) => `note.${k}`);
+  return popular.length > 0 ? ["file.name", ...popular] : ["file.name", "file.mtime"];
+}
+
+/** snake_case_or-dashed → "Title Cased Words" for column headers. */
+function prettyLabel(raw: string): string {
+  return raw
+    .split(/[_\-\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 async function compressImageCached(
@@ -617,6 +670,25 @@ function parseFrontmatter(source: string): PageFrontmatter {
     ...(roleMatch?.[1] ? { role: roleMatch[1] } : {}),
     ...({ aliases: parseAliases(fm) }),
   };
+}
+
+/**
+ * Full YAML frontmatter, used by the Bases plugin so any property a user
+ * defines (location, status, npc-class, etc.) is queryable. We delegate
+ * to gray-matter so we get real YAML rather than the regex-narrow set
+ * `parseFrontmatter` extracts.
+ */
+function parseFullFrontmatter(source: string): Record<string, unknown> {
+  if (!source.startsWith("---")) return {};
+  try {
+    const data = matter(source).data;
+    return (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+  } catch {
+    // Malformed YAML; the existing parseFrontmatter is more forgiving for
+    // the title/role/aliases keys we actually need. Return empty here so
+    // the page still renders.
+    return {};
+  }
 }
 
 /**

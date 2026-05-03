@@ -330,6 +330,75 @@ article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px soli
 /* 404 page; leans on the standard article layout but bumps the lead text. */
 .lead-404 { font-size: 1.05rem; color: var(--muted); margin-top: 0.5rem; }
 
+/* Obsidian Bases tables */
+.bases-block {
+  margin: 1rem 0;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--muted) 4%, transparent);
+}
+.bases-caption {
+  padding: 0.55rem 0.85rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-bottom: 1px solid var(--rule);
+}
+.bases-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+}
+.bases-filter {
+  flex: 1;
+  padding: 0.4rem 0.65rem;
+  font: inherit; font-size: 0.85rem;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+.bases-filter:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--wikilink-bg);
+}
+.bases-count { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.bases-scroll { overflow-x: auto; }
+.bases-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin: 0;
+}
+.bases-table thead th {
+  text-align: left;
+  padding: 0.5rem 0.85rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.bases-table thead th:hover { color: var(--accent); }
+.bases-table thead th[aria-sort="ascending"]::after { content: " ▲"; font-size: 0.7em; opacity: 0.7; }
+.bases-table thead th[aria-sort="descending"]::after { content: " ▼"; font-size: 0.7em; opacity: 0.7; }
+.bases-table tbody td {
+  padding: 0.45rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+.bases-table tbody tr:last-child td { border-bottom: none; }
+.bases-table tbody tr[hidden] { display: none; }
+.bases-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--muted) 4%, transparent); }
+.bases-error {
+  padding: 0.75rem 0.85rem;
+  color: #b94a3a;
+  font-size: 0.9rem;
+}
+
 /* Auto-generated folder index pages */
 .folder-count { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.9rem; }
 .folder-listing { list-style: none; padding: 0; margin: 0; }

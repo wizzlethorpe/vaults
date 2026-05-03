@@ -37,8 +37,10 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@types/js-yaml": "^4.0.9",
     "commander": "^12.1.0",
     "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.1",
     "mdast-util-find-and-replace": "^3.0.1",
     "picomatch": "^4.0.2",
     "rehype-raw": "^7.0.0",

@@ -85,6 +85,7 @@ ${TOC_SCRIPT}
 ${SEARCH_SCRIPT}
 ${LIGHTBOX_SCRIPT}
 ${AUTH_SCRIPT}
+${BASES_SCRIPT}
 </body>
 </html>`;
 }
@@ -448,5 +449,65 @@ const SEARCH_SCRIPT = `<script>
   document.addEventListener('click', (e) => {
     if (e.target !== input && !results.contains(e.target)) results.style.display = 'none';
   });
+})();
+</script>`;
+
+const BASES_SCRIPT = `<script>
+(function () {
+  // Wire each .bases-block on the page: click a header to toggle sort,
+  // type into the filter to narrow visible rows. The renderer emits a
+  // data-raw attribute on each <td> with the canonical sort key, so this
+  // script doesn't need to re-derive types from the rendered text.
+  for (const block of document.querySelectorAll('.bases-block')) {
+    const tbody = block.querySelector('tbody');
+    if (!tbody) continue;
+    const allRows = [...tbody.querySelectorAll('tr')];
+    const filterInput = block.querySelector('.bases-filter');
+    const counter = block.querySelector('.bases-count');
+
+    let sortCol = -1;
+    let sortDir = 1; // 1 asc, -1 desc
+
+    const applySort = () => {
+      if (sortCol < 0) return;
+      const sorted = [...allRows].sort((a, b) => {
+        const av = a.children[sortCol] ? a.children[sortCol].dataset.raw || a.children[sortCol].textContent : '';
+        const bv = b.children[sortCol] ? b.children[sortCol].dataset.raw || b.children[sortCol].textContent : '';
+        const an = parseFloat(av), bn = parseFloat(bv);
+        if (!isNaN(an) && !isNaN(bn)) return (an - bn) * sortDir;
+        return av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' }) * sortDir;
+      });
+      sorted.forEach((tr) => tbody.appendChild(tr));
+    };
+
+    const applyFilter = () => {
+      const q = filterInput ? filterInput.value.trim().toLowerCase() : '';
+      let visible = 0;
+      for (const tr of allRows) {
+        const match = !q || tr.textContent.toLowerCase().includes(q);
+        if (match) { tr.removeAttribute('hidden'); visible++; }
+        else tr.setAttribute('hidden', '');
+      }
+      if (counter) {
+        const total = counter.dataset.total;
+        counter.textContent = q
+          ? visible + ' of ' + total + ' rows'
+          : total + ' ' + (total === '1' ? 'row' : 'rows');
+      }
+    };
+
+    block.querySelectorAll('thead th').forEach((th, i) => {
+      th.addEventListener('click', () => {
+        if (sortCol === i) sortDir = -sortDir;
+        else { sortCol = i; sortDir = 1; }
+        block.querySelectorAll('thead th').forEach((other, j) => {
+          other.setAttribute('aria-sort', j === sortCol ? (sortDir === 1 ? 'ascending' : 'descending') : 'none');
+        });
+        applySort();
+      });
+    });
+
+    if (filterInput) filterInput.addEventListener('input', applyFilter);
+  }
 })();
 </script>`;
