@@ -3,9 +3,12 @@
 # directory so you can test changes without cutting a release.
 #
 # Usage:
-#   ./dev-install.sh                          # uses $FOUNDRY_MODULES_DIR
+#   ./dev-install.sh                          # uses $FOUNDRY_MODULES_DIR (also read from .env)
 #   ./dev-install.sh /path/to/Data/modules    # explicit path
 #   FOUNDRY_MODULES_DIR=/path ./dev-install.sh
+#
+# Set FOUNDRY_MODULES_DIR in .env (gitignored) so your local Foundry path
+# doesn't get committed. See .env.example for the template.
 #
 # On WSL, the user's Windows-portable Foundry path
 #   C:\Users\you\FoundryVTT-WindowsPortable-14.x\Data\modules
@@ -22,10 +25,27 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-DEFAULT_DIR="${FOUNDRY_MODULES_DIR:-/mnt/c/Users/jared/FoundryVTT-WindowsPortable-14.359/Data/modules}"
-TARGET_BASE="${1:-$DEFAULT_DIR}"
+# Pick up FOUNDRY_MODULES_DIR (and any other dev-only env) from .env if it
+# exists. set -a auto-exports so the assignments propagate to the rest of
+# this script without us re-exporting each one by name.
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . .env
+  set +a
+fi
+
+TARGET_BASE="${1:-$FOUNDRY_MODULES_DIR}"
 
 command -v jq >/dev/null 2>&1 || { echo -e "${RED}Error: jq is required${NC}" >&2; exit 1; }
+
+if [ -z "$TARGET_BASE" ]; then
+  echo -e "${RED}Error: no target directory configured.${NC}" >&2
+  echo "" >&2
+  echo "Set FOUNDRY_MODULES_DIR in .env (copy .env.example), export it," >&2
+  echo "or pass the path as an argument." >&2
+  exit 1
+fi
 
 if [ ! -d "$TARGET_BASE" ]; then
   echo -e "${RED}Error: target directory does not exist:${NC}" >&2

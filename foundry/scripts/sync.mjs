@@ -7,6 +7,7 @@ import { fetchManifest, fetchSourceBatch } from "./api.mjs";
 import { upsertFile, deleteFile } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
+import { applyReskin } from "./reskin.mjs";
 import { getVault, updateVault } from "./vaults.mjs";
 
 export async function sync(vaultId, { forceFull = false } = {}) {
@@ -35,6 +36,12 @@ export async function sync(vaultId, { forceFull = false } = {}) {
 
   const bodyPaths = manifest.files.filter((f) => f.path.endsWith(".body.html")).map((f) => f.path);
   const pathIndex = buildPathIndex(manifest.files);
+  // Per-body reskin metadata (foundry_base UUID, override block, image URL).
+  // Only present on pages that opted in; the rest skip applyReskin entirely.
+  const bodyMetaIndex = new Map();
+  for (const f of manifest.files) {
+    if (f.meta && f.path.endsWith(".body.html")) bodyMetaIndex.set(f.path, f.meta);
+  }
 
   const toUpsert = bodyPaths.filter((p) => remote.get(p) !== local.get(p));
   const toDelete = [...local.keys()].filter((p) => p.endsWith(".body.html") && !remote.has(p));
@@ -74,7 +81,7 @@ export async function sync(vaultId, { forceFull = false } = {}) {
 
   // Foundry's data layer doesn't love concurrent JournalEntry.create calls
   // on the same world, and the bottleneck has moved off the network.
-  let added = 0, modified = 0;
+  let added = 0, modified = 0, reskinned = 0;
   for (const bodyPath of toUpsert) {
     const html = bodies.get(bodyPath);
     if (html == null) {
@@ -85,6 +92,17 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     try {
       const result = await upsertFile(vault, logicalPath, html, pathIndex);
       if (result === "added") added++; else modified++;
+      // Reskin runs after the JournalEntryPage exists so @Embed[…] resolves
+      // on first render. No-ops for pages without foundry_base in their meta.
+      const pageMeta = bodyMetaIndex.get(bodyPath);
+      if (pageMeta?.foundry_base) {
+        try {
+          await applyReskin(vault, logicalPath, pageMeta);
+          reskinned++;
+        } catch (err) {
+          console.warn(`Vaults | reskin failed for ${logicalPath}:`, err);
+        }
+      }
     } catch (err) {
       console.warn(`Vaults | upsert failed for ${logicalPath}:`, err);
     }
@@ -105,4 +123,5 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     console.info(`Vaults | ${vault.label} images: ${imageStats.downloaded} downloaded, ${imageStats.removed} removed`
       + (imageStats.errors ? `, ${imageStats.errors} failed` : ""));
   }
+  if (reskinned > 0) console.info(`Vaults | ${vault.label} reskinned ${reskinned} document(s) from foundry_base.`);
 }
