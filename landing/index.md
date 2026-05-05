@@ -4,16 +4,9 @@ title: Wizzlethorpe Vaults
 
 # Wizzlethorpe Vaults
 
-A CLI that turns an Obsidian vault into a self-hosted, role-gated wiki on
-your own Cloudflare account. **This page is itself a deployed Vault** —
-every feature you read about works live, right here. Poke around, sign in
-at higher tiers, view source, then [grab the CLI](https://github.com/wizzlethorpe/vaults-cli)
-and ship your own.
+A tool that turns an Obsidian vault into a self-hosted, role-gated wiki on your own Cloudflare account. **This page is itself a deployed Vault**. Every feature you read about works live, right here. Poke around, sign in at higher tiers, view source, then [grab the CLI](https://github.com/wizzlethorpe/vaults-cli) and deploy your own!
 
-The vault is themed around the fictional Mossfoot Inn so the demo
-content has some narrative weight; it's the same authoring pattern you'd
-use for a campaign wiki, a public knowledge base, a patron-supported
-worldbuilding project, or whatever else.
+This vault is themed around the fictional Mossfoot Inn. It's the same authoring pattern you'd use for a campaign wiki, a public knowledge base, a patron-supported worldbuilding project, or whatever else.
 
 > [!info] Try the role gating
 > This vault has three tiers: **public**, **patron**, and **dm**. You're
