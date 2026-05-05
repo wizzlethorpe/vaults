@@ -4,10 +4,7 @@ title: Passthrough files
 
 # Passthrough files
 
-Audio, video, PDFs, EPUBs — files the build doesn't render but ships to
-the deploy alongside the wiki. They follow the same per-variant gating
-contract as images: a file lands in a deploy variant **only if a visible
-page in that variant references it**.
+Audio, video, PDFs, EPUBs (files the build doesn't currently render) deploy alongside the wiki. They follow the same per-variant gating as images: a file lands in a deploy variant **only if a visible page in that variant references it**.
 
 ## Recognised extensions
 
@@ -17,7 +14,7 @@ page in that variant references it**.
 | Video | `.mp4`, `.webm`, `.mov`, `.ogv` |
 | Documents | `.pdf`, `.epub` |
 
-Anything else is treated as **unknown** — see the bottom of this page.
+Anything else is treated as **unknown** (see the bottom of this page).
 
 ## How references are detected
 
@@ -33,28 +30,9 @@ target variant matches one, the file ships to that variant:
 If you want an audio file gated to the DM tier, just reference it from a
 DM-only page (or a DM-only callout). The build does the rest.
 
-## Live demo: this audio cue
+## Example
 
-This page links to [tavern-jingle.ogg](../Audio/tavern-jingle.ogg) — a
-short 17 KB OGG. Because this page is `public` (no `role:` frontmatter
-override), the file ships to all three deploy variants. View
-`/Audio/tavern-jingle.ogg` directly: it loads.
-
-## Verifying the gating
-
-```bash
-# Build the vault to a temp dir
-vaults build --output /tmp/out
-
-# At each tier, only the audio referenced by visible pages should appear.
-ls /tmp/out/_variants/public/Audio/
-ls /tmp/out/_variants/patron/Audio/
-ls /tmp/out/_variants/dm/Audio/
-```
-
-If you wrap an audio embed inside a `> [!dm]` callout in an otherwise-public
-page, the callout AND the file disappear from the public/patron variants —
-the page renders without them, and the file structurally doesn't ship.
+This page links to [tavern-jingle.ogg](../Audio/tavern-jingle.ogg), a short 17 KB OGG. Because this page is `public` (no `role:` frontmatter override), the file ships to all three deploy variants.
 
 ## Unknown extensions
 
@@ -74,22 +52,15 @@ bypass role gating. To opt in, add this to `settings.md`:
 include_unknown_files: true
 ```
 
-When enabled, unknown-extension files join the passthrough pool — they
-still need to be referenced by a visible page (in the target variant)
-to ship. The role gating contract isn't relaxed; only the recognition
-gate is.
+When enabled, unknown-extension files join the passthrough pool. They still need to be referenced by a visible page (in the target variant) to deploy.
 
 ## What about HTTP-referenced files?
 
-`<a href="/audio/foo.ogg">` and similar raw-HTML references are NOT
-detected by the scanner — only markdown-level patterns are. If you need
-to reference a file from raw HTML, also add a markdown-level reference
-elsewhere on the page (or inside a comment):
+`<a href="/audio/foo.ogg">` and similar raw-HTML references are NOT detected by the scanner. Only markdown-level patterns are. If you need to reference a file from raw HTML, also add a markdown-level reference elsewhere on the page (or inside a comment):
 
 ```markdown
 <!-- ![[foo.ogg]] -->
 <a href="/Audio/foo.ogg">play me</a>
 ```
 
-The HTML comment ensures the file is shipped without affecting the
-rendered output.
+The HTML comment ensures the file is shipped without affecting the rendered output.

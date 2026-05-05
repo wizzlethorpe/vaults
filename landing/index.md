@@ -5,9 +5,8 @@ image: wizzlethorpe.webp
 
 # Wizzlethorpe Vaults
 
-A tool that turns an Obsidian vault into a self-hosted, role-gated wiki on your own Cloudflare account. **This page is itself a deployed Vault**. Every feature you read about works live, right here. Poke around, sign in at higher tiers, view source, then [grab the CLI](https://github.com/wizzlethorpe/vaults-cli) and deploy your own!
+Wizzlethorpe Vaults is a tool that turns an Obsidian vault into a self-hosted, role-gated, FoundryVTT-importable wiki on your own (free-tier) Cloudflare account. **This page is itself a deployed Vault**. Every feature you read about works live, right here. Poke around, sign in at higher tiers, view source, then [grab the CLI](https://github.com/wizzlethorpe/vaults-cli) and deploy your own!
 
-This vault is themed around the fictional Mossfoot Inn. It's the same authoring pattern you'd use for a campaign wiki, a public knowledge base, a patron-supported worldbuilding project, or whatever else.
 
 > [!info] Try the role gating
 > This vault has three tiers: **public**, **patron**, and **dm**. You're
@@ -37,7 +36,7 @@ This vault is themed around the fictional Mossfoot Inn. It's the same authoring 
 
 ## A small cast
 
-A live Bases cards view filtered to NPCs, sorted by name. The same
+A live [Obsidian Bases](https://obsidian.md/help/bases) cards view filtered to NPCs, sorted by name. The same
 authoring pattern works for items, locations, sessions, anything you can
 give consistent frontmatter. The eponymous [[Dr. Bixby Wizzlethorpe]] is
 in the back booth.
@@ -49,7 +48,7 @@ See more about support for Obsidian bases functionality in [[Features/Bases]].
 
 ## Audio + passthrough files
 
-This vault includes [tavern-jingle.ogg](Audio/tavern-jingle.ogg) to demonstrate how files that are not (currently) rendered into the wiki are handled. These include audio, video, PDFs, and EPUBs files. These files are included in the deploy **only into variants whose visible pages reference them**, just like images. A DM-only audio cue can't accidentally leak to public visitors. See [[Features/Passthrough files]] for more details.
+This vault includes [tavern-jingle.ogg](Audio/tavern-jingle.ogg) to demonstrate how files that are not (currently) rendered into the wiki are handled. These include audio, video, PDFs, and EPUBs files. These files are included in the deploy **only into variants whose visible pages reference them**, just like images. See [[Features/Passthrough files]] for more details.
 
 ## Try it in Foundry VTT
 
@@ -59,21 +58,20 @@ The companion module syncs this vault into a Foundry world: every page becomes a
 > 1. Install the **Wizzlethorpe Vaults** module: in Foundry → *Add-on
 >    Modules* → *Install Module* → paste the manifest URL
 >    `https://github.com/wizzlethorpe/vaults-foundry/releases/latest/download/module.json`.
->    Or grab it from [the GitHub releases](https://github.com/wizzlethorpe/vaults-foundry/releases).
 > 2. In a dnd5e world, enable the module and click the
 >    **Sync Vault** button on the Journal Directory.
 > 3. **Add Vault** → paste `https://test.vaults.wizzlethorpe.com` →
 >    settings dialog opens with the deploy's name pre-filled.
-> 4. Click **Sync**. The public tier imports immediately — no token needed.
+> 4. Click **Sync**, by default, this imports the public tier.
 >    You'll get [[Aelar]] and [[Bram]] as world Actors (cloned from SRD
 >    Scout + Commoner) and [[Healing Potion]] as a world Item.
-> 5. Click **Connect** → enter `dm-pass` to elevate. The next sync brings
->    in the DM-only [[Hidden Caves]] page and the patron/DM callouts.
-> 6. Open the per-vault settings, set **DM role** to `dm`. Now public-tier
->    journals import as player-visible (Observer ownership); patron + dm
->    pages stay GM-only.
+> 5. Click **Authenticate** and log in as the `dm` role. The next sync brings
+>    in the DM-only [[Hidden Caves]] page and the DM callouts.
+> 6. Open the per-vault settings, set **DM role** to `dm`. Now public- 
+>    and patron-tier journals import as player-visible (Observer ownership); 
+>    dm pages stay GM-only.
 
-The page-driven Actor/Item descriptions render the wiki article inline via Foundry's `@Embed[…]` enricher, so editing a page and re-syncing updates the doc's description automatically. User edits to other fields (HP, conditions, custom journals) survive future incremental syncs. See [[Features/Foundry integration]] for more details.
+The page-driven Actor/Item descriptions render the wiki article inline via Foundry's `@Embed[…]` enricher, so editing a page and re-syncing updates the doc's description automatically.
 
 ## Set up your own vault
 

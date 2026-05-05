@@ -48,7 +48,7 @@ views:
 
 Two views were declared (`Roster` cards + `Stats` table); both render in
 order. Each card's cover image comes from the page's `image:` frontmatter
-(falling back to body auto-discovery — see [[Images]]).
+(falling back to body auto-discovery; see [[Images]]).
 
 ## View types
 
@@ -57,9 +57,6 @@ order. Each card's cover image comes from the page's `image:` frontmatter
 | `table` | Spreadsheet-style. Good for stat blocks, item indexes. |
 | `cards` | Visual grid with cover images. Good for NPC rosters, location galleries. |
 | `list` | Compact bullet list with optional metadata. Good for changelogs, link catalogues. |
-
-Multiple views in one Base render as a sequence; the user doesn't tab
-between them.
 
 ## Filtering
 

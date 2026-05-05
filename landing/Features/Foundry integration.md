@@ -11,8 +11,8 @@ JournalEntry + JournalEntryPage, every wikilink rewrites to a
 the world's local data dir.
 
 Pages can additionally **clone a compendium document** into the world by
-setting `foundry_base: <UUID>` in frontmatter — useful for NPCs and items
-that need real Foundry mechanics, not just journal text.
+setting `foundry_base: <UUID>` in frontmatter. This is useful for NPCs and 
+items that need real Foundry mechanics, not just journal text.
 
 ## What gets synced
 
@@ -26,7 +26,7 @@ that need real Foundry mechanics, not just journal text.
 
 ## Actor / Item cloning via `foundry_base`
 
-Set `foundry_base` to any document UUID — usually a compendium document
+Set `foundry_base` to any document UUID, usually a compendium document
 like an SRD monster or magic item:
 
 ```yaml
@@ -45,25 +45,37 @@ foundry:
 
 On sync, the Foundry module:
 
-1. Calls `fromUuid(foundry_base)` to load the template (compendium docs work fine).
+1. Calls `fromUuid(foundry_base)` to load the template.
 2. Clones it into the world under a **deterministic id** derived from
-   `(vault.id, page.path)` — re-syncs update the same doc rather than
+   `(vault.id, page.path)` and re-syncs update the same doc rather than
    creating duplicates.
 3. Layers on the page-driven defaults: `name` ← page title, `img` ← cover
    image, description ← `@Embed[…]` of the page's JournalEntryPage.
 4. Deep-merges the `foundry:` override block on top, so HP/CR/etc. land
-   exactly where the user wants.
+   exactly where they are supposed to.
 
-The result is a real, mechanically-functional Actor (or Item) whose
-description embeds the wiki article. Edit the page → re-sync → the
-actor's description updates. Edit the actor's HP in Foundry → the next
-sync preserves it (we only overwrite the canonical fields + your
-`foundry:` overrides).
+The result is an Actor (or Item) whose description embeds the wiki article. Edit the actor's HP in Foundry → the next sync preserves it (we only overwrite the canonical fields + your `foundry:` overrides).
 
 In this vault:
 - [[Aelar]] clones SRD Scout
 - [[Bram]] clones SRD Commoner
 - [[Healing Potion]] clones SRD Potion of Healing
+
+
+![[screenshot-fvtt-actor-aelar-galanodel.webp]]
+
+[[Aelar]] in dnd5e: note the "A" portrait synced from the vault, the page's title used as the document name, and the HP override (22/30) reflecting the `foundry:` block.
+
+---
+
+![[screenshot-fvtt-item-potion-of-healing.webp]]
+
+[[Healing Potion]] as a cloned dnd5e item: title from the page's
+frontmatter, the article body embedded as the description, the
+`foundry.system.description.chat` override visible in the chat
+description block.
+
+---
 
 ## Per-vault dmRole setting
 
@@ -82,7 +94,7 @@ Set this in the per-vault settings dialog after the first sync.
 
 ### Hiding role-gated callouts inside player-visible pages
 
-A page like [[Aelar]] is `role: public`, so it imports as player-visible —
+A page like [[Aelar]] is `role: public`, so it imports as player-visible,
 but it contains `[!dm]` and `[!patron]` callouts that the GM authored for
 themselves. Without protection, players viewing the journal would see those
 callouts even though the wiki strips them at lower tiers.
@@ -92,46 +104,20 @@ The module solves this by wrapping each role-gated callout whose tier is
 block during sync. Foundry's renderer hides secret sections from non-GMs
 at view time, so:
 
-- **GM** sees the full callout (with the standard "secret" visual marker).
+- **GM** sees the full callout (with the standard "secret" visual marker
+  and a "REVEAL" toggle to flip it to player-visible if they want).
 - **Players** with Observer ownership see the journal but **not** the secret
-  sections — the structurally-stored HTML hides them at render time, not
+  sections. The structurally-stored HTML hides them at render time, not
   with CSS.
+
+[[Bram]]'s journal as the GM sees it. The `[!dm]` callout from the
+markdown is wrapped in a Foundry secret block (the dimmed "DM ONLY"
+section with the REVEAL divider), invisible to OBSERVER-tier players:
+
+![[screenshot-fvtt-journal-bram-mossfoot.webp]]
 
 Same gate applies to Actor / Item descriptions that embed the journal page
 via `@Embed[…]`: the embed expansion fans out through the page's HTML, so
 secret sections inside it stay secret in the doc sheet too.
 
 Force-sync after changing `dmRole` to re-wrap previously-imported pages.
-
-## Public + protected vaults
-
-The module supports both:
-
-- **Public vaults** (single-role): no auth, no `/connect` flow. Direct
-  CDN GETs replace the `/_batch` endpoint, which doesn't exist on
-  pure-static deploys.
-- **Protected vaults** (multi-role): the connect button issues a bearer
-  token tied to a chosen role; sync uses that role's variant. Without a
-  token, the module syncs the public tier.
-
-Either way, "Sync" is always available. Connect is opt-in for elevation.
-
-## Sync flow
-
-1. Add a vault by URL.
-2. Module probes `/_manifest.json` to learn the deploy's roles + the
-   vault's display name.
-3. Settings dialog opens (label, root folder, dmRole all pre-filled).
-4. Click **Sync** — module fetches changed bodies via `/_batch`, downloads
-   new images via `/_batch-images`, upserts journals + clones any
-   `foundry_base` documents.
-5. Subsequent syncs are incremental — the manifest's per-file MD5 hashes
-   tell the module exactly what changed, including frontmatter-only edits
-   (the hash folds in the body meta).
-
-## Where to get it
-
-[github.com/wizzlethorpe/vaults-foundry](https://github.com/wizzlethorpe/vaults-foundry).
-Compatible with Foundry V13+ (verified on V14). dnd5e is the only system
-with first-class `foundry_base` support today; other systems will clone
-the template but skip the description-embed step.

@@ -6,12 +6,11 @@ title: Wikilinks
 
 Vaults supports the same `[[Page Name]]` wikilink syntax as Obsidian, with
 some Obsidian-flavored extensions. Resolution happens at build time, so
-broken links surface as warnings during `vaults push` — they don't 404 in
-production.
+broken links surface as warnings during `vaults push`.
 
 ## Basic forms
 
-The most common form is just the page's basename — folders don't need to
+The most common form is just the page's basename. Folders don't need to
 appear in the link:
 
 | Markdown | Renders as |
@@ -56,19 +55,12 @@ The same syntax with a leading `!` embeds an image:
 ## Cross-tier behavior
 
 Wikilinks to pages above your role tier render as **broken** rather than
-working anchors. This is structural — the lower-tier build has no record
+working anchors. This is structural: the lower-tier build has no record
 of the higher-tier page existing, so even guessing the URL would 404. Try
 this page at each tier to compare:
 
 > [!patron] Patron-only
-> Linked here: [[Witchwood Cult]] — works for you, broken for public visitors.
+> Linked here: [[Witchwood Cult]]. works for you, broken for public visitors.
 
 > [!dm] DM-only
-> Linked here: [[Hidden Caves]] — works for the DM, broken for everyone else.
-
-## What gets rendered for unresolved links
-
-When a wikilink can't be resolved, the renderer emits an `is-unresolved`
-span instead of an anchor. Lower-tier readers see the link as plain
-muted-styled text; their browser can't navigate to it. This is the same
-hook Obsidian itself uses for broken-link styling.
+> Linked here: [[Hidden Caves]]. works for the DM, broken for everyone else.
