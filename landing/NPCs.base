@@ -1,0 +1,24 @@
+filters:
+  and:
+    - 'file.folder == "NPCs"'
+    - 'file.name != "index"'
+properties:
+  note.role-class: { displayName: Class }
+  note.location: { displayName: Location }
+views:
+  - type: cards
+    name: Roster
+    image: image
+    imageFit: cover
+    imageAspectRatio: 1
+    order:
+      - file.name
+      - note.role-class
+      - note.location
+  - type: table
+    name: Stats
+    order:
+      - file.name
+      - note.role-class
+      - note.cr
+      - note.location
