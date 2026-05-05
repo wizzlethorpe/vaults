@@ -34,21 +34,13 @@ he's hiding from someone.
 - Carries a [[Healing Potion]] for emergencies, and three more for
   experiments.
 
-## Why his name is on this software
-
-Bixby is the canon namesake of *Wizzlethorpe Vaults*. He insists the
-project is a gift to the world; the world has, so far, declined to
-respond. He continues anyway, because he has spreadsheets to manage and
-the spreadsheets are *vast*.
-
-> [!patron] For supporters
-> "The Tower" is a recursive bag-of-holding lab nested inside a junior
-> bag-of-holding. He's been working on the ontology for twelve years and
-> says he's "almost done."
-
 > [!dm] DM only
-> Bixby is the inadvertent father of the [[Witchwood Cult]] — they
+> Bixby is the inadvertent father of the [[Witchwood Cult]]. They
 > read his pamphlet "On Buried Things" as scripture. He doesn't know.
 > If a party brings him proof, he closes the lab and joins them on the
 > spot, no questions asked. He has a deeply personal reason to want
 > the [[Hidden Caves]] sealed permanently.
+
+## Why his name is on this software
+
+Bixby is the canon namesake of *[Wizzlethorpe Labs](https://wizzlethorpe.com)*, the studio behind this software. 
