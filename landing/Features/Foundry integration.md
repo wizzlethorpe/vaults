@@ -4,14 +4,20 @@ title: Foundry VTT integration
 
 # Foundry VTT integration
 
-The companion [Foundry VTT module](https://github.com/wizzlethorpe/vaults-foundry)
-syncs a deployed vault into a Foundry world: every page becomes a
-JournalEntry + JournalEntryPage, every wikilink rewrites to a
-`@UUID[JournalEntry.…]` enricher, every embedded image is downloaded into
-the world's local data dir.
+The companion **Wizzlethorpe Vaults** Foundry VTT module syncs a deployed
+vault into a Foundry world: every page becomes a JournalEntry +
+JournalEntryPage, every wikilink rewrites to a `@UUID[JournalEntry.…]`
+enricher, every embedded image is downloaded into the world's local data
+dir.
+
+> [!tip] Install
+> The module is on the [Foundry package directory](https://foundryvtt.com/packages/vaults).
+> In Foundry, open *Add-on Modules → Install Module*, search for
+> **Wizzlethorpe Vaults**, and click Install. Source on
+> [GitHub](https://github.com/wizzlethorpe/vaults-foundry).
 
 Pages can additionally **clone a compendium document** into the world by
-setting `foundry_base: <UUID>` in frontmatter. This is useful for NPCs and 
+setting `foundry_base: <UUID>` in frontmatter. This is useful for NPCs and
 items that need real Foundry mechanics, not just journal text.
 
 ## What gets synced
@@ -62,13 +68,13 @@ In this vault:
 - [[Healing Potion]] clones SRD Potion of Healing
 
 
-![[screenshot-fvtt-actor-aelar-galanodel.webp]]
+![[screenshot-fvtt-actor-aelar-galanodel.webp|500]]
 
 [[Aelar]] in dnd5e: note the "A" portrait synced from the vault, the page's title used as the document name, and the HP override (22/30) reflecting the `foundry:` block.
 
 ---
 
-![[screenshot-fvtt-item-potion-of-healing.webp]]
+![[screenshot-fvtt-item-potion-of-healing.webp|500]]
 
 [[Healing Potion]] as a cloned dnd5e item: title from the page's
 frontmatter, the article body embedded as the description, the
@@ -114,7 +120,7 @@ at view time, so:
 markdown is wrapped in a Foundry secret block (the dimmed "DM ONLY"
 section with the REVEAL divider), invisible to OBSERVER-tier players:
 
-![[screenshot-fvtt-journal-bram-mossfoot.webp]]
+![[screenshot-fvtt-journal-bram-mossfoot.webp|500]]
 
 Same gate applies to Actor / Item descriptions that embed the journal page
 via `@Embed[…]`: the embed expansion fans out through the page's HTML, so

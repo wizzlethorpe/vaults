@@ -56,8 +56,9 @@ The companion module syncs this vault into a Foundry world: every page becomes a
 
 > [!tip] Import this vault into Foundry
 > 1. Install the **Wizzlethorpe Vaults** module: in Foundry → *Add-on
->    Modules* → *Install Module* → paste the manifest URL
->    `https://github.com/wizzlethorpe/vaults-foundry/releases/latest/download/module.json`.
+>    Modules* → *Install Module* → search for **Wizzlethorpe Vaults** →
+>    Install. (Or browse the listing on the
+>    [Foundry package directory](https://foundryvtt.com/packages/vaults).)
 > 2. In a dnd5e world, enable the module and click the
 >    **Sync Vault** button on the Journal Directory.
 > 3. **Add Vault** → paste `https://test.vaults.wizzlethorpe.com` →
@@ -71,7 +72,7 @@ The companion module syncs this vault into a Foundry world: every page becomes a
 >    and patron-tier journals import as player-visible (Observer ownership); 
 >    dm pages stay GM-only.
 
-The page-driven Actor/Item descriptions render the wiki article inline via Foundry's `@Embed[…]` enricher, so editing a page and re-syncing updates the doc's description automatically.
+The page-driven Actor/Item descriptions render the wiki article inline via Foundry's `@Embed[…]` enricher, so editing a page and re-syncing updates the doc's description automatically. See [[Features/Foundry integration]] for more details on how the sync works and how to set up your own vault for Foundry.
 
 ## Set up your own vault
 
