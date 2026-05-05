@@ -191,6 +191,117 @@
 }
 .journal-entry-page .callout-dm > .callout-title { color: #a8201a; }
 
+/* Obsidian Bases — filtered/sorted views over vault pages.
+   Cards/tables/lists ship with structural class names; mirror enough
+   styling here so they don't fall back to plain divs in journal pages. */
+.journal-entry-page .bases-block {
+  margin: 1rem 0;
+  border: 1px solid var(--color-border-light-tertiary, #444);
+  border-radius: 6px;
+  background: var(--color-cool-5-50, rgba(255, 255, 255, 0.03));
+  overflow: hidden;
+}
+.journal-entry-page .bases-caption {
+  padding: 0.55rem 0.85rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-bottom: 1px solid var(--color-border-light-tertiary, #444);
+}
+/* Filter toolbar isn't wired in the static journal; hide so it doesn't
+   mislead readers into thinking the input does something. */
+.journal-entry-page .bases-toolbar { display: none; }
+/* Stray tab strips from older imports (we now flatten on import, but
+   this guards anything that landed before the flatten transform shipped). */
+.journal-entry-page .bases-tab-strip { display: none; }
+
+/* Cards layout */
+.journal-entry-page .bases-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 0.6rem;
+  padding: 0.6rem;
+}
+.journal-entry-page .bases-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border-light-tertiary, #555);
+  border-radius: 4px;
+  background: var(--color-cool-5-25, rgba(255, 255, 255, 0.04));
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.journal-entry-page .bases-card:hover {
+  border-color: var(--color-text-light-primary, #f0f0e0);
+  transform: translateY(-1px);
+}
+.journal-entry-page .bases-card-cover {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.25);
+}
+.journal-entry-page .bases-card-cover img {
+  width: 100%; height: 100%; display: block;
+}
+.journal-entry-page .bases-card-cover-cover img { object-fit: cover; object-position: center; }
+.journal-entry-page .bases-card-cover-contain img { object-fit: contain; object-position: center; }
+.journal-entry-page .bases-card-cover-1x1 { aspect-ratio: 1 / 1; }
+.journal-entry-page .bases-card-cover-3x2 { aspect-ratio: 3 / 2; }
+.journal-entry-page .bases-card-cover-4x3 { aspect-ratio: 4 / 3; }
+.journal-entry-page .bases-card-cover-16x9 { aspect-ratio: 16 / 9; }
+.journal-entry-page .bases-card-cover-3x4 { aspect-ratio: 3 / 4; }
+.journal-entry-page .bases-card-cover-2x3 { aspect-ratio: 2 / 3; }
+.journal-entry-page .bases-card-body {
+  padding: 0.45rem 0.6rem;
+  display: flex; flex-direction: column; gap: 0.15rem;
+}
+.journal-entry-page .bases-card-title {
+  font-weight: 600; font-size: 0.92rem; line-height: 1.3;
+}
+.journal-entry-page .bases-card-meta {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary, #aaa);
+}
+
+/* Tables */
+.journal-entry-page .bases-table {
+  width: 100%; border-collapse: collapse;
+}
+.journal-entry-page .bases-table th,
+.journal-entry-page .bases-table td {
+  padding: 0.4rem 0.65rem;
+  border-bottom: 1px solid var(--color-border-light-tertiary, #444);
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.88rem;
+}
+.journal-entry-page .bases-table th {
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+}
+
+/* Lists */
+.journal-entry-page .bases-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0.85rem;
+}
+.journal-entry-page .bases-list li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.journal-entry-page .bases-list li:last-child { border-bottom: none; }
+.journal-entry-page .bases-list-meta {
+  margin-left: 0.4rem;
+  color: var(--color-text-secondary, #aaa);
+  font-size: 0.85rem;
+}
+.journal-entry-page .bases-list-sep { opacity: 0.5; padding: 0 0.15rem; }
+
 /* Transcluded embeds (![[Page]]) */
 .journal-entry-page .embed {
   position: relative;

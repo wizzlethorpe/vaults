@@ -7,7 +7,7 @@ import { fetchManifest, fetchSourceBatch } from "./api.mjs";
 import { upsertFile, deleteFile } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
-import { applyReskin } from "./reskin.mjs";
+import { applyInstance, deleteInstance } from "./instance.mjs";
 import { getVault, updateVault } from "./vaults.mjs";
 
 export async function sync(vaultId, { forceFull = false } = {}) {
@@ -31,6 +31,23 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     ui.notifications.error(game.i18n.format("VAULTS.Sync.Error", { message: err.message }));
     return;
   }
+  // Self-correcting: every manifest fetch refreshes the cached public flag
+  // and the role list, so deploy-side changes (single↔multi-role, role
+  // added/removed) pick up on the next sync without manual reconfiguration.
+  // Fallbacks cover older deploys whose manifest predates these fields.
+  const isPublic = manifest.auth?.required === false;
+  const knownRoles = Array.isArray(manifest.auth?.roles) ? manifest.auth.roles : [];
+  const patch = {};
+  if (vault.public !== isPublic) patch.public = isPublic;
+  if (!arraysEqual(vault.knownRoles, knownRoles)) patch.knownRoles = knownRoles;
+  // If the configured dmRole no longer exists in the deploy (role was
+  // removed), drop it; the user can re-set on the next settings open.
+  if (vault.dmRole && !knownRoles.includes(vault.dmRole)) patch.dmRole = "";
+  if (Object.keys(patch).length > 0) {
+    await updateVault(vault.id, patch);
+    Object.assign(vault, patch);
+  }
+
   const remote = new Map(manifest.files.map((f) => [f.path, f.hash]));
   const local = forceFull ? new Map() : new Map(Object.entries(vault.lastManifest || {}));
 
@@ -81,7 +98,7 @@ export async function sync(vaultId, { forceFull = false } = {}) {
 
   // Foundry's data layer doesn't love concurrent JournalEntry.create calls
   // on the same world, and the bottleneck has moved off the network.
-  let added = 0, modified = 0, reskinned = 0;
+  let added = 0, modified = 0, instances = 0;
   for (const bodyPath of toUpsert) {
     const html = bodies.get(bodyPath);
     if (html == null) {
@@ -89,18 +106,18 @@ export async function sync(vaultId, { forceFull = false } = {}) {
       continue;
     }
     const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
+    const pageMeta = bodyMetaIndex.get(bodyPath);
     try {
-      const result = await upsertFile(vault, logicalPath, html, pathIndex);
+      const result = await upsertFile(vault, logicalPath, html, pathIndex, pageMeta);
       if (result === "added") added++; else modified++;
-      // Reskin runs after the JournalEntryPage exists so @Embed[…] resolves
-      // on first render. No-ops for pages without foundry_base in their meta.
-      const pageMeta = bodyMetaIndex.get(bodyPath);
+      // Clone-from-foundry_base runs after the JournalEntryPage exists so the
+      // @Embed[…] in the doc description resolves on first render.
       if (pageMeta?.foundry_base) {
         try {
-          await applyReskin(vault, logicalPath, pageMeta);
-          reskinned++;
+          await applyInstance(vault, logicalPath, pageMeta);
+          instances++;
         } catch (err) {
-          console.warn(`Vaults | reskin failed for ${logicalPath}:`, err);
+          console.warn(`Vaults | foundry_base apply failed for ${logicalPath}:`, err);
         }
       }
     } catch (err) {
@@ -113,6 +130,10 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
     try { await deleteFile(vault, logicalPath); removed++; }
     catch (err) { console.warn(`Vaults | delete failed for ${logicalPath}:`, err); }
+    // Tear down the derived Actor/Item too. Best-effort; only acts on docs
+    // we created (vault flag check inside).
+    try { await deleteInstance(vault, logicalPath); }
+    catch (err) { console.warn(`Vaults | delete instance failed for ${logicalPath}:`, err); }
   }
 
   await updateVault(vault.id, { lastManifest: Object.fromEntries(remote) });
@@ -123,5 +144,12 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     console.info(`Vaults | ${vault.label} images: ${imageStats.downloaded} downloaded, ${imageStats.removed} removed`
       + (imageStats.errors ? `, ${imageStats.errors} failed` : ""));
   }
-  if (reskinned > 0) console.info(`Vaults | ${vault.label} reskinned ${reskinned} document(s) from foundry_base.`);
+  if (instances > 0) console.info(`Vaults | ${vault.label} instantiated ${instances} document(s) from foundry_base.`);
+}
+
+function arraysEqual(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }

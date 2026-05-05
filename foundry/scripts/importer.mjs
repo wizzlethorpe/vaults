@@ -42,14 +42,18 @@ async function upsertFolder(id, name, parentId) {
 /**
  * Import (create or update) a single page. `path` is the logical .md path
  * (used for stable ids + folder structure); `body` is the rendered article
- * HTML straight from the vault's <page>.body.html.
+ * HTML straight from the vault's <page>.body.html. `meta` is the manifest's
+ * per-page entry (carries the page's role for the dmRole permission gate).
  */
-export async function upsertFile(vault, path, body, index) {
-  const html = await transformHtmlForFoundry(vault.id, body, index);
+export async function upsertFile(vault, path, body, index, meta) {
+  const html = await transformHtmlForFoundry(vault, body, index, meta?.role);
 
   const segs = path.split("/");
   const filename = segs.pop();
-  const title = filename.replace(/\.md$/i, "");
+  // Prefer the page's frontmatter `title:` (passed via meta) over the
+  // filename basename so the Foundry sidebar shows the same display name
+  // as the wiki's page header.
+  const title = meta?.title || filename.replace(/\.md$/i, "");
   const folder = await ensureFolderChain(vault, segs);
 
   const eId = await entryId(vault.id, path);
@@ -64,11 +68,21 @@ export async function upsertFile(vault, path, body, index) {
     flags,
   };
 
+  const ownershipPatch = ownershipFor(vault, meta?.role);
+
   const existing = game.journal.get(eId);
   if (existing) {
-    if (existing.name !== title || existing.folder?.id !== folder) {
-      await existing.update({ name: title, folder });
+    const entryPatch = {};
+    if (existing.name !== title) entryPatch.name = title;
+    if (existing.folder?.id !== folder) entryPatch.folder = folder;
+    // Only push ownership when the page tier moved across the dmRole cutoff.
+    // Avoids stomping over manual ownership tweaks the GM made on individual
+    // entries during regular re-syncs.
+    if (ownershipPatch && existing.ownership?.default !== ownershipPatch.default) {
+      entryPatch.ownership = ownershipPatch;
     }
+    if (Object.keys(entryPatch).length > 0) await existing.update(entryPatch);
+
     const existingPage = existing.pages.get(pId);
     if (existingPage) await existingPage.update(pageData);
     else await existing.createEmbeddedDocuments("JournalEntryPage", [pageData], { keepId: true });
@@ -81,8 +95,33 @@ export async function upsertFile(vault, path, body, index) {
     folder,
     pages: [pageData],
     flags,
+    ...(ownershipPatch ? { ownership: ownershipPatch } : {}),
   }, { keepId: true });
   return "added";
+}
+
+/**
+ * Map a page's role tier to a JournalEntry ownership stanza, given the
+ * vault's configured dmRole. Returns null when no gating is configured;
+ * callers fall back to Foundry's default (GM-only) in that case.
+ *
+ * Ranks come straight from vault.knownRoles (lowest → highest, as reported
+ * by the deploy manifest). Rank below dmRole → OBSERVER for everyone; rank
+ * at-or-above dmRole → no override (so the entry remains GM-only).
+ */
+function ownershipFor(vault, pageRole) {
+  if (!vault.dmRole || !vault.knownRoles?.length) return null;
+  const dmIdx = vault.knownRoles.indexOf(vault.dmRole);
+  if (dmIdx < 0) return null;
+  const pageIdx = pageRole ? vault.knownRoles.indexOf(pageRole) : -1;
+  // Unknown / missing page role: treat as the lowest tier so the page lands
+  // player-visible. Conservative the other way (default to GM-only) would
+  // hide pages from older deploys whose manifest predates the role field.
+  const effectiveIdx = pageIdx < 0 ? 0 : pageIdx;
+  if (effectiveIdx < dmIdx) {
+    return { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER };
+  }
+  return null;
 }
 
 /** Delete the journal corresponding to a vault path. */

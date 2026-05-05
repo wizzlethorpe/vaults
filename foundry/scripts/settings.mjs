@@ -33,6 +33,18 @@ export const VAULT_DEFAULTS = {
   lastManifest: {},
   lastImageManifest: {},
   pendingState: "",
+  // Set when the deploy is single-role (no auth middleware, no /_batch
+  // endpoints). Refreshed from the manifest's auth.required flag on every
+  // sync, so a public→private flip self-corrects on the next manifest fetch.
+  public: false,
+  // Role order (lowest → highest) reported by the deploy's manifest. Cached
+  // on the vault so the per-vault settings dialog can populate the dmRole
+  // dropdown without re-fetching the manifest.
+  knownRoles: [],
+  // Pages with a role rank below dmRole get default ownership "observer"
+  // (player-visible) on import; pages at dmRole or higher stay GM-only.
+  // Empty string = no gating; everything imports as GM-only.
+  dmRole: "",
 };
 
 export function registerSettings() {

@@ -149,6 +149,11 @@ export async function deleteVaultCache(vaultId) {
 // ── Vault → Foundry plumbing ──────────────────────────────────────────────
 
 async function fetchImagesBatch(vault, paths) {
+  // Public vaults have no Pages Functions, so /_batch-images doesn't exist.
+  // Fall back to direct CDN GETs — slower per-image overhead but the only
+  // option for static deploys.
+  if (vault.public) return fetchImagesDirect(vault, paths);
+
   const u = new URL("/_batch-images", vault.url.endsWith("/") ? vault.url : vault.url + "/");
   if (vault.token) u.searchParams.set("_token", vault.token);
 
@@ -164,6 +169,37 @@ async function fetchImagesBatch(vault, paths) {
   for (const [path, b64] of Object.entries(data.files || {})) {
     out.set(path, base64ToBlob(b64, guessMime(path)));
   }
+  return out;
+}
+
+async function fetchImagesDirect(vault, paths) {
+  const baseHasTrailingSlash = vault.url.endsWith("/");
+  const out = new Map();
+  // Match BATCH_CONCURRENCY's polite-but-quick profile; images are larger
+  // than text bodies so we don't want to fan out as wide as the source-text
+  // direct fallback.
+  const PARALLEL = 6;
+  let next = 0;
+  const workers = Array.from({ length: Math.min(PARALLEL, paths.length) }, async () => {
+    while (next < paths.length) {
+      const idx = next++;
+      const path = paths[idx];
+      const u = new URL("/" + path, baseHasTrailingSlash ? vault.url : vault.url + "/");
+      try {
+        const res = await fetch(u.toString());
+        if (!res.ok) continue;
+        const blob = await res.blob();
+        // Some Cloudflare deploys serve images with a generic content-type;
+        // override with the extension-derived mime so Foundry's FilePicker
+        // upload accepts it.
+        const typed = blob.type ? blob : new Blob([await blob.arrayBuffer()], { type: guessMime(path) });
+        out.set(path, typed);
+      } catch (err) {
+        console.warn(`Vaults | GET ${path} failed:`, err);
+      }
+    }
+  });
+  await Promise.all(workers);
   return out;
 }
 
