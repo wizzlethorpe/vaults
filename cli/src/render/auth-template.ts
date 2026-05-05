@@ -46,6 +46,12 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 // since refreshing means reopening a browser-based approval flow.
 const BEARER_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
 const PBKDF2_DEFAULT_ITERATIONS = 100000;
+// Same shape as a real PBKDF2 hash (iterations:saltHex:hashHex with the
+// expected lengths) but with all-zero salt + hash. Used to keep the
+// /login response time consistent when the role doesn't exist or has no
+// password — running PBKDF2 against this dummy means an attacker can't
+// distinguish "role exists" from "role doesn't exist" by timing.
+const DUMMY_PASSWORD_HASH = "100000:" + "0".repeat(32) + ":" + "0".repeat(64);
 
 // ── Public middleware entry ────────────────────────────────────────────────
 
@@ -200,12 +206,19 @@ async function handleLogin(request, env) {
   const password = String(form.get("password") || "");
   const next = safeNext(form.get("next"));
 
-  if (!ROLES.includes(role) || !PASSWORDS[role]) {
-    return loginRedirect(next, "invalid_role");
+  // Generic "auth_failed" error for both "no such role / no password set"
+  // and "wrong password" branches — distinct codes would let an attacker
+  // enumerate which roles exist and which have passwords. Constant-time
+  // PBKDF2 comparison handles the timing side; this handles the message
+  // side. Run verifyPassword against a dummy hash on the no-role branch
+  // so the response time profile stays roughly the same.
+  const passwordHash = (ROLES.includes(role) && PASSWORDS[role])
+    ? PASSWORDS[role]
+    : DUMMY_PASSWORD_HASH;
+  const ok = await verifyPassword(password, passwordHash);
+  if (!ok || !ROLES.includes(role) || !PASSWORDS[role]) {
+    return loginRedirect(next, "auth_failed");
   }
-
-  const ok = await verifyPassword(password, PASSWORDS[role]);
-  if (!ok) return loginRedirect(next, "wrong_password");
 
   const cookie = await signSessionCookie(role, env.SESSION_SECRET);
   const headers = new Headers({ Location: next });
@@ -929,9 +942,19 @@ function parseCookie(header) {
 
 function isSharedAsset(pathname) {
   // Allowlist of root-served files that are intentionally public to every
-  // visitor (no role gate). Everything else (including images) goes
-  // through the variant rewrite so role-restricted content is structurally
-  // unreachable on under-tier deploys.
+  // visitor (no role gate). Everything else — including images, .body.html
+  // fragments, .preview.json, the search index — goes through the variant
+  // rewrite so role-restricted content is structurally unreachable on
+  // under-tier deploys.
+  //
+  // SYNCHRONISATION POINT: every file the build writes to the deploy
+  // ROOT (vs. into _variants/<role>/) must be listed here, otherwise it
+  // 404s for every visitor. Build code that places root-level files:
+  //   - styles.css / user.css        — build.ts (writeFile join(outputDir, ...))
+  //   - login.html                   — build.ts (multi-role only)
+  //   - favicon.ico                  — build.ts (buildFavicon)
+  //   - functions/_middleware.js     — build.ts (multi-role only; not served)
+  // If you add another, add it both here AND in build.ts.
   if (pathname === "/styles.css") return true;
   if (pathname === "/user.css") return true;
   if (pathname === "/login.html") return true;
@@ -1032,8 +1055,9 @@ export const LOGIN_HTML = `<!doctype html>
   if (err) {
     const el = document.getElementById("err");
     const messages = {
-      wrong_password: "Wrong password.",
-      invalid_role: "Invalid role.",
+      // Single message for any password-path failure — distinct error
+      // codes would let an attacker enumerate which roles exist.
+      auth_failed: "Invalid role or password.",
       patreon_state_mismatch: "Patreon sign-in expired or was tampered with. Please try again.",
       patreon_token_exchange: "Couldn't exchange the Patreon authorisation. Try again.",
       patreon_identity: "Patreon authenticated but we couldn't load your tier information.",

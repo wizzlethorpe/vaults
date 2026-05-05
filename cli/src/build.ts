@@ -266,7 +266,12 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     progress.done(`${stagedPassthroughs.length} staged`);
   }
 
-  // Shared CSS bundle
+  // Shared CSS bundle.
+  //
+  // Every file written to outputDir ROOT (rather than into _variants/<role>/)
+  // must also appear in `isSharedAsset` over in render/auth-template.ts —
+  // otherwise the variant rewrite traps it and it 404s for everyone. If you
+  // add a new root-level file here, add it there too.
   const themeOverride = renderThemeOverride({
     lightAccent: settings.values.accent_color,
     lightBg: settings.values.bg_color,
