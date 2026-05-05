@@ -1,2 +1,5 @@
 .vault-cache/
 .wrangler/
+
+# Holds password hashes, sessionSecret, and (when configured) the Patreon client secret.
+.vaultrc.json
