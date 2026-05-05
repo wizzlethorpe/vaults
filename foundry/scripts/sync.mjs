@@ -8,6 +8,7 @@ import { upsertFile, deleteFile } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
 import { applyInstance, deleteInstance } from "./instance.mjs";
+import { tokenInfo } from "./auth.mjs";
 import { getVault, updateVault } from "./vaults.mjs";
 
 export async function sync(vaultId, { forceFull = false } = {}) {
@@ -19,6 +20,21 @@ export async function sync(vaultId, { forceFull = false } = {}) {
   if (!vault.url) {
     ui.notifications.error(game.i18n.localize("VAULTS.Sync.NoUrl"));
     return;
+  }
+
+  // Defensive token-expiry check. Without this, an expired bearer falls
+  // through server-side to the lowest role (public) and the user's
+  // higher-tier journals would silently get overwritten with public-tier
+  // versions on the next sync. Clear the dead token so the row UI shows
+  // the Authenticate button again, then bail.
+  if (vault.token) {
+    const info = tokenInfo(vault.token);
+    const stillValid = info?.expiresAt && info.expiresAt > new Date();
+    if (!stillValid) {
+      await updateVault(vault.id, { token: "", role: "" });
+      ui.notifications.warn(game.i18n.format("VAULTS.Sync.TokenExpired", { name: vault.label }));
+      return;
+    }
   }
 
   const start = Date.now();

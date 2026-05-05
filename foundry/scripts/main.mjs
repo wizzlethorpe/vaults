@@ -5,7 +5,7 @@ import { registerSettings } from "./settings.mjs";
 import { listVaults, getVault, addVault, updateVault, removeVault, deriveLabel, migrateLegacyIfNeeded } from "./vaults.mjs";
 import { sync } from "./sync.mjs";
 import { fetchManifest } from "./api.mjs";
-import { prepareConnect, awaitConnectMessage, disconnect, tokenInfo } from "./auth.mjs";
+import { disconnect, tokenInfo } from "./auth.mjs";
 import { deleteVaultJournals } from "./importer.mjs";
 import { deleteVaultCache } from "./media.mjs";
 
@@ -373,7 +373,11 @@ async function confirmRemoveVault(v) {
   });
 }
 
-// ── Connect dialog (iframe-based) ─────────────────────────────────────────
+// ── Connect dialog (paste-flow) ───────────────────────────────────────────
+// "Open in browser → sign in → copy → paste here." Same shape as the
+// GitHub CLI device flow. Replaces the previous iframe-based approach
+// because Patreon refuses iframe embedding (X-Frame-Options) and partitioned
+// cookies broke the round-trip in many browsers.
 
 async function openConnectDialog(vaultId) {
   const v = getVault(vaultId);
@@ -382,45 +386,73 @@ async function openConnectDialog(vaultId) {
     return null;
   }
 
-  const { src, vaultOrigin, state } = await prepareConnect(v);
-  const waiter = awaitConnectMessage({ vault: v, vaultOrigin, state });
+  const connectUrl = new URL("/connect", v.url);
+  connectUrl.searchParams.set("app", "Foundry VTT");
+  connectUrl.searchParams.set("delivery", "copy");
 
   const DialogV2 = foundry.applications.api.DialogV2;
   const content = `
-    <iframe
-      src="${escapeAttr(src)}"
-      class="vaults-connect-iframe"
-      style="width: 100%; height: 600px; border: 0; border-radius: 4px; background: var(--color-cool-5, #fff);">
-    </iframe>
-    <p class="notes" style="margin-top:0.5rem;">
-      ${escapeText(game.i18n.localize("VAULTS.Connect.IframeHint"))}
-    </p>`;
+    <div class="vaults-paste-flow">
+      <ol class="vaults-paste-steps">
+        <li>
+          <strong>${escapeText(game.i18n.localize("VAULTS.Connect.StepOpen"))}</strong>
+          <a href="${escapeAttr(connectUrl.toString())}" target="_blank" rel="noopener noreferrer"
+             class="vaults-open-link">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            ${escapeText(game.i18n.localize("VAULTS.Connect.OpenButton"))}
+          </a>
+        </li>
+        <li>
+          <strong>${escapeText(game.i18n.localize("VAULTS.Connect.StepSignIn"))}</strong>
+        </li>
+        <li>
+          <strong>${escapeText(game.i18n.localize("VAULTS.Connect.StepPaste"))}</strong>
+          <textarea id="vaults-token-input" rows="4"
+                    placeholder="${escapeAttr(game.i18n.localize("VAULTS.Connect.PastePlaceholder"))}"
+                    class="vaults-token-input"></textarea>
+          <p class="vaults-paste-error" id="vaults-paste-error" hidden></p>
+        </li>
+      </ol>
+    </div>`;
 
-  const dialog = new DialogV2({
-    window: { title: game.i18n.format("VAULTS.Connect.DialogTitleNamed", { name: v.label }) },
-    position: { width: 640 },
-    classes: ["vaults-app", "vaults-connect-dialog"],
-    content,
-    buttons: [{ action: "cancel", label: game.i18n.localize("VAULTS.Dialog.Cancel"), default: true }],
-  });
-  dialog.render({ force: true });
-
-  return new Promise((resolve, reject) => {
-    let done = false;
-    waiter.promise.then(async (info) => {
-      if (done) return; done = true;
-      try { await dialog.close(); } catch { /* ignore */ }
-      resolve(info);
-    }, (err) => {
-      if (done) return; done = true;
-      try { dialog.close(); } catch { /* ignore */ }
-      reject(err);
-    });
-    Hooks.once("closeDialogV2", (d) => {
-      if (d !== dialog || done) return;
-      done = true;
-      waiter.cancel();
-      resolve(null);
+  return new Promise((resolve) => {
+    DialogV2.wait({
+      window: { title: game.i18n.format("VAULTS.Connect.DialogTitleNamed", { name: v.label }) },
+      position: { width: 480 },
+      classes: ["vaults-app", "vaults-connect-dialog"],
+      content,
+      buttons: [
+        {
+          action: "save",
+          label: game.i18n.localize("VAULTS.Connect.SaveButton"),
+          default: true,
+          callback: async (_e, _b, dlg) => {
+            const root = dlg?.element ?? dlg;
+            const ta = root.querySelector("#vaults-token-input");
+            const errEl = root.querySelector("#vaults-paste-error");
+            const token = (ta?.value || "").trim();
+            const info = tokenInfo(token);
+            const showError = (key) => {
+              if (errEl) {
+                errEl.textContent = game.i18n.localize(key);
+                errEl.hidden = false;
+              }
+            };
+            if (!info || !info.role) { showError("VAULTS.Connect.PasteInvalid"); return false; }
+            if (!info.expiresAt) { showError("VAULTS.Connect.PasteInvalid"); return false; }
+            if (info.expiresAt <= new Date()) { showError("VAULTS.Connect.PasteExpired"); return false; }
+            await updateVault(vaultId, { token, role: info.role });
+            ui.notifications.info(game.i18n.format("VAULTS.Connect.Success", { role: info.role }));
+            resolve(info);
+            return true;
+          },
+        },
+        {
+          action: "cancel",
+          label: game.i18n.localize("VAULTS.Dialog.Cancel"),
+          callback: () => { resolve(null); return true; },
+        },
+      ],
     });
   });
 }

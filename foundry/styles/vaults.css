@@ -124,6 +124,43 @@
   font-style: italic; margin-top: 0.5rem;
 }
 
+/* Paste-flow connect dialog */
+.vaults-paste-flow .vaults-paste-steps {
+  list-style: decimal; margin: 0; padding-left: 1.4rem;
+  display: flex; flex-direction: column; gap: 0.85rem;
+}
+.vaults-paste-flow .vaults-paste-steps > li > strong {
+  display: block; margin-bottom: 0.35rem; font-weight: 600;
+}
+.vaults-paste-flow .vaults-paste-steps .notes {
+  font-size: 0.78rem; color: var(--color-text-secondary, #888);
+  font-style: italic; margin: 0.25rem 0 0;
+}
+.vaults-open-link {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--color-button-bg, #303030);
+  color: var(--color-text-light-primary, #f0f0e0);
+  border: 1px solid var(--color-border-light-primary, #555);
+  border-radius: 3px; cursor: pointer; text-decoration: none;
+  font-size: 0.85rem;
+}
+.vaults-open-link:hover { background: var(--color-button-bg-hover, #444); }
+.vaults-token-input {
+  width: 100%; box-sizing: border-box;
+  padding: 0.5rem 0.65rem; font: inherit;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.78rem; line-height: 1.4;
+  background: var(--color-cool-5-50, rgba(255, 255, 255, 0.04));
+  color: var(--color-text-light-primary, #f0f0e0);
+  border: 1px solid var(--color-border-light-tertiary, #555);
+  border-radius: 3px; resize: vertical;
+  word-break: break-all;
+}
+.vaults-paste-error {
+  color: #b94a3a; font-size: 0.8rem; margin: 0.4rem 0 0;
+}
+
 /* Broken wikilinks */
 .vaults-broken {
   color: #b94a3a;
