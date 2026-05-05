@@ -57,12 +57,28 @@ export async function syncImages(vault, manifestFiles) {
 
   const baseDir = vaultCacheDir(vault.id);
 
-  const dirsNeeded = new Set([baseDir]);
+  // Foundry's FilePicker.createDirectory creates exactly one level at a
+  // time; if the parent doesn't exist the call ENOENTs out. We therefore
+  // ask for every prefix in the chain — from the world root down to the
+  // deepest per-image subdir. The world dir itself is guaranteed to exist
+  // (game.world.id was just resolved), so we only walk path segments under
+  // it. ensureDirs swallows "exists / already" errors, so re-asking for an
+  // existing dir is harmless.
+  const worldRoot = `worlds/${game.world.id}`;
+  const dirsNeeded = new Set();
+  const addChain = (fullPath) => {
+    const sub = fullPath.startsWith(worldRoot + "/") ? fullPath.slice(worldRoot.length + 1) : "";
+    if (!sub) return;
+    let acc = worldRoot;
+    for (const seg of sub.split("/")) {
+      acc += "/" + seg;
+      dirsNeeded.add(acc);
+    }
+  };
+  addChain(baseDir);
   for (const p of toDownload) {
     const segs = p.split("/").slice(0, -1);
-    for (let i = 0; i < segs.length; i++) {
-      dirsNeeded.add(`${baseDir}/${segs.slice(0, i + 1).join("/")}`);
-    }
+    if (segs.length > 0) addChain(`${baseDir}/${segs.join("/")}`);
   }
   await ensureDirs([...dirsNeeded]);
 
