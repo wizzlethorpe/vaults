@@ -20,6 +20,10 @@ ceremonies and never seem to leave tracks.
 > They're a splinter of the older Order of the Pale Crown. Their goal is
 > to reawaken something buried under the [[Hidden Caves]]. The masks are
 > stitched from finger bones — one per recruit, taken before initiation.
+>
+> Their founding text — "On Buried Things" — was written by a younger
+> [[Dr. Bixby Wizzlethorpe]] as an academic curiosity. He has no idea
+> they exist.
 
 ## Confirmed casualties
 

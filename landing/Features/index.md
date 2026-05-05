@@ -16,6 +16,7 @@ the underlying markdown.
 | [[Bases]] | Filtered/sorted views over your vault (table, cards, list) |
 | [[Role gating]] | `public`/`patron`/`dm` tiers, page + callout gating, auth flow |
 | [[Foundry integration]] | Sync to Foundry VTT, `foundry_base` clones, dmRole gating |
+| [[Passthrough files]] | Audio/video/PDF/EPUB shipping with per-variant role gating |
 
 Other features that don't need a dedicated page:
 

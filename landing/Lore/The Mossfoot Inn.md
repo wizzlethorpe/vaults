@@ -16,6 +16,8 @@ page demonstrates the plain-journal pipeline.
 
 - [[Aelar]] — most nights, corner table, west wall.
 - [[Bram]] — official errand-runner, unofficial eavesdropper.
+- [[Dr. Bixby Wizzlethorpe]] — the back booth, sometimes muttering to
+  a teacup. Brings his own quill.
 
 ## Atmosphere
 

@@ -80,6 +80,29 @@ cutoff** import as `OBSERVER` ownership (player-visible journals). Pages
 
 Set this in the per-vault settings dialog after the first sync.
 
+### Hiding role-gated callouts inside player-visible pages
+
+A page like [[Aelar]] is `role: public`, so it imports as player-visible —
+but it contains `[!dm]` and `[!patron]` callouts that the GM authored for
+themselves. Without protection, players viewing the journal would see those
+callouts even though the wiki strips them at lower tiers.
+
+The module solves this by wrapping each role-gated callout whose tier is
+**at-or-above** the configured `dmRole` in a `<section class="secret">`
+block during sync. Foundry's renderer hides secret sections from non-GMs
+at view time, so:
+
+- **GM** sees the full callout (with the standard "secret" visual marker).
+- **Players** with Observer ownership see the journal but **not** the secret
+  sections — the structurally-stored HTML hides them at render time, not
+  with CSS.
+
+Same gate applies to Actor / Item descriptions that embed the journal page
+via `@Embed[…]`: the embed expansion fans out through the page's HTML, so
+secret sections inside it stay secret in the doc sheet too.
+
+Force-sync after changing `dmRole` to re-wrap previously-imported pages.
+
 ## Public + protected vaults
 
 The module supports both:

@@ -4,11 +4,7 @@ title: Callouts
 
 # Callouts
 
-Obsidian-style callouts are blockquotes that start with `[!type]`. The
-renderer turns them into styled boxes with a coloured stripe and an icon
-slot. Standard types map to recognisable styles; **types that match a
-configured role name are redacted at lower tiers** — that's how page-level
-content can hide pieces of itself based on the visitor's role.
+Obsidian-style callouts are blockquotes that start with `[!type]`. The renderer turns them into styled boxes with a coloured stripe and an icon slot. Standard types map to recognisable styles; **types that match a configured role name are redacted at lower tiers**. That's how page-level content can hide pieces of itself based on the visitor's role.
 
 ## Standard types
 
@@ -56,7 +52,7 @@ When the callout type matches one of your configured roles, the renderer
 This vault has roles `public < patron < dm`, so:
 
 > [!patron] Patron-tier callout
-> Public visitors don't see this paragraph at all — it's removed from
+> Public visitors don't see this paragraph at all. It's removed from
 > their HTML before rendering, not hidden with CSS. Patrons and the DM see
 > it normally.
 
@@ -72,9 +68,3 @@ content adjusts as if the redacted callouts were never authored.
 > This callout is unconditionally visible. The redaction is paragraph-scoped,
 > not "everything after the first role callout".
 
-## Customising the icon
-
-The renderer emits an icon slot for each callout type via
-`.callout-<type>::before`. To add custom types or restyle the defaults,
-drop CSS into a `.obsidian/snippets/*.css` file in your vault — it ships
-to the deploy as `user.css` and gets loaded after the default theme.

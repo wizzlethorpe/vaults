@@ -121,13 +121,7 @@ Embed a specific view by name with a `#` anchor:
 ![[NPCs#Stats]]      # render only the Stats view
 ```
 
+![[NPCs#Stats]]
+
 Useful when the same Base wants to appear in different shapes on different
 pages.
-
-## When to use a Base vs. a folder index
-
-The CLI auto-generates a folder `index.md` for any folder without one
-(see `NPCs/index` for an example — it's a generated cards-view of the
-folder's pages). Custom Bases are for cross-cutting filters that don't
-match folder boundaries (e.g. "every NPC in any folder tagged as a
-villain" or "all sessions where the party visited the inn").

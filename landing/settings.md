@@ -1,6 +1,6 @@
 ---
 # Display name for the wiki (shown in header and page titles).
-vault_name: Mossfoot Test Vault
+vault_name: Wizzlethorpe Vaults
 
 # WebP quality 1–100 for image compression. Set 0 to disable.
 image_quality: 85
@@ -35,6 +35,9 @@ favicon: ""
 
 # When a page has no 'image:' frontmatter, fall back to the first embedded image in the body. Used for OG/Twitter social cards, Bases card covers, and Foundry actor/item reskins. Set false to opt out.
 auto_image: true
+
+# Ship files with unrecognized extensions to every deploy variant. Default false skips them (with a warning) so a stray file in your vault can't accidentally bypass role gating. Recognized media types (audio/video/pdf/epub) are reference-gated like images regardless of this setting.
+include_unknown_files: false
 ---
 
 # Vault settings
