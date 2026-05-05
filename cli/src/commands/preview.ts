@@ -43,6 +43,9 @@ export async function preview(vaultPath: string, opts: PreviewOptions): Promise<
   // Multi-role builds need SESSION_SECRET so the auth middleware can sign
   // cookies. Reuse the secret in .vaultrc.json (the one prod also uses) so a
   // logged-in browser session survives across `vaults preview` ↔ `vaults push`.
+  // When Patreon is configured, PATREON_CLIENT_SECRET also needs to be in
+  // scope so the /auth/patreon/callback handler can exchange codes for
+  // tokens — otherwise the visitor gets "Patreon login is misconfigured".
   // Wrangler resolves Functions/ relative to cwd, so we must run with the
   // output dir as cwd and pass "." rather than the absolute path.
   const wranglerArgs = ["wrangler", "pages", "dev", ".", `--port=${port}`, "--compatibility-date=2024-12-01"];
@@ -55,6 +58,10 @@ export async function preview(vaultPath: string, opts: PreviewOptions): Promise<
       console.log("Generated SESSION_SECRET (saved to .vaultrc.json).");
     }
     wranglerArgs.push(`--binding=SESSION_SECRET=${secret}`);
+    if (cfg.patreon?.clientSecret) {
+      wranglerArgs.push(`--binding=PATREON_CLIENT_SECRET=${cfg.patreon.clientSecret}`);
+      console.log(`  Patreon login active; sign-in flows through localhost:${port}/auth/patreon/callback`);
+    }
     console.log(`  multi-role build; sign in at http://localhost:${port}/login.html`);
   }
 

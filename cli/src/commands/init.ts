@@ -34,9 +34,12 @@ export async function init(vaultPath: string, opts: InitOptions): Promise<void> 
   await writeSettings(vaultPath, values);
   console.log(`Wrote ${target}.`);
 
-  // Make sure .vaultrc.json (CLI-managed state, holds SESSION_SECRET +
-  // role passwords) and the build cache are excluded from the user's repo.
-  await ensureGitignoreEntries(vaultPath, [".vaultrc.json", ".vault-cache"]);
+  // .env holds the only real secrets the CLI manages: SESSION_SECRET and
+  // PATREON_CLIENT_SECRET. .vaultrc.json itself is config (project name,
+  // role list, password hashes, Patreon client/campaign IDs + tier map)
+  // and is intentionally trackable so users can sync setup across
+  // machines via git.
+  await ensureGitignoreEntries(vaultPath, [".env", ".vault-cache"]);
 
   console.log("Open it in Obsidian to edit the frontmatter; it'll show as a settings form.");
 }

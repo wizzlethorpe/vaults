@@ -6,6 +6,7 @@ import { preview } from "./commands/preview.js";
 import { init } from "./commands/init.js";
 import { password } from "./commands/password.js";
 import { roleAdd, roleDemote, roleList, rolePromote, roleRemove } from "./commands/role.js";
+import { patreonClear, patreonConfigure, patreonLink, patreonStatus, patreonUnlink } from "./commands/patreon.js";
 
 const program = new Command();
 
@@ -79,6 +80,58 @@ program
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .action(async (role: string, vaultPath: string) => {
     try { await password(vaultPath, role, {}); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+const patreon = program
+  .command("patreon")
+  .description("Configure optional Patreon OAuth login for paying-tier roles");
+
+patreon
+  .command("configure")
+  .description("Set Patreon OAuth client_id / client_secret / campaign_id")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (vaultPath: string) => {
+    try { await patreonConfigure(vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+patreon
+  .command("link")
+  .description("Map a role to a Patreon tier ID (find tier IDs on patreon.com under your tier list)")
+  .argument("<role>", "Role name (must already exist)")
+  .argument("<tier-id>", "Patreon tier ID (numeric)")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (role: string, tierId: string, vaultPath: string) => {
+    try { await patreonLink(role, tierId, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+patreon
+  .command("unlink")
+  .description("Remove a role's Patreon tier mapping (password access stays)")
+  .argument("<role>", "Role name")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (role: string, vaultPath: string) => {
+    try { await patreonUnlink(role, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+patreon
+  .command("clear")
+  .description("Remove the entire Patreon configuration")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (vaultPath: string) => {
+    try { await patreonClear(vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+patreon
+  .command("status")
+  .description("Show current Patreon configuration + tier mappings")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (vaultPath: string) => {
+    try { await patreonStatus(vaultPath); }
     catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
   });
 

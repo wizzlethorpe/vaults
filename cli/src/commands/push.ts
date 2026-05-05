@@ -67,6 +67,15 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
     }
     await wranglerSecret(cfg.projectName!, "SESSION_SECRET", secret);
   }
+
+  // Upload the Patreon client secret as a separate Wrangler secret. We do
+  // this on every push (not just first) so a `vaults patreon configure`
+  // that updates the secret without rotating the session also takes
+  // effect — Wrangler's secret put is idempotent for the same value.
+  if (cfg.patreon?.clientSecret) {
+    await wranglerSecret(cfg.projectName!, "PATREON_CLIENT_SECRET", cfg.patreon.clientSecret);
+  }
+
   await wranglerDeploy(outputDir, cfg.projectName!);
 }
 

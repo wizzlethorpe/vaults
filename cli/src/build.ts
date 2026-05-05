@@ -354,9 +354,21 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   if (!collapseToRoot) {
     const fnDir = join(opts.outputDir, "functions");
     await mkdir(fnDir, { recursive: true });
+    // Patreon overlay rides only when configured AND at least one role is
+    // mapped to a tier. clientSecret stays out of the bundle — it lives in
+    // the Wrangler secret PATREON_CLIENT_SECRET, read from env in the
+    // Function. The CLI uploads it on every push.
+    const patreonForFn = cfg.patreon && cfg.patreon.tiers && Object.keys(cfg.patreon.tiers).length > 0
+      ? {
+          clientId: cfg.patreon.clientId,
+          campaignId: cfg.patreon.campaignId,
+          tiers: cfg.patreon.tiers,
+        }
+      : null;
     const middleware = renderAuthMiddleware({
       roles,
       rolePasswords: cfg.rolePasswords,
+      ...(patreonForFn ? { patreon: patreonForFn } : {}),
     });
     await writeFile(join(fnDir, "_middleware.js"), middleware);
 
@@ -365,7 +377,13 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     const opts_html = protectedRoles
       .map((r) => `<option value="${r}">${r}</option>`)
       .join("");
-    await writeFile(join(opts.outputDir, "login.html"), LOGIN_HTML.replace("__ROLE_OPTIONS__", opts_html));
+    const patreonRolesAttr = patreonForFn
+      ? ` data-patreon-roles="${Object.keys(patreonForFn.tiers).join(",")}"`
+      : "";
+    await writeFile(join(opts.outputDir, "login.html"),
+      LOGIN_HTML
+        .replace("__ROLE_OPTIONS__", opts_html)
+        .replace("__PATREON_ROLES_ATTR__", patreonRolesAttr));
 
     const missing = protectedRoles.filter((r) => !cfg.rolePasswords[r]);
     if (missing.length > 0) {
