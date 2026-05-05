@@ -21,6 +21,8 @@ export interface Settings {
   accent_color: string;
   bg_color: string;
   favicon: string;
+  auto_image: boolean;
+  include_unknown_files: boolean;
 }
 
 type SettingType = "string" | "number" | "boolean" | "string[]";
@@ -94,6 +96,18 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     type: "string",
     description:
       "Vault-relative path to an image used as the site favicon (png/jpg/svg/webp). Empty = generated default with the vault's accent color.",
+  },
+  auto_image: {
+    default: true,
+    type: "boolean",
+    description:
+      "When a page has no 'image:' frontmatter, fall back to the first embedded image in the body. Used for OG/Twitter social cards, Bases card covers, and Foundry actor/item reskins. Set false to opt out.",
+  },
+  include_unknown_files: {
+    default: false,
+    type: "boolean",
+    description:
+      "Ship files with unrecognized extensions to every deploy variant. Default false skips them (with a warning) so a stray file in your vault can't accidentally bypass role gating. Recognized media types (audio/video/pdf/epub) are reference-gated like images regardless of this setting.",
   },
 
 };

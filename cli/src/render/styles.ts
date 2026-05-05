@@ -250,13 +250,129 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 }
 .rightbar .backlinks a:hover { color: var(--accent); border-left-color: var(--accent); }
 
+/* Top-of-article header strip: breadcrumbs left, meta + frontmatter affordance right.
+   Wraps onto a second line on narrow viewports rather than overflowing. */
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  margin: 0 0 1rem;
+}
+.page-header .crumbs { margin: 0; flex: 1 1 auto; min-width: 0; }
+.page-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Lives at the bottom of the article; muted, separated by a thin rule so
+   it reads as page-footer info rather than article content. */
 .page-meta {
   color: var(--muted); font-size: 0.78rem;
-  margin: -0.75rem 0 1.75rem;
+  margin: 2.5rem 0 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--rule);
   display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;
 }
 .page-meta time { font-variant-numeric: tabular-nums; }
 .page-meta .meta-sep { opacity: 0.5; }
+
+.frontmatter-toggle {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.frontmatter-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.frontmatter-toggle-glyph {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+}
+/* Mobile: drop the "frontmatter" label so the button is just a {} chip. */
+@media (max-width: 600px) {
+  .frontmatter-toggle-label { display: none; }
+  .frontmatter-toggle { padding: 0.15rem 0.4rem; }
+}
+.frontmatter-dialog {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0;
+  background: var(--bg);
+  color: inherit;
+  max-width: min(720px, 90vw);
+  width: min(720px, 90vw);
+}
+.frontmatter-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.35);
+}
+.frontmatter-header {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--rule);
+}
+.frontmatter-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--muted);
+  flex: 1;
+}
+/* Pin a fixed min-height on both buttons and centre contents — different
+   font-sizes (× at 1rem vs "Copy" at 0.8rem) would otherwise produce
+   different line-box heights. */
+.frontmatter-copy,
+.frontmatter-close {
+  font-family: inherit;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  cursor: pointer;
+  color: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.75rem;
+  padding: 0 0.6rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+.frontmatter-copy:hover,
+.frontmatter-close:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.frontmatter-close {
+  font-size: 1.1rem;
+  min-width: 1.75rem;
+  padding: 0;
+}
+.frontmatter-dialog pre {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  max-height: 60vh;
+  overflow: auto;
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+}
+.frontmatter-dialog code.frontmatter-yaml {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre;
+  display: block;
+}
 
 .crumbs { color: var(--muted); font-size: 0.875rem; margin-bottom: 1rem; }
 .crumbs a { color: var(--muted); text-decoration: none; }
@@ -418,6 +534,54 @@ article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px soli
   border-radius: 6px;
   background: color-mix(in srgb, var(--muted) 4%, transparent);
 }
+
+/* Multi-view tabbed container: tab strip on top, blocks below as panels.
+   The block inside loses its outer rounding/border on top so it merges
+   visually with the active tab without doubled rules. */
+.bases-tabbed {
+  margin: 1rem 0;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--muted) 4%, transparent);
+}
+.bases-tabbed .bases-block {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.bases-tabbed .bases-block .bases-caption { display: none; }
+.bases-tab-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.4rem 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.bases-tab {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.4rem 0.85rem;
+  margin-bottom: -1px;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.bases-tab:hover {
+  color: var(--accent);
+}
+.bases-tab-active {
+  color: inherit;
+  background: var(--bg);
+  border-color: var(--rule);
+  border-bottom-color: var(--bg);
+}
+.bases-tab-panel[hidden] { display: none !important; }
 .bases-caption {
   padding: 0.55rem 0.85rem;
   font-weight: 700;
@@ -498,6 +662,14 @@ article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px soli
   overflow: hidden;
   transition: border-color 0.15s, transform 0.15s;
 }
+/* Author rules with display:flex/grid/... override the UA [hidden]
+   default, so the runtime filter has nothing to cling to. Force the hide
+   here for every Bases item type. */
+.bases-card[hidden],
+.bases-list li[hidden],
+.bases-table tr[hidden] {
+  display: none !important;
+}
 .bases-card:hover {
   border-color: var(--accent);
   transform: translateY(-2px);
@@ -506,7 +678,21 @@ article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px soli
   width: 100%;
   aspect-ratio: 1 / 1;
   background-color: color-mix(in srgb, var(--muted) 8%, transparent);
+  overflow: hidden;
 }
+.bases-card-cover img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.bases-card-cover-cover img { object-fit: cover; object-position: center; }
+.bases-card-cover-contain img { object-fit: contain; object-position: center; }
+.bases-card-cover-1x1 { aspect-ratio: 1 / 1; }
+.bases-card-cover-3x2 { aspect-ratio: 3 / 2; }
+.bases-card-cover-4x3 { aspect-ratio: 4 / 3; }
+.bases-card-cover-16x9 { aspect-ratio: 16 / 9; }
+.bases-card-cover-3x4 { aspect-ratio: 3 / 4; }
+.bases-card-cover-2x3 { aspect-ratio: 2 / 3; }
 .bases-card-body {
   padding: 0.6rem 0.75rem;
   display: flex;

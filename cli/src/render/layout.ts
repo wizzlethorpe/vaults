@@ -19,6 +19,10 @@ export interface LayoutInput {
   /** Unix-seconds. Optional; synthesized folder indexes may have neither. */
   mtime?: number;
   birthtime?: number;
+  /** Absolute or site-relative URL to use for OG/Twitter social-card meta tags. */
+  coverImage?: string;
+  /** Raw frontmatter YAML block (the user's exact text), or undefined when the page has none. */
+  frontmatterYaml?: string;
 }
 
 /**
@@ -52,6 +56,7 @@ export function renderLayout(input: LayoutInput): string {
 <link rel="icon" href="/favicon.ico">
 <link rel="stylesheet" href="/styles.css">
 <link rel="stylesheet" href="/user.css">
+${renderSocialMeta(input)}
 </head>
 <body${input.centerImages ? ` class="center-images"` : ""}${input.defaultImageWidth ? ` style="--default-img-width: ${attr(input.defaultImageWidth)}"` : ""}>
 <div class="app-grid">
@@ -66,10 +71,10 @@ export function renderLayout(input: LayoutInput): string {
   </aside>
   <main>
     <article class="markdown-preview-view markdown-rendered">
-      ${breadcrumbs}
+      ${renderPageHeader(breadcrumbs, input.frontmatterYaml)}
       ${input.inlineTitle ? `<h1>${esc(input.title)}</h1>` : ""}
-      ${renderMeta(input.mtime, input.birthtime)}
       ${input.bodyHtml}
+      ${renderMeta(input.mtime, input.birthtime)}
     </article>
   </main>
   <aside class="rightbar">
@@ -87,6 +92,7 @@ ${SEARCH_SCRIPT}
 ${LIGHTBOX_SCRIPT}
 ${AUTH_SCRIPT}
 ${BASES_SCRIPT}
+${FRONTMATTER_SCRIPT}
 </body>
 </html>`;
 }
@@ -98,6 +104,72 @@ function renderBacklinks(backlinks: PageMeta[]): string {
     return `<li><a href="${attr(href)}" class="internal internal-link">${esc(p.title)}</a></li>`;
   }).join("");
   return `<section class="backlinks"><h4>Backlinks</h4><ul>${items}</ul></section>`;
+}
+
+/**
+ * Top-of-article strip: breadcrumbs on the left, frontmatter affordance on
+ * the right. Updated/created dates live at the bottom of the page now —
+ * they're handy when you want them but don't deserve top-of-page real
+ * estate (especially on mobile). The strip collapses entirely when neither
+ * side has content (404 page).
+ */
+function renderPageHeader(
+  breadcrumbsHtml: string,
+  frontmatterYaml: string | undefined,
+): string {
+  const frontmatter = renderFrontmatterAffordance(frontmatterYaml);
+  if (!breadcrumbsHtml && !frontmatter) return "";
+  const rightGroup = frontmatter
+    ? `<div class="page-header-right">${frontmatter}</div>`
+    : "";
+  return `<div class="page-header">${breadcrumbsHtml}${rightGroup}</div>`;
+}
+
+/**
+ * Small "view frontmatter" button + a hidden <dialog> containing the raw
+ * YAML in a <pre><code>. Useful for grabbing UUIDs, copying overrides, or
+ * sharing a page's metadata without leaving the wiki. The dialog is inert
+ * until the toggle button (or any element with `data-frontmatter-open`) is
+ * clicked — see FRONTMATTER_SCRIPT for wiring.
+ *
+ * The button label is hidden via CSS on narrow viewports so the affordance
+ * stays out of the way on mobile.
+ */
+function renderFrontmatterAffordance(yaml: string | undefined): string {
+  if (!yaml) return "";
+  return `<button type="button" class="frontmatter-toggle" data-frontmatter-open
+            title="View page frontmatter" aria-label="View page frontmatter"
+            aria-haspopup="dialog">
+      <span class="frontmatter-toggle-glyph">{}</span>
+      <span class="frontmatter-toggle-label">frontmatter</span>
+    </button>
+    <dialog class="frontmatter-dialog">
+      <div class="frontmatter-header">
+        <span class="frontmatter-title">frontmatter</span>
+        <button type="button" class="frontmatter-copy" data-frontmatter-copy>
+          <span data-frontmatter-copy-label>Copy</span>
+        </button>
+        <button type="button" class="frontmatter-close" data-frontmatter-close
+                aria-label="Close">×</button>
+      </div>
+      <pre><code class="frontmatter-yaml">${esc(yaml)}</code></pre>
+    </dialog>`;
+}
+
+function renderSocialMeta(input: LayoutInput): string {
+  const tags: string[] = [];
+  const fullTitle = `${input.title} | ${input.vaultName}`;
+  tags.push(`<meta property="og:title" content="${attr(fullTitle)}">`);
+  tags.push(`<meta property="og:type" content="article">`);
+  tags.push(`<meta property="og:site_name" content="${attr(input.vaultName)}">`);
+  if (input.coverImage) {
+    tags.push(`<meta property="og:image" content="${attr(input.coverImage)}">`);
+    tags.push(`<meta name="twitter:card" content="summary_large_image">`);
+    tags.push(`<meta name="twitter:image" content="${attr(input.coverImage)}">`);
+  } else {
+    tags.push(`<meta name="twitter:card" content="summary">`);
+  }
+  return tags.join("\n");
 }
 
 function renderMeta(mtime: number | undefined, birthtime: number | undefined): string {
@@ -477,46 +549,87 @@ const SEARCH_SCRIPT = `<script>
 
 const BASES_SCRIPT = `<script>
 (function () {
-  // Wire each .bases-block on the page: click a header to toggle sort,
-  // type into the filter to narrow visible rows. The renderer emits a
-  // data-raw attribute on each <td> with the canonical sort key, so this
-  // script doesn't need to re-derive types from the rendered text.
+  // Multi-view tabs: clicking a tab swaps which panel is visible. ARIA
+  // attributes update so screen readers track state; the active class
+  // styles the current tab. Each .bases-tabbed acts as its own tab group.
+  for (const tabbed of document.querySelectorAll('.bases-tabbed')) {
+    const tabs = [...tabbed.querySelectorAll('.bases-tab')];
+    const panels = [...tabbed.querySelectorAll('.bases-tab-panel')];
+    const activate = (idx) => {
+      for (let i = 0; i < tabs.length; i++) {
+        const isActive = i === idx;
+        tabs[i].classList.toggle('bases-tab-active', isActive);
+        tabs[i].setAttribute('aria-selected', isActive ? 'true' : 'false');
+        tabs[i].setAttribute('tabindex', isActive ? '0' : '-1');
+        if (isActive) panels[i].removeAttribute('hidden');
+        else panels[i].setAttribute('hidden', '');
+      }
+    };
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => activate(i));
+      tab.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          const dir = e.key === 'ArrowRight' ? 1 : -1;
+          const next = (i + dir + tabs.length) % tabs.length;
+          activate(next);
+          tabs[next].focus();
+        }
+      });
+    });
+  }
+
+  // Wire each .bases-block on the page. Three view shapes share the same
+  // .bases-filter input contract; the script picks the right item
+  // selector per block. Sort is table-only (cards/list have no header
+  // columns to click). The data-raw attribute on table cells is the
+  // canonical sort key so we don't re-derive types from text.
+  const VIEWS = [
+    { containerSel: 'tbody', itemSel: 'tr', noun: 'row' },
+    { containerSel: '.bases-cards', itemSel: '.bases-card', noun: 'card' },
+    { containerSel: '.bases-list', itemSel: 'li', noun: 'item' },
+  ];
+
   for (const block of document.querySelectorAll('.bases-block')) {
-    const tbody = block.querySelector('tbody');
-    if (!tbody) continue;
-    const allRows = [...tbody.querySelectorAll('tr')];
+    const view = VIEWS.find((v) => block.querySelector(v.containerSel));
+    if (!view) continue;
+    const container = block.querySelector(view.containerSel);
+    const allItems = [...container.querySelectorAll(':scope > ' + view.itemSel)];
     const filterInput = block.querySelector('.bases-filter');
     const counter = block.querySelector('.bases-count');
 
+    const applyFilter = () => {
+      const q = filterInput ? filterInput.value.trim().toLowerCase() : '';
+      let visible = 0;
+      for (const item of allItems) {
+        const match = !q || (item.textContent || '').toLowerCase().includes(q);
+        if (match) { item.removeAttribute('hidden'); visible++; }
+        else item.setAttribute('hidden', '');
+      }
+      if (counter) {
+        const total = counter.dataset.total;
+        counter.textContent = q
+          ? visible + ' of ' + total + ' ' + view.noun + (total === '1' ? '' : 's')
+          : total + ' ' + view.noun + (total === '1' ? '' : 's');
+      }
+    };
+    if (filterInput) filterInput.addEventListener('input', applyFilter);
+
+    // Sort is table-only. Other views use whatever order the build emitted.
+    if (view.containerSel !== 'tbody') continue;
     let sortCol = -1;
     let sortDir = 1; // 1 asc, -1 desc
 
     const applySort = () => {
       if (sortCol < 0) return;
-      const sorted = [...allRows].sort((a, b) => {
+      const sorted = [...allItems].sort((a, b) => {
         const av = a.children[sortCol] ? a.children[sortCol].dataset.raw || a.children[sortCol].textContent : '';
         const bv = b.children[sortCol] ? b.children[sortCol].dataset.raw || b.children[sortCol].textContent : '';
         const an = parseFloat(av), bn = parseFloat(bv);
         if (!isNaN(an) && !isNaN(bn)) return (an - bn) * sortDir;
         return av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' }) * sortDir;
       });
-      sorted.forEach((tr) => tbody.appendChild(tr));
-    };
-
-    const applyFilter = () => {
-      const q = filterInput ? filterInput.value.trim().toLowerCase() : '';
-      let visible = 0;
-      for (const tr of allRows) {
-        const match = !q || tr.textContent.toLowerCase().includes(q);
-        if (match) { tr.removeAttribute('hidden'); visible++; }
-        else tr.setAttribute('hidden', '');
-      }
-      if (counter) {
-        const total = counter.dataset.total;
-        counter.textContent = q
-          ? visible + ' of ' + total + ' rows'
-          : total + ' ' + (total === '1' ? 'row' : 'rows');
-      }
+      sorted.forEach((tr) => container.appendChild(tr));
     };
 
     block.querySelectorAll('thead th').forEach((th, i) => {
@@ -529,8 +642,58 @@ const BASES_SCRIPT = `<script>
         applySort();
       });
     });
+  }
+})();
+</script>`;
 
-    if (filterInput) filterInput.addEventListener('input', applyFilter);
+// Frontmatter dialog: opens on click of the toggle button, copies the raw
+// YAML to clipboard on Copy, closes on X / ESC / backdrop click. Native
+// <dialog> handles ESC; we add the backdrop click manually so the user can
+// dismiss by clicking outside the panel as well.
+const FRONTMATTER_SCRIPT = `<script>
+(function() {
+  const toggle = document.querySelector('[data-frontmatter-open]');
+  const dialog = document.querySelector('.frontmatter-dialog');
+  if (!toggle || !dialog) return;
+
+  toggle.addEventListener('click', () => {
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  });
+
+  dialog.addEventListener('click', (e) => {
+    // Backdrop click: native <dialog> reports the dialog itself as the
+    // event target when you click the backdrop (vs. any descendant element
+    // when clicking inside the panel).
+    if (e.target === dialog) dialog.close();
+  });
+
+  const closeBtn = dialog.querySelector('[data-frontmatter-close]');
+  if (closeBtn) closeBtn.addEventListener('click', () => dialog.close());
+
+  const copyBtn = dialog.querySelector('[data-frontmatter-copy]');
+  const copyLabel = dialog.querySelector('[data-frontmatter-copy-label]');
+  const yamlEl = dialog.querySelector('.frontmatter-yaml');
+  if (copyBtn && yamlEl) {
+    copyBtn.addEventListener('click', async () => {
+      const text = yamlEl.textContent || '';
+      try {
+        await navigator.clipboard.writeText(text);
+        if (copyLabel) {
+          const orig = copyLabel.textContent;
+          copyLabel.textContent = 'Copied!';
+          setTimeout(() => { copyLabel.textContent = orig; }, 1200);
+        }
+      } catch {
+        // Clipboard API blocked (insecure context, etc.); fall back to
+        // selecting the text so the user can ⌘/Ctrl+C manually.
+        const range = document.createRange();
+        range.selectNodeContents(yamlEl);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
   }
 })();
 </script>`;

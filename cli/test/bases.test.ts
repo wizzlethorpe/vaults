@@ -311,7 +311,7 @@ describe("renderBase: cards view", () => {
       `views:\n  - type: cards\n    image: portrait`,
       ctx,
     );
-    assert.match(html, /background-image: url\('\/hero\.webp'\)/);
+    assert.match(html, /<img src="\/hero\.webp"/);
   });
 
   it("falls back to the first body image embed when no view.image is set", () => {
@@ -320,7 +320,7 @@ describe("renderBase: cards view", () => {
       [{ source: "hero.webp", output: "hero.webp" }],
     );
     const html = renderBase(`views: [{ type: cards }]`, ctx);
-    assert.match(html, /background-image: url\('\/hero\.webp'\)/);
+    assert.match(html, /<img src="\/hero\.webp"/);
   });
 
   it("renders no cover element when no image source is found", () => {
@@ -329,7 +329,7 @@ describe("renderBase: cards view", () => {
     assert.doesNotMatch(html, /bases-card-cover/);
   });
 
-  it("imageFit: contain is reflected in the inline style", () => {
+  it("imageFit: contain emits the contain class", () => {
     const ctx = mkContext(
       [{ path: "Hero.md", fm: { portrait: "hero.webp" } }],
       [{ source: "hero.webp" }],
@@ -338,7 +338,7 @@ describe("renderBase: cards view", () => {
       `views:\n  - type: cards\n    image: portrait\n    imageFit: contain`,
       ctx,
     );
-    assert.match(html, /background-size: contain/);
+    assert.match(html, /bases-card-cover-contain/);
   });
 });
 

@@ -16,21 +16,27 @@ import { basesPlugin } from "./bases.js";
 const sanitizeSchema = {
   ...defaultSchema,
   clobberPrefix: "",
-  // The Bases plugin emits a small filterable table; the default schema
-  // strips <input> and most data-* attributes, so we permit them here.
-  tagNames: [...(defaultSchema.tagNames ?? []), "input"],
+  // Bases emit interactive HTML beyond what the default schema allows:
+  // <input> (filter), <button> (tab buttons + dialog actions). Add them
+  // and the attributes they need to function.
+  tagNames: [...(defaultSchema.tagNames ?? []), "input", "button"],
   attributes: {
     ...defaultSchema.attributes,
-    "*": [...(defaultSchema.attributes?.["*"] ?? []), "className"],
+    // role + aria-selected/haspopup/label ride on tabs, dialogs, etc.
+    // `hidden` is essential — Bases tab panels and card-filter rows toggle
+    // it from JS to show/hide elements. Without it on the allowlist the
+    // initial render shows everything because the sanitizer strips it.
+    "*": [...(defaultSchema.attributes?.["*"] ?? []), "className", "role", "ariaSelected", "ariaLabel", "ariaHaspopup", "tabindex", "hidden"],
     img: ["src", "alt", "width", "height", "loading"],
     a: ["href", "title", "className", "id"],
-    div: ["className", "data*"],
+    div: ["className", "data*", "role"],
     span: ["className", "data*"],
     table: ["className"],
     th: ["className", "data*", "tabindex"],
     td: ["className", "data*"],
     tr: ["className", "data*"],
     input: ["type", "placeholder", "className", "ariaLabel"],
+    button: ["type", "className", "data*", "role", "ariaSelected", "ariaLabel", "ariaHaspopup", "tabindex", "title"],
   },
   // The default schema forces <input> to type=checkbox and disabled=true
   // to safely render GFM task lists. We don't render task lists here, and

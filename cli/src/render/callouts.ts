@@ -14,7 +14,10 @@ import { visit, SKIP } from "unist-util-visit";
 // If the callout's type matches a name in `redactRoles`, the entire blockquote is
 // removed from the tree; used to strip role-gated callouts during lower-tier builds.
 
-const CALLOUT_RE = /^\[!(\w+)\][+-]?\s*(.*?)(?:\n|$)/;
+// `[ \t]*` (not `\s*`) for the gap between the closing bracket and the
+// title — `\s` includes `\n`, which would let an empty-title callout slurp
+// the next line into the title and leave the body empty.
+const CALLOUT_RE = /^\[!(\w+)\][+-]?[ \t]*(.*?)(?:\n|$)/;
 
 export function calloutPlugin(opts: { redactRoles?: ReadonlySet<string> } = {}): Plugin<[], Root> {
   const redact = opts.redactRoles;

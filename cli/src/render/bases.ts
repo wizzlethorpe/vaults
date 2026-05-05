@@ -150,7 +150,28 @@ export function renderBase(
       blocks.push(errorBlock(`Bases: ${(err as Error).message}`));
     }
   }
+  // Multi-view bases render as a tabbed container; single-view (or
+  // viewName-pinned, where the user already chose one) renders bare so
+  // simple cases stay simple. The tab strip uses each view's `name` for
+  // its label; missing names fall back to "View N".
+  if (blocks.length > 1) return wrapAsTabs(blocks, views);
   return blocks.join("\n");
+}
+
+function wrapAsTabs(blocks: string[], views: ViewSpec[]): string {
+  const tabs = blocks.map((_, i) => {
+    const label = views[i]?.name?.trim() || `View ${i + 1}`;
+    const isActive = i === 0;
+    return `<button type="button" role="tab" data-bases-tab="${i}"`
+      + ` aria-selected="${isActive ? "true" : "false"}"`
+      + ` tabindex="${isActive ? "0" : "-1"}"`
+      + ` class="bases-tab${isActive ? " bases-tab-active" : ""}">`
+      + esc(label) + `</button>`;
+  }).join("");
+  const panels = blocks.map((html, i) =>
+    `<div class="bases-tab-panel" role="tabpanel" data-bases-tab-panel="${i}"${i === 0 ? "" : " hidden"}>${html}</div>`,
+  ).join("");
+  return `<div class="bases-tabbed"><div class="bases-tab-strip" role="tablist">${tabs}</div>${panels}</div>`;
 }
 
 // ── Row model ──────────────────────────────────────────────────────────────
@@ -629,14 +650,18 @@ function renderCardsView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: 
   // Up to 2 metadata fields shown under the title (skipping file.name).
   const metaCols = (view.order ?? []).filter((c) => c !== "file.name").slice(0, 2);
 
-  const aspectStyle = view.imageAspectRatio ? `aspect-ratio: ${escAttr(view.imageAspectRatio)};` : "";
-  const fit = view.imageFit === "contain" ? "contain" : "cover";
+  // The HTML pipeline's sanitize schema strips `style` attributes from divs,
+  // so we can't drive cover layout from inline CSS. Encode imageFit as a
+  // class instead; aspect-ratio rides on a CSS variable set via the only
+  // attribute we keep, `class` (the variable is read by styles.css).
+  const fitClass = view.imageFit === "contain" ? "bases-card-cover-contain" : "bases-card-cover-cover";
+  const aspectClass = view.imageAspectRatio ? aspectRatioClass(view.imageAspectRatio) : "";
 
   const cards = rows.map((row) => {
     const href = "/" + row.page.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/");
     const cover = findCoverImage(row, view.image, context);
     const coverHtml = cover
-      ? `<div class="bases-card-cover" style="${aspectStyle}background-image: url('${escAttr(cover)}'); background-size: ${fit}; background-position: center;"></div>`
+      ? `<div class="bases-card-cover ${fitClass}${aspectClass ? " " + aspectClass : ""}"><img src="${escAttr(cover)}" alt="" loading="lazy"></div>`
       : "";
     const metaHtml = metaCols
       .map((id) => renderValue(resolveIdentifier(id, row)))
@@ -735,9 +760,11 @@ function findCoverImage(row: Row, prop: string | undefined, context: RenderConte
     const v = row.fm[prop];
     if (typeof v === "string" && v.length > 0) raw = v;
   }
+  // Fall back to the per-page resolved cover (image: frontmatter, or first
+  // body embed when settings.auto_image is on). Already a served URL.
+  if (!raw && row.page.coverImage) return row.page.coverImage;
   if (!raw) {
-    // Look up the page's markdown source via context.markdownContent (keyed
-    // by basename or path slug; we use path slug for uniqueness).
+    // Last-resort body scan: covers older callers that pre-date PageMeta.coverImage.
     const slug = slugifySimple(row.page.path.replace(/\.md$/i, ""));
     const source = context.markdownContent.get(slug);
     if (source) {
@@ -754,6 +781,36 @@ function findCoverImage(row: Row, prop: string | undefined, context: RenderConte
   if (image) return "/" + image.outputPath.split("/").map(encodeURIComponent).join("/");
   // Already a URL or path: use as-is.
   return raw.startsWith("http") ? raw : "/" + raw.split("/").map(encodeURIComponent).join("/");
+}
+
+/**
+ * Pick the closest pre-defined CSS class for the requested aspect ratio. We
+ * can't drive aspect-ratio from inline style (the sanitize schema strips it)
+ * so we offer a curated set covering the common photo/video/portrait shapes.
+ * `1` (square), `1.5` (3:2), `1.333` (4:3), `1.778` (16:9), `0.75` (3:4),
+ * `0.667` (2:3). Numeric strings like "1.5" and ratio strings like "3/2" or
+ * "3 / 2" are both accepted.
+ */
+function aspectRatioClass(value: string | number): string {
+  const raw = String(value).trim();
+  let n: number;
+  const m = /^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/.exec(raw);
+  if (m) n = Number(m[1]) / Number(m[2]);
+  else n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const buckets: [number, string][] = [
+    [1, "bases-card-cover-1x1"],
+    [1.5, "bases-card-cover-3x2"],
+    [1.333, "bases-card-cover-4x3"],
+    [1.778, "bases-card-cover-16x9"],
+    [0.75, "bases-card-cover-3x4"],
+    [0.667, "bases-card-cover-2x3"],
+  ];
+  let best = buckets[0]!;
+  for (const b of buckets) {
+    if (Math.abs(b[0] - n) < Math.abs(best[0] - n)) best = b;
+  }
+  return best[1];
 }
 
 // Mirror the slugify in build.ts without taking a dependency on the renderer's

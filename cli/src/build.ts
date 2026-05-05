@@ -11,10 +11,17 @@ import { buildFavicon } from "./favicon.js";
 // Any image format that can be referenced via ![[name.ext]]; superset of
 // COMPRESSIBLE_EXT_RE since SVGs/GIFs ship as-is rather than being recoded.
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?)$/i;
+// Recognised non-image media that ride alongside the wiki: audio, video,
+// portable docs. Ship per-variant just like images (only into variants
+// whose visible pages reference them) so DM-only audio cues can't leak
+// into the public deploy. Anything outside this list is treated as
+// "unknown" and skipped by default; see the include_unknown_files setting.
+const PASSTHROUGH_EXT_RE = /\.(ogg|mp3|m4a|wav|flac|opus|aac|mp4|webm|mov|ogv|pdf|epub)$/i;
 import { renderMarkdown } from "./render/pipeline.js";
 import { renderLayout, render404 } from "./render/layout.js";
 import { slugify } from "./render/slug.js";
 import { buildPreview } from "./render/preview.js";
+import { resolvePageImage } from "./render/cover.js";
 import { DEFAULT_CSS, renderThemeOverride } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./settings.js";
@@ -130,9 +137,39 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // .base files are consumed at build time (rendered into HTML where embedded)
   // and never shipped to the deploy.
   const baseFiles = withinLimit.filter((f) => /\.base$/i.test(f.path));
-  const otherFiles = withinLimit.filter(
-    (f) => !/\.md$/i.test(f.path) && !IMAGE_EXT_RE.test(f.path) && !/\.base$/i.test(f.path),
+  const passthroughFiles = withinLimit.filter((f) =>
+    PASSTHROUGH_EXT_RE.test(f.path)
+    && !IMAGE_EXT_RE.test(f.path)
+    && !/\.md$|\.base$/i.test(f.path),
   );
+  // Anything else: skipped by default so role-gated content can't leak
+  // through a stray file. include_unknown_files = true folds them into
+  // the passthrough pool (still reference-gated). The user-facing
+  // warning lists exactly which paths got dropped so unintentional
+  // omissions surface immediately.
+  const unknownFiles = withinLimit.filter((f) =>
+    !/\.md$|\.base$/i.test(f.path)
+    && !IMAGE_EXT_RE.test(f.path)
+    && !PASSTHROUGH_EXT_RE.test(f.path),
+  );
+  const includeUnknown = settings.values.include_unknown_files;
+  if (unknownFiles.length > 0) {
+    if (includeUnknown) {
+      console.log(`  including ${unknownFiles.length} unknown-extension file(s) (include_unknown_files=true)`);
+    } else {
+      console.warn(`  skipping ${unknownFiles.length} file(s) with unrecognized extensions:`);
+      const shown = unknownFiles.slice(0, 10);
+      for (const f of shown) console.warn(`    ${f.path}`);
+      if (unknownFiles.length > shown.length) {
+        console.warn(`    … and ${unknownFiles.length - shown.length} more`);
+      }
+      console.warn(`    Set 'include_unknown_files: true' in settings.md to ship them.`);
+    }
+  }
+  // Effective passthrough list: recognised media plus (optionally) unknowns.
+  const stagedPassthroughs = includeUnknown
+    ? [...passthroughFiles, ...unknownFiles]
+    : passthroughFiles;
 
   // ── Shared content (read once, reused across roles) ─────────────────────
   const sources = new Map<string, string>();
@@ -207,22 +244,26 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     progress.done(`${imageFiles.length} processed (${cacheHits} cached, ${imageFiles.length - cacheHits} compressed)`);
   }
 
-  // ── Passthrough files (PDFs, audio, etc.) ───────────────────────────────
-  // Staged once, copied into every variant. We don't scan markdown to find
-  // out which files are referenced (links can be plain text, embedded HTML,
-  // or arbitrary URLs), so we ship them into every tier; the trade-off is
-  // that DM-only PDFs are reachable from any role's deploy. Document as a
-  // known limitation.
+  // ── Passthrough files (audio, video, PDF, epub) ────────────────────────
+  // Staged once and copied into a variant only when a visible page in that
+  // variant references the file by basename or relative path. Same gating
+  // story as images: a DM-only audio cue can't ride along into the public
+  // deploy because no public-tier source mentions it.
   const otherStagingDir = join(opts.outputDir, ".other-staging");
-  if (otherFiles.length > 0) {
-    const progress = new Progress("Other");
-    progress.update(0, otherFiles.length);
-    await pMap(otherFiles, concurrency, async (f) => {
+  const passthroughIndex = new Map<string, ImageEntry>();
+  if (stagedPassthroughs.length > 0) {
+    const progress = new Progress("Passthroughs");
+    progress.update(0, stagedPassthroughs.length);
+    await pMap(stagedPassthroughs, concurrency, async (f) => {
       const dest = join(otherStagingDir, f.path);
       await mkdir(dirname(dest), { recursive: true });
       await copyFile(f.absolute, dest);
+      passthroughIndex.set(slugify(f.path.split("/").pop()!), {
+        sourcePath: f.path,
+        outputPath: f.path,
+      });
     }, (done, total) => progress.update(done, total));
-    progress.done(`${otherFiles.length} copied`);
+    progress.done(`${stagedPassthroughs.length} staged`);
   }
 
   // Shared CSS bundle
@@ -248,6 +289,17 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     await writeFile(join(opts.outputDir, "favicon.ico"), favicon);
   } catch (err) {
     console.warn(`  warning: could not generate favicon: ${(err as Error).message}`);
+  }
+
+  // ── Resolve per-page cover images ───────────────────────────────────────
+  // Computed once against the final imageIndex so OG meta tags, Bases card
+  // covers, hover previews, and Foundry actor/item reskin all resolve to the
+  // same URL. settings.auto_image flips body-fallback discovery on/off.
+  for (const meta of allPageMetas) {
+    const src = sources.get(meta.path);
+    if (!src) continue;
+    const cover = resolvePageImage(src, meta.frontmatter, imageIndex, settings.values.auto_image);
+    if (cover) meta.coverImage = cover;
   }
 
   // ── Per-role variant builds ─────────────────────────────────────────────
@@ -277,8 +329,8 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       baseSources,
       imageIndex,
       imageStagingDir,
-      otherFiles,
-      otherStagingDir,
+      passthroughIndex,
+      passthroughStagingDir: otherStagingDir,
       settings: settings.values,
       authConfigured: roles.length > 1,
       concurrency,
@@ -290,7 +342,9 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     // Write a per-variant _manifest.json so external clients (Foundry, MCP,
     // etc.) can do an incremental diff. Includes EVERY file that variant
     // serves; html, md, images (as relative paths into shared root), css.
-    const manifest = await buildManifest(opts.outputDir, variantDir);
+    // bodyMeta carries per-page Foundry reskin metadata; folded into each
+    // body row's hash so meta-only changes trigger a re-sync.
+    const manifest = await buildManifest(opts.outputDir, variantDir, stats.bodyMeta, !collapseToRoot, roles, opts.vaultName);
     await writeFile(join(variantDir, "_manifest.json"), JSON.stringify(manifest));
   }
 
@@ -331,7 +385,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     roles,
     perRolePageCount,
     imageCount: imageFiles.length,
-    otherCount: otherFiles.length,
+    otherCount: stagedPassthroughs.length,
   };
 }
 
@@ -348,9 +402,9 @@ interface VariantArgs {
   imageIndex: Map<string, ImageEntry>;
   /** Staging dir holding compressed images; we copy what's referenced. */
   imageStagingDir: string;
-  /** Passthrough files (PDFs, audio, etc.) staged once, copied per variant. */
-  otherFiles: ScannedFile[];
-  otherStagingDir: string;
+  /** Passthrough media (audio/video/pdf/epub) staged once, reference-copied per variant. */
+  passthroughIndex: Map<string, ImageEntry>;
+  passthroughStagingDir: string;
   settings: Settings;
   /** Whether the deployment has more than one role (controls auth-box rendering). */
   authConfigured: boolean;
@@ -358,7 +412,11 @@ interface VariantArgs {
   allWarnings: boolean | undefined;
 }
 
-interface VariantStats { pageCount: number; }
+interface VariantStats {
+  pageCount: number;
+  /** Maps `.body.html` path (variant-relative) to its meta payload. Empty unless any page sets foundry_base / image. */
+  bodyMeta: Map<string, BodyMeta>;
+}
 
 async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   // Pages this variant can see (page.role is in visibleRoles).
@@ -437,6 +495,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   }
 
   // Pass 2: write layouts + preview JSON.
+  const bodyMeta = new Map<string, BodyMeta>();
   await pMap(visibleMetas, a.concurrency, async (p) => {
     const r = rendered.get(p.path)!;
     const backlinkPaths = backlinkMap.get(p.path) ?? new Set();
@@ -456,6 +515,8 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
       authConfigured: a.authConfigured,
       ...(p.mtime != null ? { mtime: p.mtime } : {}),
       ...(p.birthtime != null ? { birthtime: p.birthtime } : {}),
+      ...(p.coverImage ? { coverImage: p.coverImage } : {}),
+      ...(extractFrontmatterBlock(visibleSources.get(p.path)!) ?? {}),
     });
     const outputBase = p.path.replace(/\.md$/i, "");
     const htmlDest = join(a.variantDir, outputBase + ".html");
@@ -465,7 +526,10 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     // .body.html holds just the rendered article content (no layout shell).
     // Foundry imports this so callouts/embeds rendered by the vault's
     // remark/rehype pipeline land in journals as-is, no client-side render.
-    await writeFile(join(a.variantDir, outputBase + ".body.html"), r.html);
+    const bodyPath = outputBase + ".body.html";
+    await writeFile(join(a.variantDir, bodyPath), r.html);
+
+    bodyMeta.set(bodyPath, collectBodyMeta(p));
 
     const source = visibleSources.get(p.path)!;
     const preview = await buildPreview(source, r.title);
@@ -497,30 +561,51 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
 
   // Copy whichever images this variant's pages reference. Images live only
   // under the variants that need them so guessing a DM-only image URL on
-  // the public wiki structurally 404s.
-  await copyReferencedImages(visibleSources, a.imageIndex, a.imageStagingDir, a.variantDir);
+  // the public wiki structurally 404s. coverImage feeds in here too so
+  // images named via `image:` frontmatter (no body embed) still ship.
+  await copyReferencedImages(visibleSources, visibleMetas, a.imageIndex, a.imageStagingDir, a.variantDir);
 
-  // Passthrough files (PDFs, audio, etc.) ship into every variant; the
-  // build doesn't scan markdown for arbitrary references, so we can't tell
-  // which role-restricted pages link to a given PDF. Limitation: DM-only
-  // data files in this category aren't role-gated.
-  for (const f of a.otherFiles) {
-    const src = join(a.otherStagingDir, f.path);
-    const dst = join(a.variantDir, f.path);
-    await mkdir(dirname(dst), { recursive: true });
-    try { await copyFile(src, dst); }
-    catch (err) {
-      console.warn(`  warning: could not copy ${f.path}: ${(err as Error).message}`);
-    }
+  // Passthrough files (audio/video/pdf/epub) follow the same gating
+  // contract as images: ship only into variants whose visible pages
+  // reference the file. A DM-only audio cue can't ride along into the
+  // public deploy because no public-tier source mentions it.
+  await copyReferencedPassthroughs(visibleSources, a.passthroughIndex, a.passthroughStagingDir, a.variantDir);
+
+  return { pageCount: visibleMetas.length, bodyMeta };
+}
+
+/**
+ * Build the per-body manifest meta from a page's frontmatter + resolved
+ * cover image. `role` always lands so the Foundry side can apply the
+ * dmRole permission gate; the foundry_base / image fields are conditional.
+ */
+function collectBodyMeta(p: PageMeta): BodyMeta {
+  const fm = p.frontmatter ?? {};
+  const out: BodyMeta = { role: p.role };
+
+  const basename = p.path.split("/").pop()!.replace(/\.md$/i, "");
+  if (p.title && p.title !== basename) out.title = p.title;
+
+  const fb = fm["foundry_base"];
+  if (typeof fb === "string" && fb.trim().length > 0) {
+    out.foundry_base = fb.trim();
   }
 
-  return { pageCount: visibleMetas.length };
+  const fo = fm["foundry"];
+  if (fo && typeof fo === "object" && !Array.isArray(fo)) {
+    out.foundry = fo as Record<string, unknown>;
+  }
+
+  if (p.coverImage) out.image = p.coverImage;
+
+  return out;
 }
 
 const EMBED_RE = /!\[\[([^\[\]|#\n]+?)(?:\|[^\[\]#\n]*)?\]\]/g;
 
 async function copyReferencedImages(
   visibleSources: Map<string, string>,
+  visibleMetas: PageMeta[],
   imageIndex: Map<string, ImageEntry>,
   stagingDir: string,
   variantDir: string,
@@ -534,6 +619,17 @@ async function copyReferencedImages(
       if (image) refs.add(image.outputPath);
     }
   }
+  // Pages can name their cover via `image:` frontmatter alone (no body embed);
+  // pull those in too. coverImage was resolved to the served URL upstream, so
+  // strip the leading slash + decode to get back to the staging-relative path.
+  for (const p of visibleMetas) {
+    if (!p.coverImage) continue;
+    if (/^https?:\/\//i.test(p.coverImage)) continue;
+    let outputPath;
+    try { outputPath = decodeURIComponent(p.coverImage.replace(/^\//, "")); }
+    catch { continue; }
+    refs.add(outputPath);
+  }
   for (const outputPath of refs) {
     const src = join(stagingDir, outputPath);
     const dst = join(variantDir, outputPath);
@@ -543,6 +639,55 @@ async function copyReferencedImages(
       // Source may legitimately be missing if the file is in the index but
       // wasn't compressed (e.g. quality=0 path). Surface but don't crash.
       console.warn(`  warning: could not copy image ${outputPath}: ${(err as Error).message}`);
+    }
+  }
+}
+
+// `[label](path/to/file.ext)` style markdown link. Captures the URL part.
+// `\.[a-z0-9]+` requires an extension; we don't want to scoop up plain
+// internal page links (e.g. `(href)` without an extension).
+const MD_LINK_RE = /\[[^\]]*\]\(([^)\s]+\.[a-z0-9]+)(?:\s+["'][^"']*["'])?\)/gi;
+// `[[file.ext]]` and `![[file.ext]]` — Obsidian-flavoured wikilinks/embeds.
+const WIKI_LINK_RE = /!?\[\[([^\[\]|#\n]+\.[a-z0-9]+)(?:\|[^\[\]#\n]*)?(?:#[^\[\]\n]*)?\]\]/gi;
+
+/**
+ * Per-variant reference scan for passthrough files. A file lands in this
+ * variant's deploy only if a visible page mentions it — same gating story
+ * as images. Match patterns cover Obsidian embeds (`![[file.pdf]]`),
+ * Obsidian wikilinks (`[[file.pdf]]`), and standard markdown links
+ * (`[label](path/file.pdf)`). Anything not matched is dropped — that's
+ * the whole point of the change; a stray DM-only audio cue stays in the
+ * dm variant only.
+ */
+async function copyReferencedPassthroughs(
+  visibleSources: Map<string, string>,
+  passthroughIndex: Map<string, ImageEntry>,
+  stagingDir: string,
+  variantDir: string,
+): Promise<void> {
+  if (passthroughIndex.size === 0) return;
+  const refs = new Set<string>();
+  for (const source of visibleSources.values()) {
+    for (const m of source.matchAll(WIKI_LINK_RE)) {
+      const name = m[1]!.trim();
+      const entry = passthroughIndex.get(slugify(name.split("/").pop()!));
+      if (entry) refs.add(entry.outputPath);
+    }
+    for (const m of source.matchAll(MD_LINK_RE)) {
+      const name = m[1]!.trim();
+      // Skip http(s) links and anchor-only refs.
+      if (/^(https?:|mailto:|#)/i.test(name)) continue;
+      const entry = passthroughIndex.get(slugify(name.split("/").pop()!));
+      if (entry) refs.add(entry.outputPath);
+    }
+  }
+  for (const outputPath of refs) {
+    const src = join(stagingDir, outputPath);
+    const dst = join(variantDir, outputPath);
+    await mkdir(dirname(dst), { recursive: true });
+    try { await copyFile(src, dst); }
+    catch (err) {
+      console.warn(`  warning: could not copy ${outputPath}: ${(err as Error).message}`);
     }
   }
 }
@@ -675,6 +820,20 @@ async function compressImageCached(
 
 interface PageFrontmatter { title?: string; role?: string; aliases?: string[]; }
 
+/**
+ * Pull the raw `---\n...\n---` frontmatter block out of a markdown source so
+ * the layout can show it verbatim (preserving the user's exact formatting,
+ * comments, and key order). Returns the inner-block text or null when the
+ * page has no frontmatter. The shape `{ frontmatterYaml }` is so callers can
+ * spread it directly into the LayoutInput; missing frontmatter contributes
+ * nothing to the layout.
+ */
+function extractFrontmatterBlock(source: string): { frontmatterYaml: string } | null {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(source);
+  if (!m || !m[1] || !m[1].trim()) return null;
+  return { frontmatterYaml: m[1] };
+}
+
 function parseFrontmatter(source: string): PageFrontmatter {
   const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(source);
   if (!block) return {};
@@ -800,12 +959,47 @@ function kindLabel(kind: string): string {
   }
 }
 
+/**
+ * Per-page extension on .body.html manifest entries, consumed by the Foundry
+ * sync. Always carries the page's role (so the Foundry side can map roles to
+ * JournalEntry ownership against a per-vault dmRole setting); other fields
+ * are present only when the corresponding frontmatter is set.
+ */
+export interface BodyMeta {
+  /** Page's resolved role tier (e.g. "public" / "patron" / "dm"). */
+  role: string;
+  /**
+   * Page's display title (frontmatter `title:`, or H1 fallback). Emitted only
+   * when it differs from the file's basename — saves a few bytes per page on
+   * vaults that don't customise titles. The Foundry side uses this as the
+   * JournalEntry/Actor/Item display name; falls back to the basename when
+   * absent.
+   */
+  title?: string;
+  /**
+   * Foundry document UUID the page should reskin (e.g. "Actor.AbcDef…").
+   * The Foundry side runs fromUuid() to resolve this; we don't validate
+   * shape here beyond "non-empty string".
+   */
+  foundry_base?: string;
+  /**
+   * Arbitrary frontmatter under `foundry:` deep-merged into the target
+   * document on update. Lets users override system fields (HP, biography,
+   * etc.) without us knowing the system schema.
+   */
+  foundry?: Record<string, unknown>;
+  /** Resolved cover image (served URL). Used as the reskinned actor/item img. */
+  image?: string;
+}
+
 interface ManifestEntry {
   path: string;
   hash: string;
   size: number;
   mtime: number;
   content_type: string;
+  /** Set only on .body.html rows that carry per-page metadata. */
+  meta?: BodyMeta;
 }
 
 /**
@@ -814,25 +1008,42 @@ interface ManifestEntry {
  * variant dir but inside the deploy root) are listed too; clients use a
  * single manifest to diff the entire site, not just the role-specific bits.
  */
-async function buildManifest(rootDir: string, variantDir: string): Promise<{ files: ManifestEntry[] }> {
+async function buildManifest(
+  rootDir: string,
+  variantDir: string,
+  bodyMeta: Map<string, BodyMeta>,
+  authRequired: boolean,
+  roles: string[],
+  vaultName: string,
+): Promise<{ name: string; auth: { required: boolean; roles: string[] }; files: ManifestEntry[] }> {
   const files: ManifestEntry[] = [];
   const seen = new Set<string>();
 
   // Variant-specific files: use pathBase=variantDir so paths come out as
   // "index.html", not "_variants/<role>/index.html". This matches the public
   // URL the client uses; the auth middleware does the variant rewrite.
-  await walkAndIndex(variantDir, variantDir, files, seen);
+  await walkAndIndex(variantDir, variantDir, files, seen, [], bodyMeta);
 
   // Shared assets under the deploy root (attachments, css). Skip the variant
   // tree itself and anything inside `functions/` (Function code isn't served).
   if (rootDir !== variantDir) {
     await walkAndIndex(rootDir, rootDir, files, seen, [
       "_variants", "functions", ".image-staging", ".other-staging",
-    ]);
+    ], bodyMeta);
   }
 
   files.sort((a, b) => a.path.localeCompare(b.path));
-  return { files };
+  // `auth.required` lets clients (Foundry, MCP) tell up-front whether the
+  // deploy has middleware. Single-role builds collapse to a pure-static
+  // deploy with no /_batch / /_connect endpoints — clients fall back to
+  // direct CDN GETs in that case. `auth.roles` ships the role order
+  // (lowest→highest) so clients can rank a page's tier against a chosen
+  // cutoff (e.g. Foundry's per-vault dmRole).
+  // `name` is the vault's display name (settings.md `vault_name`); clients
+  // like the Foundry module use it as the default label + root folder when
+  // a user adds the vault, so they get something readable instead of a
+  // host-derived slug.
+  return { name: vaultName, auth: { required: authRequired, roles }, files };
 }
 
 async function walkAndIndex(
@@ -840,7 +1051,8 @@ async function walkAndIndex(
   pathBase: string,
   out: ManifestEntry[],
   seen: Set<string>,
-  skipDirNames: string[] = [],
+  skipDirNames: string[],
+  bodyMeta: Map<string, BodyMeta>,
 ): Promise<void> {
   const entries = await readdir(dir, { withFileTypes: true });
   for (const ent of entries) {
@@ -848,7 +1060,7 @@ async function walkAndIndex(
     const abs = join(dir, ent.name);
     if (ent.isDirectory()) {
       if (skipDirNames.includes(ent.name)) continue;
-      await walkAndIndex(abs, pathBase, out, seen, skipDirNames);
+      await walkAndIndex(abs, pathBase, out, seen, skipDirNames, bodyMeta);
       continue;
     }
     if (!ent.isFile()) continue;
@@ -857,14 +1069,33 @@ async function walkAndIndex(
     seen.add(path);
     const body = await readFile(abs);
     const info = await stat(abs);
+    const meta = bodyMeta.get(path);
+    // Fold meta JSON into the hash so meta-only edits (e.g. a foundry_base
+    // tweak with no body change) still bump the row hash and trigger sync.
+    const hasher = createHash("md5").update(body);
+    if (meta) hasher.update("\x00meta:" + stableStringify(meta));
     out.push({
       path,
-      hash: createHash("md5").update(body).digest("hex"),
+      hash: hasher.digest("hex"),
       size: info.size,
       mtime: Math.floor(info.mtimeMs / 1000),
       content_type: contentTypeForExt(ent.name),
+      ...(meta ? { meta } : {}),
     });
   }
+}
+
+/**
+ * Deterministic JSON encoder. Object keys are sorted recursively so two
+ * frontmatters with the same shape but different key order produce the same
+ * hash; otherwise the manifest would churn on every YAML reformat.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return "[" + value.map(stableStringify).join(",") + "]";
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableStringify(obj[k])).join(",") + "}";
 }
 
 function contentTypeForExt(filename: string): string {

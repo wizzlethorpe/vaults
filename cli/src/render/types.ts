@@ -12,6 +12,8 @@ export interface PageMeta {
   /** Unix-seconds; missing for synthesized folder indexes. */
   mtime?: number;
   birthtime?: number;
+  /** Resolved cover image (served URL). Set during build by resolvePageImage. */
+  coverImage?: string;
 }
 
 export interface ImageEntry {
