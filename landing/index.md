@@ -1,5 +1,6 @@
 ---
 title: Wizzlethorpe Vaults
+image: wizzlethorpe.webp
 ---
 
 # Wizzlethorpe Vaults
@@ -18,7 +19,7 @@ This vault is themed around the fictional Mossfoot Inn. It's the same authoring 
 > | `patron` | `patron-pass` | The [[Witchwood Cult]] page + a callout in [[Aelar]]'s page |
 > | `dm` | `dm-pass` | All of the above, plus [[Hidden Caves]] + DM callouts |
 >
-> Pages above your tier 404 directly; lower-tier pages redact role-gated
+> Pages above your tier 404 directly. Lower-tier pages redact role-gated
 > callouts inside them. Try Aelar's page at each tier to see the difference.
 
 ## What's demonstrated here

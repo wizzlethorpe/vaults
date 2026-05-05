@@ -1,6 +1,6 @@
 ---
 title: Dr. Bixby Wizzlethorpe
-image: bixby-portrait.webp
+image: wizzlethorpe.webp
 role-class: Archmage
 location: Mossfoot Inn (sabbatical)
 cr: 12
@@ -21,7 +21,7 @@ Inventor, archivist, and reluctant celebrity of the [[The Mossfoot Inn]].
 He claims to be on sabbatical from "the Tower"; everyone else assumes
 he's hiding from someone.
 
-![[bixby-portrait.webp|240]]
+![[wizzlethorpe.webp|240]]
 
 > [!quote] Bixby
 > "Memory is just storage with theatrical lighting. I'm in the storage

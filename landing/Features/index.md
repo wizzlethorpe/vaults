@@ -17,6 +17,7 @@ the underlying markdown.
 | [[Role gating]] | `public`/`patron`/`dm` tiers, page + callout gating, auth flow |
 | [[Foundry integration]] | Sync to Foundry VTT, `foundry_base` clones, dmRole gating |
 | [[Passthrough files]] | Audio/video/PDF/EPUB shipping with per-variant role gating |
+| [[Patreon login]] | Optional OAuth overlay: link roles to Patreon tiers so patrons sign in directly |
 
 Other features that don't need a dedicated page:
 
