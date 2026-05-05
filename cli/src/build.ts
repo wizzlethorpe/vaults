@@ -572,13 +572,16 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     authConfigured: a.authConfigured,
   }));
 
-  // Per-variant search index.
+  // Per-variant search index. `text` is the page's RENDERED HTML body
+  // collapsed to plain text (tags stripped, entities decoded), so search
+  // snippets read the same way the page reads — no leftover markdown
+  // syntax (`|`, `**`, raw HTML) bleeding into the dropdown.
   const searchIndex = visibleMetas.map((p) => ({
     title: p.title,
     path: p.path,
     href: "/" + p.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/"),
     folder: p.path.includes("/") ? p.path.split("/").slice(0, -1).join("/") : "",
-    text: extractPlainText(visibleSources.get(p.path) ?? "", 1500),
+    text: htmlToText(rendered.get(p.path)?.html ?? "", 1500),
   }));
   await writeFile(join(a.variantDir, "_search-index.json"), JSON.stringify(searchIndex));
 
@@ -1216,6 +1219,33 @@ function extractPlainText(source: string, max: number): string {
     .replace(/^>\s?\[![^\]]+\][+-]?\s*(.*)$/gm, "$1")
     .replace(/^>\s?/gm, "")
     .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+/**
+ * Strip an HTML body to plain text. Used to feed the search index from
+ * the rendered article (post-wikilink, post-callout-redaction) so search
+ * snippets read like prose, not markdown source. Tables, code blocks,
+ * and inline HTML the user wrote all collapse to their text content;
+ * common entities are decoded back to characters; numeric entities are
+ * also handled. We replace tags with spaces (rather than empty string)
+ * so adjacent block elements don't fuse their text together.
+ */
+function htmlToText(html: string, max: number): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;|&#39;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(Number(n)))
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
