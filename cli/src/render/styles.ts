@@ -408,7 +408,7 @@ article td > img:first-child:last-child {
 /* Default size for ![[image]] embeds without an explicit |N hint. The
    width itself is set by --default-img-width on <body>, configurable via
    the default_image_width setting. */
-article img.default-width { width: var(--default-img-width, 50vw); max-width: 100%; }
+article img.default-width { width: var(--default-img-width, 300px); max-width: 100%; }
 
 /* Centre images when settings.center_images is on. Scoped to standalone
    <p><img></p> wrappers (Markdown emits these for image-only paragraphs)

@@ -39,7 +39,7 @@ export interface RenderContext {
   markdownContent: Map<string, string>;
   /** Slugified basename → raw YAML for standalone `.base` files. ![[Foo]] resolves a base if Foo.base exists. */
   bases: Map<string, string>;
-  /** CSS width for images embedded without an explicit |N hint (e.g. "50vw"). Empty = no default. */
+  /** CSS width for images embedded without an explicit |N hint (e.g. "300px"). Empty = no default. */
   defaultImageWidth: string;
   /** Set of role names that should be stripped from this render (callouts whose type matches a name in here are dropped). */
   redactRoles: ReadonlySet<string>;

@@ -62,10 +62,10 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
       "Inject the page title as an <h1> at the top. Set false if your notes already start with a '# Title' heading and you don't want the duplicate.",
   },
   default_image_width: {
-    default: "50vw",
+    default: "300px",
     type: "string",
     description:
-      "CSS width applied to images embedded without an explicit '|N' size hint. Any valid CSS dimension works (50vw, 400px, 100%, etc). Set empty string to leave images at natural size.",
+      "CSS width applied to images embedded without an explicit '|N' size hint. Any valid CSS dimension works (300px, 50vw, 100%, etc). Set empty string to leave images at natural size.",
   },
   center_images: {
     default: true,
