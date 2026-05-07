@@ -127,3 +127,5 @@ via `@Embed[…]`: the embed expansion fans out through the page's HTML, so
 secret sections inside it stay secret in the doc sheet too.
 
 Force-sync after changing `dmRole` to re-wrap previously-imported pages.
+
+> [!warning] There is a known Foundry bug where secrets do not work on documents owned by a non-GM user. This isn't typically an issue with imported Journal Entries since they default to GM ownership (players get read access via the OBSERVER role), but it can cause problems if you change ownership or (more likey), a page is Embedded into an Actor/Item sheet that is owned by a non-GM. Be careful about this!
