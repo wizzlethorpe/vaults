@@ -4,7 +4,7 @@ title: Callouts
 
 # Callouts
 
-Obsidian-style callouts are blockquotes that start with `[!type]`. The renderer turns them into styled boxes with a coloured stripe and an icon slot. Standard types map to recognisable styles; **types that match a configured role name are redacted at lower tiers**. That's how page-level content can hide pieces of itself based on the visitor's role.
+Obsidian-style callouts are blockquotes that start with `[!type]`. The renderer turns them into styled boxes with a coloured stripe and an icon slot. Standard types map to recognisable styles. **Types that match a configured role name are redacted at lower tiers**. That's how page-level content can hide pieces of itself based on the visitor's role.
 
 ## Standard types
 
@@ -12,25 +12,13 @@ Obsidian-style callouts are blockquotes that start with `[!type]`. The renderer 
 > Anything informational. The default type if you're unsure.
 
 > [!info] Info
-> Same energy as note, slightly different colour palette.
+> Same energy as note, slightly different color palette.
 
 > [!tip] Tip
 > Use for advice or shortcuts.
 
 > [!warning] Warning
-> Use sparingly — colour grabs attention.
-
-> [!quote] Quote
-> Best for in-character voice or a famous line.
-
-> [!example] Example
-> Code samples, walkthroughs, sample configs.
-
-> [!success] Success
-> Green-tinted; use for confirmation or "this works".
-
-> [!failure] Failure
-> Red-tinted counterpart to success.
+> Use for important caveats or potential pitfalls.
 
 ## Anatomy
 
@@ -63,8 +51,3 @@ This vault has roles `public < patron < dm`, so:
 Toggle between the public/patron/dm tiers (sidebar auth box) to see the
 difference. The page renders cleanly at every tier — the surrounding
 content adjusts as if the redacted callouts were never authored.
-
-> [!success] After the role-gated callouts
-> This callout is unconditionally visible. The redaction is paragraph-scoped,
-> not "everything after the first role callout".
-
