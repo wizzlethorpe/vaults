@@ -46,7 +46,7 @@ async function upsertFolder(id, name, parentId) {
  * per-page entry (carries the page's role for the dmRole permission gate).
  */
 export async function upsertFile(vault, path, body, index, meta) {
-  const html = await transformHtmlForFoundry(vault, body, index, meta?.role);
+  const html = await transformHtmlForFoundry(vault, body, index);
 
   const segs = path.split("/");
   const filename = segs.pop();

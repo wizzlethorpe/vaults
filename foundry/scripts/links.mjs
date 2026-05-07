@@ -62,21 +62,21 @@ function decodeHtmlEntities(s) {
 
 /**
  * Rewrite an article body so it's safe to drop into a JournalEntryPage of
- * the given vault. `index` comes from buildPathIndex(); `pageRole` is the
- * tier of the page being imported (or empty for older deploys).
+ * the given vault. `index` comes from buildPathIndex().
  *
- * When the vault has a dmRole configured AND the page would be player-
- * visible under it, role-gated callouts whose role is at-or-above the
- * dmRole get wrapped in <section class="secret">. Foundry's renderer
- * hides secret sections from non-GMs at view time, so an Observer-tier
- * player never sees DM callouts on a journal they otherwise can read.
+ * When the vault has a dmRole configured, role-gated callouts whose role
+ * is at-or-above the dmRole get wrapped in <section class="secret">.
+ * Foundry's renderer hides secret sections from non-GMs at view time, so
+ * a player never sees DM callouts on a journal they otherwise can read.
  * The Actor/Item description's @Embed[…] expansion inherits the same
- * gating because it fans out through the journal's HTML.
+ * gating because it fans out through the journal's HTML — which is why
+ * we wrap unconditionally, even on DM-tier pages: an embedded fragment
+ * may surface inside a player-visible parent.
  */
-export async function transformHtmlForFoundry(vault, html, index, pageRole) {
+export async function transformHtmlForFoundry(vault, html, index) {
   html = await rewriteWikilinks(vault.id, html, index);
   html = rewriteImages(vault.id, html);
-  html = await applyDomTransforms(html, vault, index, pageRole);
+  html = await applyDomTransforms(html, vault, index);
   return html;
 }
 
@@ -87,13 +87,13 @@ export async function transformHtmlForFoundry(vault, html, index, pageRole) {
  * code-block enricher escaping, bases-card link rewrites — happens here in
  * one DOMParser round-trip so we don't pay multiple parse/serialize costs.
  */
-async function applyDomTransforms(html, vault, index, pageRole) {
+async function applyDomTransforms(html, vault, index) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   let touched = false;
   touched = flattenBasesTabs(doc) || touched;
   touched = neutralizeEnrichersInCode(doc) || touched;
   touched = (await rewriteBasesCardLinks(doc, vault.id, index)) || touched;
-  touched = wrapRestrictedCalloutsAsSecret(doc, vault, pageRole) || touched;
+  touched = wrapRestrictedCalloutsAsSecret(doc, vault) || touched;
   return touched ? doc.body.innerHTML : html;
 }
 
@@ -173,15 +173,12 @@ async function rewriteBasesCardLinks(doc, vaultId, index) {
   return touched;
 }
 
-function wrapRestrictedCalloutsAsSecret(doc, vault, pageRole) {
+function wrapRestrictedCalloutsAsSecret(doc, vault) {
   if (!vault?.dmRole || !Array.isArray(vault.knownRoles) || vault.knownRoles.length === 0) {
     return false;
   }
   const dmIdx = vault.knownRoles.indexOf(vault.dmRole);
   if (dmIdx < 0) return false;
-  const pageIdx = pageRole ? vault.knownRoles.indexOf(pageRole) : 0;
-  const effectiveIdx = pageIdx < 0 ? 0 : pageIdx;
-  if (effectiveIdx >= dmIdx) return false;
 
   const restrictedRoles = vault.knownRoles.slice(dmIdx);
   if (restrictedRoles.length === 0) return false;

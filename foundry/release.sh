@@ -59,9 +59,15 @@ if [ "$NEW_VERSION" != "$CURRENT_VERSION" ]; then
   jq --arg v "$NEW_VERSION" '.version = $v' module.json > module.json.tmp && mv module.json.tmp module.json
 fi
 
-# manifest/download URLs in module.json point at /releases/latest/... so
-# Foundry's in-app update check keeps working across future releases; don't
-# rewrite them per release.
+# Rewrite manifest/download to versioned URLs for the released artifact.
+# Foundry's package registry caches manifest responses, so /releases/latest/
+# URLs would let stale versions linger in the in-app browser. Versioned URLs
+# are immutable, so each release gets a fresh, uncacheable URL. The repo's
+# module.json gets reset back to /releases/latest/ at the end of this script.
+jq --arg v "$NEW_VERSION" --arg repo "$GITHUB_REPO" \
+   '.download = "https://github.com/" + $repo + "/releases/download/v" + $v + "/module.zip" |
+    .manifest = "https://github.com/" + $repo + "/releases/download/v" + $v + "/module.json"' \
+   module.json > module.json.tmp && mv module.json.tmp module.json
 
 BUILD_DIR=$(mktemp -d)
 MODULE_DIR="$BUILD_DIR/$MODULE_ID"
@@ -144,6 +150,15 @@ else
 fi
 
 rm -rf "$BUILD_DIR"
+
+# Reset the repo's module.json back to /releases/latest/ URLs. The released
+# zip already shipped with versioned URLs (committed above for the build);
+# the repo working copy floats on /latest/ for dev installs and as the
+# source-of-truth between releases.
+jq --arg repo "$GITHUB_REPO" \
+   '.download = "https://github.com/" + $repo + "/releases/latest/download/module.zip" |
+    .manifest = "https://github.com/" + $repo + "/releases/latest/download/module.json"' \
+   module.json > module.json.tmp && mv module.json.tmp module.json
 
 echo ""
 echo -e "${GREEN}Release complete!${NC}"
