@@ -84,6 +84,7 @@ globalThis.Vaults = {
 - Page transclusion (`![[Page]]`) is dropped.
 - Backlinks are not rendered (vaults-cli ships them as a sidebar; Foundry import currently ignores).
 - One image cache per vault; large vaults can take a minute on first sync.
+- **Secret blocks leak through `@Embed` on derived Items / Actors.** When a page has `foundry_base`, the cloned Item / Actor's description embeds the page via `@Embed[JournalEntry.…]`. Foundry's text enricher decides whether to hide `<section class="secret">` content based on the *parent* document's permissions, not the embedded page's — so a player who owns the Item sheet sees secret blocks even when the underlying journal page would have hidden them. The journal page itself still hides them correctly. This is a Foundry-side limitation of the `@Embed` enricher; keep DM-only material on dedicated dm-role pages with no `foundry_base`.
 
 ## License
 
