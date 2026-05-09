@@ -1,0 +1,35 @@
+// Deterministic 16-char Foundry document IDs derived from stable keys.
+// SHA-1 → first 16 hex chars (subset of Foundry's allowed [A-Za-z0-9]).
+// 64-bit truncation collision risk is negligible. Each id is namespaced
+// by vaultId so the same path under two vaults gets different journals.
+
+const enc = new TextEncoder();
+
+async function sha1Hex(s) {
+  const buf = await crypto.subtle.digest("SHA-1", enc.encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function det(kind, key) {
+  const hex = await sha1Hex(`vaults:${kind}:${key}`);
+  return hex.slice(0, 16);
+}
+
+/** Strip the file basename from a vault path. Root-level files return "". */
+export function folderOfPath(path) {
+  const i = path.lastIndexOf("/");
+  return i < 0 ? "" : path.slice(0, i);
+}
+
+// JournalEntry ids are now folder-keyed: every page in the same directory
+// shares one entry, so the entry id is derived from `folderOfPath(path)`.
+// Page ids stay file-keyed (one page per file). Folder ids are file/dir keys
+// for the Foundry Folder hierarchy and are unrelated to JournalEntry ids.
+export const entryId = (vaultId, path) => det("entry", `${vaultId}:${folderOfPath(path)}`);
+export const pageId = (vaultId, path) => det("page", `${vaultId}:${path}`);
+export const folderId = (vaultId, path) => det("folder", `${vaultId}:${path}`);
+// Deterministic id for the world-level Actor/Item that a page with foundry_base
+// instantiates. One id space across both collections is fine (Foundry keys
+// each document type's collection separately, so an Actor and an Item could
+// even share an id without colliding).
+export const instanceId = (vaultId, path) => det("instance", `${vaultId}:${path}`);
