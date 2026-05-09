@@ -2,8 +2,6 @@
 title: Callouts
 ---
 
-# Callouts
-
 Obsidian-style callouts are blockquotes that start with `[!type]`. The renderer turns them into styled boxes with a coloured stripe and an icon slot. Standard types map to recognisable styles. **Types that match a configured role name are redacted at lower tiers**. That's how page-level content can hide pieces of itself based on the visitor's role.
 
 ## Standard types

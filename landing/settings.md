@@ -13,9 +13,9 @@ ignore:
   - README.md
 
 # Inject the page title as an <h1> at the top. Set false if your notes already start with a '# Title' heading and you don't want the duplicate.
-inline_title: false
+inline_title: true
 
-# CSS width applied to images embedded without an explicit '|N' size hint. Any valid CSS dimension works (50vw, 400px, 100%, etc). Set empty string to leave images at natural size.
+# CSS width applied to images embedded without an explicit '|N' size hint. Any valid CSS dimension works (300px, 50vw, 100%, etc). Set empty string to leave images at natural size.
 default_image_width: 50vw
 
 # Center images in the article body. Set false to leave them flush left.
@@ -38,6 +38,9 @@ auto_image: true
 
 # Ship files with unrecognized extensions to every deploy variant. Default false skips them (with a warning) so a stray file in your vault can't accidentally bypass role gating. Recognized media types (audio/video/pdf/epub) are reference-gated like images regardless of this setting.
 include_unknown_files: false
+
+# Markdown text rendered in a small <footer> at the bottom of every page. Supports inline markdown (links, *italic*, **bold**). Set to an empty string to hide the footer entirely.
+footer: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com)."
 ---
 
 # Vault settings

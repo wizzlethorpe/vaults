@@ -4,8 +4,6 @@ role: patron
 location: Witchwood
 ---
 
-# The Witchwood Cult
-
 A patron-only page — readers at the `public` tier won't see this article at
 all (it doesn't appear in search, sitemap, or backlinks for them, and a
 direct URL 404s). At the `patron` tier and above, it renders normally.

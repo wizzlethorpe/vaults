@@ -3,8 +3,6 @@ title: Wizzlethorpe Vaults
 image: wizzlethorpe.webp
 ---
 
-# Wizzlethorpe Vaults
-
 Wizzlethorpe Vaults is a tool that turns an Obsidian vault into a self-hosted, role-gated, FoundryVTT-importable wiki on your own (free-tier) Cloudflare account. **This page is itself a deployed Vault**. Every feature you read about works live, right here. Poke around, sign in at higher tiers, view source, then [grab the CLI](https://github.com/wizzlethorpe/vaults-cli) and deploy your own!
 
 

@@ -1,0 +1,5 @@
+# vaults-cli internal state — do not edit by hand.
+# These entries are forward-compat: if this vault becomes a git repo,
+# the cache and config (which holds hashed passwords) stay out.
+cache/
+config.json

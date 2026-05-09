@@ -2,8 +2,6 @@
 title: Passthrough files
 ---
 
-# Passthrough files
-
 Audio, video, PDFs, EPUBs (files the build doesn't currently render) deploy alongside the wiki. They follow the same per-variant gating as images: a file lands in a deploy variant **only if a visible page in that variant references it**.
 
 ## Recognised extensions

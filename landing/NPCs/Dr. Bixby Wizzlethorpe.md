@@ -15,8 +15,6 @@ foundry:
     name: "Dr. Wizzlethorpe"
 ---
 
-# Dr. Bixby Wizzlethorpe
-
 Inventor, archivist, and reluctant celebrity of the [[The Mossfoot Inn]].
 He claims to be on sabbatical from "the Tower"; everyone else assumes
 he's hiding from someone.

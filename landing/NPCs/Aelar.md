@@ -17,8 +17,6 @@ foundry:
     name: "Aelar (wounded)"
 ---
 
-# Aelar Galanodel
-
 A weary elven ranger, scarred from too many nights along the Witchwood
 border. Speaks softly, listens harder.
 

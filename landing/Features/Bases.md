@@ -2,8 +2,6 @@
 title: Bases
 ---
 
-# Bases
-
 Bases are filtered, sorted, table-or-card views over your vault's pages —
 the same idea as Obsidian's [Bases plugin](https://help.obsidian.md/bases),
 but rendered statically at build time. They're declared as `.base` files

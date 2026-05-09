@@ -3,8 +3,6 @@ title: Images
 image: moss-tavern.webp
 ---
 
-# Images
-
 Vaults handles images in three places: inline body embeds, `image:` frontmatter
 (used for cards, social cards, and Foundry document portraits), and an
 auto-discovery fallback when no explicit image is set.

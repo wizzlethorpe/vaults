@@ -2,8 +2,6 @@
 title: Wikilinks
 ---
 
-# Wikilinks
-
 Vaults supports the same `[[Page Name]]` wikilink syntax as Obsidian, with
 some Obsidian-flavored extensions. Resolution happens at build time, so
 broken links surface as warnings during `vaults push`.

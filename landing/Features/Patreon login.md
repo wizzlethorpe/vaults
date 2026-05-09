@@ -2,8 +2,6 @@
 title: Patreon login
 ---
 
-# Patreon login
-
 An optional, additive overlay on top of password auth. Roles always have a password gate. When Patreon is configured, **a role can also accept Patreon OAuth login** if its name appears in the `patreon.tiers` mapping. Patrons whose pledge grants the linked tier can sign in directly without the password.
 
 ## Setup

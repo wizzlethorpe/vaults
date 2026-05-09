@@ -2,8 +2,6 @@
 title: Foundry VTT integration
 ---
 
-# Foundry VTT integration
-
 The companion **Wizzlethorpe Vaults** Foundry VTT module syncs a deployed
 vault into a Foundry world: every page becomes a JournalEntry +
 JournalEntryPage, every wikilink rewrites to a `@UUID[JournalEntry.…]`
@@ -29,6 +27,8 @@ items that need real Foundry mechanics, not just journal text.
 | `[[Other Page]]` wikilinks | Rewritten to `@UUID[JournalEntry.<id>]{label}` enrichers |
 | Audio / PDFs / other files | Downloaded alongside images |
 | `foundry_base: <UUID>` | New `Actor` or `Item` cloned from the template (see below) |
+| `foundry_base: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
+| `foundry_no_embed: true` | Skip auto-embedding the page article into the doc's description field |
 
 ## Actor / Item cloning via `foundry_base`
 
@@ -61,6 +61,43 @@ On sync, the Foundry module:
    exactly where they are supposed to.
 
 The result is an Actor (or Item) whose description embeds the wiki article. Edit the actor's HP in Foundry → the next sync preserves it (we only overwrite the canonical fields + your `foundry:` overrides).
+
+For pages that *shouldn't* leak their article into the actor sheet — DM-private notes, or stats-only pages where the embed adds nothing — set `foundry_no_embed: true` in the frontmatter. The clone / blank doc still gets created with the right name, image, and `foundry:` overlay; only the description field is left at whatever the template (or blank) had.
+
+### Blank documents
+
+When no template exists in any compendium (pure homebrew, bespoke maps,
+custom roll tables), use the type-form of `foundry_base`:
+
+```yaml
+---
+title: Joywraith
+foundry_base: Actor:npc
+foundry:
+  system:
+    attributes:
+      hp: { value: 67, max: 67 }
+      ac: { value: 13 }
+    details:
+      cr: 4
+---
+```
+
+`foundry_base: Scene` makes a blank scene, `foundry_base: RollTable` a blank
+table, `foundry_base: Item:weapon` a blank weapon, and so on. The same
+deterministic-id and `foundry:` overlay rules apply — the doc lives at a
+known id, sync re-applies your overrides, and a deleted page deletes
+the doc. Supported types: Actor, Item, Scene, JournalEntry, RollTable,
+Macro, Cards, Playlist. Subtypes are system-specific (dnd5e Actor: npc,
+character, vehicle, group; dnd5e Item: weapon, equipment, consumable, …).
+The bare-type form (`foundry_base: Actor`) skips subtype and lets the
+active system pick its default, which keeps the syntax portable across
+systems.
+
+[[Mossroot]] is a worked example: blank `Actor:npc`, full `foundry:` data
+block, statblock pulling AC/HP/CR/speed via `fm:` from that same block, so
+one frontmatter source drives both the wiki render and the synced Foundry
+actor sheet.
 
 In this vault:
 - [[Aelar]] clones SRD Scout

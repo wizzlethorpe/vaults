@@ -2,8 +2,6 @@
 title: Features
 ---
 
-# Features
-
 This folder is a working tour of every feature this CLI ships. Each page
 is both documentation and a live demo — view source on any of them to see
 the underlying markdown.
@@ -14,6 +12,8 @@ the underlying markdown.
 | [[Callouts]] | Standard types + role-gated paragraph redaction |
 | [[Images]] | `image:` frontmatter, auto-discovery, social meta, compression |
 | [[Bases]] | Filtered/sorted views over your vault (table, cards, list) |
+| [[Handlers]] | Inline `prefix:` and code-block transforms, with `dice:` and `fm:` built in |
+| [[Statblocks]] | D&D 5e creature statblocks, Fantasy-Statblocks-compatible YAML |
 | [[Role gating]] | `public`/`patron`/`dm` tiers, page + callout gating, auth flow |
 | [[Foundry integration]] | Sync to Foundry VTT, `foundry_base` clones, dmRole gating |
 | [[Passthrough files]] | Audio/video/PDF/EPUB shipping with per-variant role gating |

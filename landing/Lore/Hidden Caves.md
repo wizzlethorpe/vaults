@@ -4,8 +4,6 @@ role: dm
 location: Witchwood (subterranean)
 ---
 
-# Hidden Caves Beneath the Witchwood
-
 A DM-only page. Public and patron tiers cannot reach this article — the
 build for those variants strips it entirely (no JournalEntry, no search
 hit, no backlink, no manifest entry).

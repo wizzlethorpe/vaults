@@ -12,8 +12,6 @@ foundry:
       denomination: gp
 ---
 
-# Potion of Healing — Mossfoot Brew
-
 A local variant of the standard healing potion, distilled by the
 [[The Mossfoot Inn|Mossfoot]] family. Tastes faintly of pine.
 

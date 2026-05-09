@@ -2,8 +2,6 @@
 title: Role gating
 ---
 
-# Role gating
-
 Vaults supports access tiers. Multi-role builds emit one variant per
 role, with a Cloudflare Pages Function in front that rewrites requests
 to the right variant based on a session cookie. This vault has three

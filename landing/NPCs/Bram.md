@@ -12,8 +12,6 @@ foundry:
         subtype: human
 ---
 
-# Bram Mossfoot
-
 The innkeeper's son. Eleven, all elbows, asks too many questions.
 
 ![[bram-portrait.webp|180]]
