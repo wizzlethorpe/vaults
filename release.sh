@@ -69,10 +69,20 @@ mv cli/package.json.tmp cli/package.json
 jq --arg v "$NEW_VERSION" '.version = $v' foundry/module.json > foundry/module.json.tmp
 mv foundry/module.json.tmp foundry/module.json
 
-# Single commit + tag for the monorepo
+# Single commit + tag for the monorepo. If versions were already at the
+# target (user pre-bumped, or re-running after a partial failure), skip
+# the commit but still tag the current HEAD.
 git add cli/package.json foundry/module.json
-git commit -m "Release v$NEW_VERSION"
-git tag -a "v$NEW_VERSION" -m "v$NEW_VERSION"
+if git diff --cached --quiet; then
+  echo "Versions already at $NEW_VERSION; skipping release commit."
+else
+  git commit -m "Release v$NEW_VERSION"
+fi
+if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
+  echo "Tag v$NEW_VERSION already exists; reusing it."
+else
+  git tag -a "v$NEW_VERSION" -m "v$NEW_VERSION"
+fi
 
 # Per-subproject release pipelines
 if [[ $SKIP_CLI -eq 0 ]]; then
