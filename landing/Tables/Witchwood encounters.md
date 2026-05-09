@@ -10,12 +10,12 @@ foundry:
     formula: 1d6
     description: What you meet at the Witchwood's edge after dark.
     results:
-      - { type: 0, range: [1, 1], weight: 1, name: "A weary ranger sharpening arrows by lamplight (Aelar, on patrol)." }
-      - { type: 0, range: [2, 2], weight: 1, name: "Three goblin scouts arguing over a dropped boot. Disadvantage to surprise them." }
-      - { type: 0, range: [3, 3], weight: 1, name: "A lone owlbear, half-asleep, gnawing on a deer haunch." }
-      - { type: 0, range: [4, 4], weight: 1, name: "Two cultists in bone-white masks, scratching sigils into a birch trunk." }
-      - { type: 0, range: [5, 5], weight: 1, name: "A merchant's overturned cart. The horses are gone; the strongbox isn't." }
-      - { type: 0, range: [6, 6], weight: 1, name: "Nothing. Only the wind, and the feeling of being watched." }
+      - { type: "text", range: [1, 1], weight: 1, name: "A weary ranger sharpening arrows by lamplight (Aelar, on patrol)." }
+      - { type: "text", range: [2, 2], weight: 1, name: "Three goblin scouts arguing over a dropped boot. Disadvantage to surprise them." }
+      - { type: "text", range: [3, 3], weight: 1, name: "A lone owlbear, half-asleep, gnawing on a deer haunch." }
+      - { type: "text", range: [4, 4], weight: 1, name: "Two cultists in bone-white masks, scratching sigils into a birch trunk." }
+      - { type: "text", range: [5, 5], weight: 1, name: "A merchant's overturned cart. The horses are gone; the strongbox isn't." }
+      - { type: "text", range: [6, 6], weight: 1, name: "Nothing. Only the wind, and the feeling of being watched." }
 ---
 
 A `1d6` encounter table for the dark hours along the Witchwood border.
