@@ -108,6 +108,11 @@ In this vault:
 - [[Healing Potion]] clones SRD Potion of Healing
 - [[Witchwood encounters]] is a blank `RollTable` whose results live in
   `foundry.data.results[]` and re-render in the page body via `fm:`
+- [[Mossfoot Tarot]] is a blank `Cards` deck (six `base` cards, no images)
+- [[Welcome guests]] is a blank `Macro` of type `chat` (no script execution)
+- [[Mossfoot ambience]] is a blank `Playlist` pointing at the deployed
+  `tavern-jingle.ogg` (audio isn't mirrored into Foundry, so the sound's
+  `path` is the wiki's deploy URL)
 
 
 ![[screenshot-fvtt-actor-aelar-galanodel.webp|500]]
