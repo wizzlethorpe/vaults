@@ -84,6 +84,14 @@ else
   git tag -a "v$NEW_VERSION" -m "v$NEW_VERSION"
 fi
 
+# Push main + tag BEFORE subproject release pipelines. foundry/release.sh
+# does `gh release create v$NEW_VERSION` which would create the tag on the
+# remote pointed at the remote default-branch HEAD if the tag isn't already
+# pushed — that would mismatch the local commit and cause confusion.
+echo ""
+echo "=== Pushing main + tag to origin ==="
+git push origin main "v$NEW_VERSION"
+
 # Per-subproject release pipelines
 if [[ $SKIP_CLI -eq 0 ]]; then
   echo ""
@@ -95,13 +103,18 @@ fi
 if [[ $SKIP_FOUNDRY -eq 0 ]]; then
   echo ""
   echo "=== Releasing Foundry module ==="
-  # foundry/release.sh expects to bump module.json itself; we already did, so
-  # run it with the version it'll see as "current" so it just creates the
-  # GitHub release + CDN upload.
+  # foundry/release.sh swaps module.json's URLs to /v$NEW_VERSION/ for the
+  # build, ships the release, then resets the working copy to /latest/. The
+  # reset leaves foundry/module.json dirty in the working tree afterwards;
+  # commit + push that as a follow-up so dev installs see the floating
+  # /latest/ URLs.
   (cd foundry && ./release.sh "$NEW_VERSION")
+  if ! git diff --quiet foundry/module.json; then
+    git add foundry/module.json
+    git commit -m "Reset foundry module.json URLs to /latest/ after v$NEW_VERSION release"
+    git push origin main
+  fi
 fi
-
-git push origin main "v$NEW_VERSION"
 
 echo ""
 echo "Released v$NEW_VERSION."
