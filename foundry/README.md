@@ -67,6 +67,8 @@ foundry:
 
 The `base` field accepts either a compendium UUID (clones the template) or `Type[:subtype]` like `Actor:npc` / `Item:weapon` / `Scene` (creates a blank document). Supported blank types: Actor, Item, Scene, JournalEntry, RollTable, Macro, Cards, Playlist. The module instantiates the doc under a deterministic id derived from the vault + page path, then deep-merges `foundry.data` on top. Re-syncs update the same doc, so user edits to non-overridden fields (HP, conditions, equipped items) survive. Page deletion tears down the derived doc, gated on a vault flag so docs you took over by hand are safe.
 
+Instantiated docs land in a per-doctype folder named after the vault (Actors → "Southaven", Items → "Southaven", etc.), so multi-vault worlds keep their sidebars tidy. The folder is recreated on demand if you delete it, and the doc's `folder` is reasserted on every sync (move it elsewhere if you want it elsewhere; the next sync moves it back).
+
 `foundry.embed: false` skips the auto-embed of the page article into the doc's description field — useful for stats-only pages or DM-private notes where embedding would leak content into the actor sheet.
 
 ## Handler-asset import (CSS / JS from the vault into Foundry)

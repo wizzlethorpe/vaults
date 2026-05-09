@@ -19,7 +19,7 @@
 // overwrite the canonical "page-driven" fields plus anything in the page's
 // `foundry:` override block.
 
-import { entryId, pageId, instanceId } from "./ids.mjs";
+import { entryId, pageId, instanceId, folderId } from "./ids.mjs";
 import { localImageUrl } from "./media.mjs";
 import { MODULE_ID } from "./settings.mjs";
 
@@ -177,6 +177,67 @@ export async function deleteInstance(vault, vaultPath) {
   }
 }
 
+/**
+ * Wipe every Actor / Item / Scene / etc. this vault instantiated, plus the
+ * per-doctype folders we created for them. Called from the vault-remove
+ * flow. Conservative: only touches docs carrying our vault flag (so
+ * docs the GM took over by hand are safe), and only deletes folders
+ * whose id matches the deterministic id we'd compute.
+ */
+export async function deleteVaultInstances(vault) {
+  // Docs first (so the folders end up empty before we try to remove them).
+  for (const [docName, getCollection] of Object.entries(COLLECTION_FOR)) {
+    const collection = getCollection();
+    if (!collection) continue;
+    const ours = collection.contents.filter((d) => d.getFlag(MODULE_ID, "vaultId") === vault.id);
+    for (const doc of ours) {
+      try { await doc.delete(); }
+      catch (err) { console.warn(`Vaults | failed to delete ${docName} ${doc.id} for ${vault.label}:`, err); }
+    }
+  }
+  // Then the now-empty folders.
+  for (const docName of BLANK_DOC_TYPES) {
+    const fId = await instanceFolderId(vault, docName);
+    const folder = game.folders.get(fId);
+    if (!folder || folder.type !== docName) continue;
+    if (folder.contents.length > 0 || folder.children.length > 0) continue;
+    try { await folder.delete(); }
+    catch (err) { console.warn(`Vaults | failed to delete ${docName} folder for ${vault.label}:`, err); }
+  }
+}
+
+/** Deterministic per-(vault, docType) folder id — same key derivation
+ *  family as folderId() so cleanup can recompute and find the folder. */
+async function instanceFolderId(vault, docName) {
+  return folderId(vault.id, `${vault.id}/__instance__/${docName}`);
+}
+
+/**
+ * Ensure a per-vault folder exists for `docName` in its sidebar (Actors,
+ * Items, etc.) and return its id. One level only: docs land directly in
+ * the vault-named folder; folder-mirror navigation lives in the journal
+ * tree. Idempotent — repeated calls return the existing folder.
+ */
+async function ensureInstanceFolder(vault, docName) {
+  const fId = await instanceFolderId(vault, docName);
+  const existing = game.folders.get(fId);
+  const name = vault.rootFolder || vault.label || "Vault";
+  if (existing) {
+    if (existing.name !== name) {
+      try { await existing.update({ name }); }
+      catch (err) { console.warn(`Vaults | could not rename ${docName} folder for ${vault.label}:`, err); }
+    }
+    return fId;
+  }
+  try {
+    await Folder.create({ _id: fId, name, type: docName, folder: null }, { keepId: true });
+    return fId;
+  } catch (err) {
+    console.warn(`Vaults | could not create ${docName} folder for ${vault.label}:`, err);
+    return null;
+  }
+}
+
 async function buildOverlay(vault, vaultPath, meta, docName) {
   const overlay = {
     // Prefer the page's frontmatter `title:` over the filename — the wiki
@@ -184,6 +245,7 @@ async function buildOverlay(vault, vaultPath, meta, docName) {
     // "Potion of Healing (Mossfoot Brew)" reads better in the Foundry
     // sidebar than "Healing Potion".
     name: meta.title || baseName(vaultPath),
+    folder: await ensureInstanceFolder(vault, docName),
     flags: { [MODULE_ID]: { vaultId: vault.id, path: vaultPath } },
   };
 

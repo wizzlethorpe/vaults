@@ -9,6 +9,7 @@ import { fetchManifest } from "./api.mjs";
 import { disconnect, tokenInfo } from "./auth.mjs";
 import { deleteVaultJournals } from "./importer.mjs";
 import { deleteVaultCache } from "./media.mjs";
+import { deleteVaultInstances } from "./instance.mjs";
 import { escapeAttr, escapeHtml as escapeText } from "./util.mjs";
 
 Hooks.once("init", () => {
@@ -415,6 +416,7 @@ async function openSettingsDialog(vaultId) {
           const ok = await confirmRemoveVault(v);
           if (!ok) return false;
           await deleteVaultJournals(vaultId);
+          await deleteVaultInstances(v);
           await deleteVaultCache(vaultId);
           // Drop any injected handler-asset elements for this vault before
           // the registry entry goes away. JS already-running effects (event
