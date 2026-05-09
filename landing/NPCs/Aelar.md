@@ -6,6 +6,10 @@ location: Mossfoot Inn
 cr: 3
 foundry:
   base: Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa
+  # data_json supplies the bulk of the sheet (biography, languages,
+  # skills, pocket change). data: layers a few page-driven patches on
+  # top: a wound penalty (HP), the bumped CR, and a flavour token name.
+  data_json: sheets/aelar-export.json
   data:
     system:
       attributes:

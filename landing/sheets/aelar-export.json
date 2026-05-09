@@ -1,0 +1,30 @@
+{
+  "_comment": "Hand-tuned dnd5e overlay for Aelar. Pretend this came from another GM's export. landing/NPCs/Aelar.md references this via foundry.data_json; foundry.data layers HP / CR / token-name on top.",
+  "system": {
+    "details": {
+      "biography": {
+        "public": "<p><em>An elven ranger from the Pale Mountains. Twenty-three years in the Witchwood; longer than most rangers last in two lifetimes.</em></p><p>Aelar trained at the Stoneveil rangers' school under Master Korren before drifting south. He keeps to himself, speaks four languages he won't admit to, and answers to no banner since the Cult of the Bone-Mask took his sister three winters ago.</p>"
+      }
+    },
+    "traits": {
+      "languages": {
+        "value": ["common", "elvish", "sylvan", "thieves"]
+      },
+      "senses": {
+        "darkvision": 60
+      }
+    },
+    "skills": {
+      "ste": { "value": 1 },
+      "prc": { "value": 2 },
+      "sur": { "value": 1 },
+      "ath": { "value": 1 },
+      "ani": { "value": 1 }
+    },
+    "currency": {
+      "gp": 12,
+      "sp": 8,
+      "cp": 14
+    }
+  }
+}

@@ -149,6 +149,11 @@ JSON files ship to the deploy as passthroughs (gated per role like any
 other file), and the build hashes the parsed content into the page's
 manifest entry — change the JSON, re-sync triggers an update.
 
+[[Aelar]] is the live demo: he points at `sheets/aelar-export.json` for
+biography, languages, skills, and pocket change, then layers the wound
+penalty (HP 22/30), a CR bump, and the "(wounded)" token name from his
+page's `foundry.data` block on top.
+
 ---
 
 ## Per-vault dmRole setting
