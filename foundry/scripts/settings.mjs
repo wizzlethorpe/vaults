@@ -56,7 +56,7 @@ export const VAULT_DEFAULTS = {
   dmRole: "",
   // Per-vault opt-in to import handler-shipped CSS/JS from the deployed
   // wiki. Both default false: a handler author has to opt in by setting
-  // `assets.foundry.{styles,scripts} = true` AND the GM has to flip the
+  // `assets.targets.foundry.{styles,scripts} = true` AND the GM has to flip the
   // matching toggle here. CSS at worst restyles a journal sheet; JS runs
   // in Foundry's global scope and can interact with `game`, `canvas`,
   // hooks, and document data — treat both flips as "I trust this vault's
@@ -64,7 +64,7 @@ export const VAULT_DEFAULTS = {
   importHandlerStyles: false,
   importHandlerScripts: false,
   // Asset URLs the deploy advertises in its manifest's `assets.foundry`
-  // block. Cached here so applyHandlerAssets fetches via the canonical
+  // block. Cached here so applyHandlerAssetsWithConfirm fetches via the canonical
   // path instead of guessing /_handlers.foundry.{js,css}. Empty / null
   // fields fall back to the well-known names for older deploys.
   handlerAssetPaths: { foundryJs: null, foundryCss: null },

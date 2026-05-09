@@ -4,7 +4,7 @@ Sync an Obsidian vault deployed via [vaults-cli](https://github.com/wizzlethorpe
 
 ## Status
 
-v0.6.0. Public and multi-role vaults sync end to end. Wikilinks, image embeds, callouts, Bases (cards / table / list), and folder hierarchy all import. Page transclusion (`![[Page]]`) is dropped silently for now.
+v0.7.0. Public and multi-role vaults sync end to end. Wikilinks, image embeds, callouts, Bases (cards / table / list), and folder hierarchy all import. Page transclusion (`![[Page]]`) is dropped silently for now.
 
 ## How it works
 
@@ -48,25 +48,38 @@ Combined with the `<section class="secret">` wrapping, this lets you ship a publ
 
 Default is empty (everything imports GM-only).
 
-## Auto Actors / Items
+## Auto Actors / Items / Scenes / etc.
 
-Pages with the right frontmatter spawn linked documents alongside the journal:
+Pages with a `foundry:` block spawn a linked Foundry document alongside the journal:
 
 ```yaml
 ---
-foundry_base: Compendium.dnd5e.monsters.Actor.bandit
 foundry:
-  system.attributes.hp.value: 22
+  base: Compendium.dnd5e.monsters.Actor.bandit  # UUID, OR Type[:subtype] for blank doc
+  data:                                         # deep-merge overlay
+    system:
+      attributes:
+        hp:
+          value: 22
+  embed: false                                  # optional, default true
 ---
 ```
 
-The module clones the `foundry_base` document into the world under a deterministic id derived from the vault + page path, then patches the `foundry:` overrides on top. Re-syncs update the same Actor / Item, so user edits to non-overridden fields (HP, conditions, equipped items) survive. Page deletion tears down the derived doc too, gated on a vault flag so docs you took over by hand are safe.
+The `base` field accepts either a compendium UUID (clones the template) or `Type[:subtype]` like `Actor:npc` / `Item:weapon` / `Scene` (creates a blank document). Supported blank types: Actor, Item, Scene, JournalEntry, RollTable, Macro, Cards, Playlist. The module instantiates the doc under a deterministic id derived from the vault + page path, then deep-merges `foundry.data` on top. Re-syncs update the same doc, so user edits to non-overridden fields (HP, conditions, equipped items) survive. Page deletion tears down the derived doc, gated on a vault flag so docs you took over by hand are safe.
+
+`foundry.embed: false` skips the auto-embed of the page article into the doc's description field — useful for stats-only pages or DM-private notes where embedding would leak content into the actor sheet.
+
+## Handler-asset import (CSS / JS from the vault into Foundry)
+
+If a vault ships custom handlers with browser-side assets that opt into Foundry import (`assets.targets.foundry.{styles,scripts}` on the handler), GMs can pull those assets into the world via the per-vault settings dialog ("Import handler stylesheets" / "Import handler scripts"). Both default off. Enabling JS import shows a confirmation dialog explaining that the script will run with full access to game state; turning either on persists the consent, but JS import additionally re-prompts once per session before running freshly-fetched code.
+
+The import bundles are fetched per-variant (the auth middleware role-gates them), so a `dm`-tier handler isn't accessible to a public visitor.
 
 ## Settings (world-scoped)
 
-All state lives under a single `vaults` setting, an array of vault entries. The per-vault dialog edits one entry. Legacy single-vault keys (`url`, `token`, `rootFolder`, …) auto-migrate on first load.
+All state lives under two settings: `vaults` (lightweight array of entries, edited by the per-vault dialog) and `vaultManifests` (object keyed by vault id holding `lastManifest` and `lastImageManifest`). They're split so per-vault config patches don't re-serialize every other vault's full file list. Legacy single-vault keys (`url`, `token`, `rootFolder`, …) and inline manifests auto-migrate on first load.
 
-Each vault entry tracks: `id`, `label`, `url`, `rootFolder`, `token`, `role`, `public`, `knownRoles`, `dmRole`, `lastManifest`, `lastImageManifest`.
+Each vault entry tracks: `id`, `label`, `url`, `rootFolder`, `token`, `role`, `public`, `knownRoles`, `dmRole`, `importHandlerStyles`, `importHandlerScripts`, `handlerAssetPaths`.
 
 ## Public API
 
@@ -84,7 +97,7 @@ globalThis.Vaults = {
 - Page transclusion (`![[Page]]`) is dropped.
 - Backlinks are not rendered (vaults-cli ships them as a sidebar; Foundry import currently ignores).
 - One image cache per vault; large vaults can take a minute on first sync.
-- **Secret blocks leak through `@Embed` on derived Items / Actors.** When a page has `foundry_base`, the cloned Item / Actor's description embeds the page via `@Embed[JournalEntry.…]`. Foundry's text enricher decides whether to hide `<section class="secret">` content based on the *parent* document's permissions, not the embedded page's — so a player who owns the Item sheet sees secret blocks even when the underlying journal page would have hidden them. The journal page itself still hides them correctly. This is a Foundry-side limitation of the `@Embed` enricher; keep DM-only material on dedicated dm-role pages with no `foundry_base`.
+- **Secret blocks leak through `@Embed` on derived Items / Actors.** When a page has a `foundry.base`, the cloned Item / Actor's description embeds the page via `@Embed[JournalEntry.…]`. Foundry's text enricher decides whether to hide `<section class="secret">` content based on the *parent* document's permissions, not the embedded page's, so a player who owns the Item sheet sees secret blocks even when the underlying journal page would have hidden them. The journal page itself still hides them correctly. This is a Foundry-side limitation of the `@Embed` enricher; keep DM-only material on dedicated dm-role pages, or set `foundry.embed: false` on the public page.
 
 ## License
 

@@ -11,7 +11,7 @@
 // pay one read of the full map per access, which is fine because access
 // is once-per-sync. Writes patch the single entry for the syncing vault.
 
-import { MODULE_ID, SETTINGS, get, set } from "./settings.mjs";
+import { SETTINGS, get, set } from "./settings.mjs";
 
 const EMPTY = { lastManifest: {}, lastImageManifest: {} };
 

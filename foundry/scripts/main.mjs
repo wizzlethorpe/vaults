@@ -320,7 +320,7 @@ async function openSettingsDialog(vaultId) {
     : "";
 
   // Handler-asset import is a separate trust gate: handler authors must opt
-  // their assets in via assets.foundry.{styles,scripts}, and the GM must
+  // their assets in via assets.targets.foundry.{styles,scripts}, and the GM must
   // tick the matching box here. Defaults off; flipping on triggers a
   // confirmation dialog (handled in the save callback).
   const handlerAssetsField = `

@@ -13,7 +13,7 @@
 // More complex modifiers (kh, kl, explode, etc.) are not supported.
 
 import type { InlineHandler } from "../types.js";
-import { htmlEscape } from "../types.js";
+import { htmlEscape } from "../../../escape.js";
 import { registerBuiltinAssets } from "../assets.js";
 
 // Formula validation: optional X, then 'd', then Y, then optional ± integer.

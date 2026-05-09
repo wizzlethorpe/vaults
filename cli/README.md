@@ -111,7 +111,7 @@ ignore:
 ---
 ```
 
-Open it in Obsidian; the frontmatter shows up as a Properties form. Unknown keys are warned about and stripped on next push, so the file stays canonical. Auth config (roles, passwords, Patreon credentials) is **not** in `settings.md`; it lives in `.vaultrc.json` and is managed by the CLI.
+Open it in Obsidian; the frontmatter shows up as a Properties form. Unknown keys are warned about and stripped on next push, so the file stays canonical. Auth config (roles, passwords, OAuth credentials) is **not** in `settings.md`; it lives in `.vaults/config.json` (with secrets in `.vaults/.env`) and is managed by the CLI.
 
 ## Page frontmatter
 

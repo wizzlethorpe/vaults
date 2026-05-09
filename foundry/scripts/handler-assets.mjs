@@ -1,5 +1,5 @@
 // Per-vault handler-asset import. Two-layer consent: a handler author opts
-// its assets into Foundry import via assets.foundry.{styles,scripts} on the
+// its assets into Foundry import via assets.targets.foundry.{styles,scripts} on the
 // CLI side; a GM enables importHandlerStyles / importHandlerScripts in the
 // per-vault settings dialog. This module fetches and injects only when both
 // gates allow it.
@@ -36,40 +36,13 @@ const SCRIPT_ATTR = "data-vault-handler-scripts";
 const sessionApprovedScripts = new Set();
 
 /**
- * Apply or refresh handler-asset injection for a single vault. Called
- * after every successful sync. No-op when neither toggle is on.
+ * Apply or refresh handler-asset injection for a single vault. Pops a
+ * per-session confirmation dialog before injecting JS so a vault that
+ * ships new code between sessions can't run silently — the persistent
+ * setting records GM intent, this prompt records that they've also
+ * accepted *this session's* fetched JS. CSS skips the prompt (low risk).
  *
- * Use applyHandlerAssetsWithConfirm() instead from interactive contexts;
- * this raw version is for paths that have already gated consent.
- */
-export async function applyHandlerAssets(vault) {
-  if (!vault?.id || !vault?.url) return;
-
-  // Prefer the URL the deploy advertised in its manifest; fall back to the
-  // historical well-known path so older deploys (pre-asset-advertisement)
-  // still work. The fallback is fine since the path didn't change — but
-  // when (not if) we move it later, the manifest will carry the new URL.
-  const cssPath = vault.handlerAssetPaths?.foundryCss || "/_handlers.foundry.css";
-  const jsPath = vault.handlerAssetPaths?.foundryJs || "/_handlers.foundry.js";
-
-  if (vault.importHandlerStyles) {
-    const css = await fetchTextOrNull(vault, cssPath);
-    injectStyle(vault.id, css);
-  } else {
-    removeStyle(vault.id);
-  }
-
-  if (vault.importHandlerScripts) {
-    const js = await fetchTextOrNull(vault, jsPath);
-    injectScript(vault.id, js);
-  } else {
-    removeScript(vault.id);
-  }
-}
-
-/**
- * Like applyHandlerAssets, but pops a per-session confirmation dialog
- * before injecting JS. Reused across world-ready, post-sync, and
+ * Used from world-ready, post-sync, and
  * settings-save callsites so the consent UI is consistent.
  *
  * @param vault   the vault to apply assets for

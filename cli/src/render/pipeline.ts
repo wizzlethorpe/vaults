@@ -13,7 +13,7 @@ import { embedPlugin } from "./embed.js";
 import { calloutPlugin } from "./callouts.js";
 import { basesPlugin } from "./bases.js";
 import { handlersPlugin } from "./handlers/dispatch.js";
-import { htmlEscape } from "./handlers/types.js";
+import { htmlEscape } from "../escape.js";
 
 const sanitizeSchema = {
   ...defaultSchema,

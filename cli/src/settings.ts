@@ -6,9 +6,10 @@ import matter from "gray-matter";
 // description. To add a setting, add a line here. The schema drives parsing,
 // normalisation, the init template, and the warning for unknown keys.
 //
-// Auth config (roles, role_passwords, auth_type) lives in .vaultrc.json
-// instead; it's CLI-managed (`vaults role add/remove/promote/demote`,
-// `vaults password`) and shouldn't be hand-edited or git-tracked.
+// Auth config (roles, role_passwords, oauth providers) lives in
+// .vaults/config.json instead, with secrets mirrored to .vaults/.env.
+// CLI-managed (`vaults role add/remove/promote/demote`, `vaults password`,
+// `vaults patreon …`); shouldn't be hand-edited or git-tracked.
 export interface Settings {
   vault_name: string;
   image_quality: number;

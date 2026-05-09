@@ -38,7 +38,7 @@
 
 import yaml from "js-yaml";
 import type { CodeBlockHandler, HandlerContext } from "../types.js";
-import { htmlEscape } from "../types.js";
+import { htmlEscape } from "../../../escape.js";
 import { registerBuiltinAssets } from "../assets.js";
 
 interface NamedDesc { name?: string; desc?: string; traits?: NamedDesc[]; }

@@ -48,7 +48,7 @@ wikilinks instead of working anchors), not CSS-hidden content.
 ```
 vaults/                    ← this repo (a working Vault, not a static site)
 ├── settings.md            ← user-editable settings (theme, vault name, ignore patterns)
-├── .vaultrc.json          ← CLI-managed: roles + password hashes (test passwords; safe)
+├── .vaults/config.json    ← CLI-managed: roles + password hashes (test passwords; safe)
 ├── index.md               ← homepage at vaults.wizzlethorpe.com
 ├── README.md              ← this file (excluded from the wiki via settings.md `ignore`)
 ├── NPCs.base              ← cards-view config used on the homepage
@@ -103,14 +103,14 @@ patterns at a glance:
 
 ## ⚠️ A note on the test passwords
 
-`.vaultrc.json` ships with throwaway passwords (`patron-pass`, `dm-pass`)
+`.vaults/config.json` ships with throwaway passwords (`patron-pass`, `dm-pass`)
 because this is a **public demo + landing page**. Do not reuse these on
 any vault that hosts real content.
 
 For your own vault, run `vaults role add <name>` and set a real password —
 the CLI prompts for one and stores a salted PBKDF2 hash. The generated
-`sessionSecret` should also stay out of git (the default `.gitignore`
-covers this).
+`SESSION_SECRET` lives in `.vaults/.env` and should stay out of git
+(the auto-generated `.vaults/.gitignore` covers this).
 
 ## Reporting bugs / feature requests
 

@@ -158,6 +158,3 @@ export function buildRegistry(builtin: Handler[], user: Handler[] = []): Handler
   return { inline, codeBlock };
 }
 
-// Re-exported from the canonical location (cli/src/escape.ts) so existing
-// `import { htmlEscape } from ".../handlers/types.js"` callers keep working.
-export { htmlEscape } from "../../escape.js";

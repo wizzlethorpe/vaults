@@ -89,13 +89,13 @@ export async function applyInstance(vault, vaultPath, meta) {
   if (parsed.kind === "uuid") {
     const template = await safeFromUuid(parsed.uuid);
     if (!template) {
-      console.warn(`Vaults | foundry_base: ${vaultPath} → ${parsed.uuid} did not resolve; skipping.`);
+      console.warn(`Vaults | foundry.base: ${vaultPath} → ${parsed.uuid} did not resolve; skipping.`);
       return;
     }
     docName = template.documentName;
     if (!CLONE_SUPPORTED_DOCS.has(docName)) {
       console.warn(
-        `Vaults | foundry_base: ${vaultPath} → ${parsed.uuid} is a ${docName}; `
+        `Vaults | foundry.base: ${vaultPath} → ${parsed.uuid} is a ${docName}; `
         + `clone-from-UUID only supports ${[...CLONE_SUPPORTED_DOCS].join(", ")}.`,
       );
       return;
@@ -104,7 +104,7 @@ export async function applyInstance(vault, vaultPath, meta) {
     // doesn't apply because we're creating a brand-new world document.
     try { baseData = template.toObject(); }
     catch (err) {
-      console.warn(`Vaults | foundry_base: could not read template ${parsed.uuid}:`, err);
+      console.warn(`Vaults | foundry.base: could not read template ${parsed.uuid}:`, err);
       return;
     }
     delete baseData._id;
@@ -115,7 +115,7 @@ export async function applyInstance(vault, vaultPath, meta) {
 
   const collection = COLLECTION_FOR[docName]?.();
   if (!collection) {
-    console.warn(`Vaults | foundry_base: no world collection for ${docName}; skipping ${vaultPath}.`);
+    console.warn(`Vaults | foundry.base: no world collection for ${docName}; skipping ${vaultPath}.`);
     return;
   }
   const docClass = CONFIG[docName].documentClass;
@@ -128,7 +128,7 @@ export async function applyInstance(vault, vaultPath, meta) {
     try {
       await existing.update(overlay);
     } catch (err) {
-      console.warn(`Vaults | foundry_base update failed for ${vaultPath}:`, err);
+      console.warn(`Vaults | foundry.base update failed for ${vaultPath}:`, err);
     }
     return;
   }
@@ -139,12 +139,12 @@ export async function applyInstance(vault, vaultPath, meta) {
   try {
     await docClass.create(baseData, { keepId: true });
   } catch (err) {
-    console.warn(`Vaults | foundry_base create failed for ${vaultPath}:`, err);
+    console.warn(`Vaults | foundry.base create failed for ${vaultPath}:`, err);
   }
 }
 
 /**
- * Parse the `foundry_base` value into either a UUID-clone form or a
+ * Parse the `foundry.base` value into either a UUID-clone form or a
  * blank-doc form. UUIDs always contain a `.` (`Type.id` at minimum); a
  * bare type name like "Actor" or "Item:weapon" never does. Case-insensitive
  * for the type so `actor:npc` reads naturally in YAML.

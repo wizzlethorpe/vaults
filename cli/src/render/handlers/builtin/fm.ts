@@ -28,7 +28,7 @@
 // surfaces the problem instead of silently emitting "undefined".
 
 import type { InlineHandler } from "../types.js";
-import { htmlEscape } from "../types.js";
+import { htmlEscape } from "../../../escape.js";
 import { formatInline } from "./inline-format.js";
 
 export const fmHandler: InlineHandler = {

@@ -117,7 +117,7 @@ export const handler = {
 
 ### Foundry import opt-in
 
-By default, handler-shipped CSS/JS only reaches the wiki — the Foundry VTT module ignores it because running arbitrary scripts from a third-party URL inside a Foundry world is the kind of thing that warrants explicit consent. To make a handler's assets *eligible* for import into Foundry, add a `foundry` block:
+By default, handler-shipped CSS/JS only reaches the wiki — the Foundry VTT module ignores it because running arbitrary scripts from a third-party URL inside a Foundry world is the kind of thing that warrants explicit consent. To make a handler's assets *eligible* for import into Foundry, add a `targets.foundry` block:
 
 ```javascript
 export const handler = {
@@ -125,15 +125,19 @@ export const handler = {
   assets: {
     scripts: ["./clicker.runtime.js"],
     styles: ["./clicker.css"],
-    foundry: { scripts: true, styles: true },  // both default false
+    targets: {
+      foundry: { scripts: true, styles: true },  // both default false
+    },
   },
   render: ...,
 };
 ```
 
+The `targets` block is generic so future consumers (MCP server, other VTTs) can plug in alongside Foundry without each carving a new top-level key on `assets`.
+
 Two layers of consent gate this:
 
-1. **Handler-side opt-in** (above) — only handlers that set `foundry.scripts` / `foundry.styles` get bundled into the deploy's `_handlers.foundry.{js,css}`. Everything else stays wiki-only.
+1. **Handler-side opt-in** (above) — only handlers that set `targets.foundry.scripts` / `targets.foundry.styles` get bundled into the deploy's `_handlers.foundry.{js,css}`. Everything else stays wiki-only.
 2. **GM-side opt-in** in the Foundry module's per-vault settings dialog ("Import handler stylesheets" / "Import handler scripts" checkboxes, both default off, with a confirmation warning when flipping on).
 
 Live demo: this vault ships a `clicker:` inline handler with both opted in. `clicker: try me` renders as `clicker: try me` (click it!). On the wiki it works because the handler's CSS + JS shipped at `_handlers.{css,js}`. In Foundry it works only if the GM checked both import boxes for this vault — otherwise the journal page shows an unstyled, inert button (since the wiki HTML containing `<button class="vaults-clicker">` survives the sync, but the styling/behaviour does not).

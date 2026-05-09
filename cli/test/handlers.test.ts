@@ -17,7 +17,8 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildSite } from "../src/build.js";
 import { loadUserHandlers } from "../src/render/handlers/loader.js";
-import { buildRegistry, htmlEscape } from "../src/render/handlers/types.js";
+import { buildRegistry } from "../src/render/handlers/types.js";
+import { htmlEscape } from "../src/escape.js";
 
 interface Vault { dir: string; out: string; }
 

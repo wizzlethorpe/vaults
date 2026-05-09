@@ -73,7 +73,7 @@ export async function sync(vaultId, { forceFull = false } = {}) {
   const patch = {};
   if (vault.public !== isPublic) patch.public = isPublic;
   if (!arraysEqual(vault.knownRoles, knownRoles)) patch.knownRoles = knownRoles;
-  // Cache the manifest's advertised asset paths so applyHandlerAssets can
+  // Cache the manifest's advertised asset paths so applyHandlerAssetsWithConfirm can
   // fetch them via the canonical URL (instead of guessing /_handlers.foundry.*).
   // Falls back to the well-known names when the manifest predates the field.
   const remoteAssets = manifest.assets?.foundry || {};

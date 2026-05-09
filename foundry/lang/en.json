@@ -56,7 +56,7 @@
   "VAULTS.Dialog.HandlerAssetsLabel": "Handler assets",
   "VAULTS.Dialog.ImportHandlerStyles": "Import handler stylesheets (CSS)",
   "VAULTS.Dialog.ImportHandlerScripts": "Import handler scripts (JS)",
-  "VAULTS.Dialog.HandlerAssetsHint": "Optional: pull handler-shipped CSS/JS from this vault into Foundry. Each handler also has to opt in (assets.foundry.{styles,scripts}). Off by default.",
+  "VAULTS.Dialog.HandlerAssetsHint": "Optional: pull handler-shipped CSS/JS from this vault into Foundry. Each handler also has to opt in (assets.targets.foundry.{styles,scripts}). Off by default.",
 
   "VAULTS.HandlerAssets.WarnTitle": "Enable handler-asset import?",
   "VAULTS.HandlerAssets.WarnIntro": "You're about to enable handler-asset import for \"{name}\". The vault's deployed wiki may ship these assets:",
