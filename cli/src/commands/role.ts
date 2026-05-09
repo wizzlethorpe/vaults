@@ -2,8 +2,10 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { hashPassword } from "../auth.js";
 import { loadConfig, saveConfig } from "../config.js";
+import { runMigrations } from "../migrate/run.js";
 
 export async function roleAdd(name: string, vaultPath: string): Promise<void> {
+  await runMigrations(vaultPath);
   if (!/^[a-z][a-z0-9_-]*$/i.test(name)) {
     throw new Error(`Invalid role name '${name}'. Use letters, digits, '_' or '-' (must start with a letter).`);
   }
@@ -28,6 +30,7 @@ export async function roleAdd(name: string, vaultPath: string): Promise<void> {
 }
 
 export async function roleRemove(name: string, vaultPath: string): Promise<void> {
+  await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
   if (!cfg.roles.includes(name)) {
     throw new Error(`Role '${name}' is not configured (${cfg.roles.join(", ") || "empty"}).`);
@@ -52,6 +55,7 @@ export async function roleDemote(name: string, vaultPath: string): Promise<void>
 }
 
 async function reorderRole(name: string, vaultPath: string, delta: 1 | -1): Promise<void> {
+  await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
   const roles = cfg.roles;
   const i = roles.indexOf(name);
@@ -71,6 +75,7 @@ async function reorderRole(name: string, vaultPath: string, delta: 1 | -1): Prom
 }
 
 export async function roleList(vaultPath: string): Promise<void> {
+  await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
   if (cfg.roles.length === 0) {
     console.log("No roles configured. Run `vaults role add <name>` to add one.");

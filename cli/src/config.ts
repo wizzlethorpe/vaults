@@ -1,5 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { readDotEnv, writeDotEnv } from "./dotenv.js";
 import { warnSensitive } from "./sensitive.js";
 
@@ -67,7 +67,9 @@ const DEFAULT_CONFIG: VaultConfig = {
   rolePasswords: {},
 };
 
-const CONFIG_FILE = ".vaultrc.json";
+// Resolved at call time so migrations get a chance to move the file
+// before any read happens. See cli/src/paths.ts.
+import { configPath } from "./paths.js";
 
 // Env var names — same as the Wrangler secret names so the .env line you
 // write is exactly what gets uploaded as the Cloudflare Pages secret.
@@ -144,7 +146,9 @@ export async function saveConfig(vaultPath: string, cfg: VaultConfig): Promise<v
     if (deepEqual(v, DEFAULT_CONFIG[k as keyof VaultConfig] as unknown)) continue;
     (out as Record<string, unknown>)[k] = v;
   }
-  await writeFile(join(vaultPath, CONFIG_FILE), JSON.stringify(out, null, 2) + "\n");
+  const cfgPath = configPath(vaultPath);
+  await mkdir(dirname(cfgPath), { recursive: true });
+  await writeFile(cfgPath, JSON.stringify(out, null, 2) + "\n");
 
   // Mirror secrets to .env. Use null to delete keys that are no longer set
   // so a user clearing Patreon doesn't leave a stray client secret behind.
@@ -186,7 +190,7 @@ export async function saveSessionSecret(vaultPath: string, secret: string): Prom
 
 async function readFileConfig(vaultPath: string): Promise<Partial<VaultConfig>> {
   try {
-    const raw = await readFile(join(vaultPath, CONFIG_FILE), "utf8");
+    const raw = await readFile(configPath(vaultPath), "utf8");
     return JSON.parse(raw) as Partial<VaultConfig>;
   } catch {
     return {};

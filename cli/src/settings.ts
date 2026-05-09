@@ -23,6 +23,7 @@ export interface Settings {
   favicon: string;
   auto_image: boolean;
   include_unknown_files: boolean;
+  footer: string;
 }
 
 type SettingType = "string" | "number" | "boolean" | "string[]";
@@ -109,10 +110,17 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     description:
       "Ship files with unrecognized extensions to every deploy variant. Default false skips them (with a warning) so a stray file in your vault can't accidentally bypass role gating. Recognized media types (audio/video/pdf/epub) are reference-gated like images regardless of this setting.",
   },
+  footer: {
+    default: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com).",
+    type: "string",
+    description:
+      "Markdown text rendered in a small <footer> at the bottom of every page. Supports inline markdown (links, *italic*, **bold**). Set to an empty string to hide the footer entirely.",
+  },
 
 };
 
-export const SETTINGS_FILE = "settings.md";
+export { SETTINGS_FILE } from "./paths.js";
+import { SETTINGS_FILE } from "./paths.js";
 
 export interface LoadedSettings {
   values: Settings;

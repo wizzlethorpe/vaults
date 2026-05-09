@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { buildSite } from "../build.js";
 import { generateSessionSecret } from "../auth.js";
 import { loadConfig, saveSessionSecret } from "../config.js";
+import { runMigrations } from "../migrate/run.js";
+import { defaultOutputDir } from "../paths.js";
 
 interface PreviewOptions {
   output?: string;
@@ -22,9 +24,8 @@ const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
  * the same cookies that production does.
  */
 export async function preview(vaultPath: string, opts: PreviewOptions): Promise<void> {
-  const outputDir = opts.output
-    ? resolve(opts.output)
-    : join(vaultPath, ".vault-cache", "rendered");
+  await runMigrations(vaultPath);
+  const outputDir = opts.output ? resolve(opts.output) : defaultOutputDir(vaultPath);
   const port = opts.port ?? 4173;
 
   console.log(`Building site from ${vaultPath}...`);
@@ -55,7 +56,7 @@ export async function preview(vaultPath: string, opts: PreviewOptions): Promise<
     if (!secret) {
       secret = generateSessionSecret();
       await saveSessionSecret(vaultPath, secret);
-      console.log("Generated SESSION_SECRET (saved to .vaultrc.json).");
+      console.log("Generated SESSION_SECRET (saved to config).");
     }
     wranglerArgs.push(`--binding=SESSION_SECRET=${secret}`);
     if (cfg.patreon?.clientSecret) {

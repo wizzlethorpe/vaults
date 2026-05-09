@@ -2,10 +2,12 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { hashPassword } from "../auth.js";
 import { loadConfig, saveConfig } from "../config.js";
+import { runMigrations } from "../migrate/run.js";
 
 interface PasswordOptions {}
 
 export async function password(vaultPath: string, role: string, _opts: PasswordOptions): Promise<void> {
+  await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
 
   if (cfg.roles.length === 0) {

@@ -16,6 +16,12 @@ export interface LayoutInput {
   backlinks: PageMeta[];
   /** True if this site has roles beyond the default (i.e. login UI is meaningful). */
   authConfigured: boolean;
+  /** True if /_handlers.js was emitted (any handler declared a script asset). */
+  hasHandlerJs: boolean;
+  /** True if /_handlers.css was emitted (any handler declared a style asset). */
+  hasHandlerCss: boolean;
+  /** Pre-rendered footer HTML (empty string = no footer). */
+  footerHtml: string;
   /** Unix-seconds. Optional; synthesized folder indexes may have neither. */
   mtime?: number;
   birthtime?: number;
@@ -56,6 +62,7 @@ export function renderLayout(input: LayoutInput): string {
 <link rel="icon" href="/favicon.ico">
 <link rel="stylesheet" href="/styles.css">
 <link rel="stylesheet" href="/user.css">
+${input.hasHandlerCss ? `<link rel="stylesheet" href="/_handlers.css">` : ""}${input.hasHandlerJs ? `\n<script src="/_handlers.js" defer></script>` : ""}
 ${renderSocialMeta(input)}
 </head>
 <body${input.centerImages ? ` class="center-images"` : ""}${input.defaultImageWidth ? ` style="--default-img-width: ${attr(input.defaultImageWidth)}"` : ""}>
@@ -76,6 +83,7 @@ ${renderSocialMeta(input)}
       ${input.bodyHtml}
       ${renderMeta(input.mtime, input.birthtime)}
     </article>
+    ${input.footerHtml ? `<footer class="site-footer">${input.footerHtml}</footer>` : ""}
   </main>
   <aside class="rightbar">
     <details class="toc" open>

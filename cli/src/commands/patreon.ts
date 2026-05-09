@@ -3,6 +3,7 @@ import { stdin, stdout } from "node:process";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { loadConfig, saveConfig } from "../config.js";
+import { runMigrations } from "../migrate/run.js";
 
 // Fixed port for the one-shot CLI OAuth dance. Reuses `vaults preview`'s
 // default port (4173) so a single registered redirect URI covers both
@@ -26,6 +27,7 @@ const OAUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes is plenty for the user to c
  * + bills per app.
  */
 export async function patreonConfigure(vaultPath: string): Promise<void> {
+  await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
   const existing = cfg.patreon;
 
@@ -353,6 +355,7 @@ function escapeHtml(s: string): string {
 }
 
 export async function patreonLink(role: string, tierId: string, vaultPath: string): Promise<void> {
+  await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
   if (!cfg.patreon) {
     throw new Error("Patreon is not configured yet. Run `vaults patreon configure` first.");
@@ -375,6 +378,7 @@ export async function patreonLink(role: string, tierId: string, vaultPath: strin
 }
 
 export async function patreonUnlink(role: string, vaultPath: string): Promise<void> {
+  await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
   if (!cfg.patreon?.tiers || !(role in cfg.patreon.tiers)) {
     throw new Error(`Role '${role}' has no Patreon tier mapping.`);
@@ -386,6 +390,7 @@ export async function patreonUnlink(role: string, vaultPath: string): Promise<vo
 }
 
 export async function patreonClear(vaultPath: string): Promise<void> {
+  await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
   if (!cfg.patreon) {
     console.log("No Patreon configuration to clear.");
@@ -407,6 +412,7 @@ export async function patreonClear(vaultPath: string): Promise<void> {
 }
 
 export async function patreonStatus(vaultPath: string): Promise<void> {
+  await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
   if (!cfg.patreon) {
     console.log("Patreon: not configured. Run `vaults patreon configure` to enable.");

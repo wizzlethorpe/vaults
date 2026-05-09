@@ -7,6 +7,7 @@ import { init } from "./commands/init.js";
 import { password } from "./commands/password.js";
 import { roleAdd, roleDemote, roleList, rolePromote, roleRemove } from "./commands/role.js";
 import { patreonClear, patreonConfigure, patreonLink, patreonStatus, patreonUnlink } from "./commands/patreon.js";
+import { listMigrations, runMigrations } from "./migrate/run.js";
 
 const program = new Command();
 
@@ -146,7 +147,7 @@ program
   .command("build")
   .description("Render the vault to a local output directory")
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
-  .option("-o, --output <dir>", "Output directory (default: <vault>/.vault-cache/rendered)")
+  .option("-o, --output <dir>", "Output directory (default: <vault>/.vaults/cache/rendered)")
   .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
   .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
   .option("--all-warnings", "Print every page with warnings instead of truncating at 20")
@@ -156,11 +157,40 @@ program
   .command("preview")
   .description("Render the vault and serve it locally via `wrangler pages dev` (Functions run)")
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
-  .option("-o, --output <dir>", "Output directory (default: <vault>/.vault-cache/rendered)")
+  .option("-o, --output <dir>", "Output directory (default: <vault>/.vaults/cache/rendered)")
   .option("-p, --port <n>", "Port for the preview server", (v) => parseInt(v, 10), 4173)
   .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
   .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
   .action(wrap(preview));
+
+program
+  .command("migrate")
+  .description("Run pending vault layout / schema migrations")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .option("--dry-run", "Show what would migrate without changing anything")
+  .option("--only <id>", "Run only the migration with this id")
+  .option("--list", "List all known migrations and exit")
+  .action(async (vaultPath: string, opts: { dryRun?: boolean; only?: string; list?: boolean }) => {
+    try {
+      if (opts.list) {
+        for (const m of listMigrations()) {
+          console.log(`  ${m.id}\n    ${m.description}`);
+        }
+        return;
+      }
+      const result = await runMigrations(vaultPath, { dryRun: opts.dryRun, ...(opts.only ? { only: opts.only } : {}) });
+      if (result.applied.length === 0) {
+        console.log("No pending migrations.");
+      } else if (opts.dryRun) {
+        console.log(`Would apply ${result.applied.length} migration(s).`);
+      } else {
+        console.log(`Applied ${result.applied.length} migration(s).`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
 
 program
   .command("push")

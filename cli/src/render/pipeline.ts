@@ -12,6 +12,8 @@ import { wikiLinkPlugin } from "./wikilink.js";
 import { embedPlugin } from "./embed.js";
 import { calloutPlugin } from "./callouts.js";
 import { basesPlugin } from "./bases.js";
+import { handlersPlugin } from "./handlers/dispatch.js";
+import { htmlEscape } from "./handlers/types.js";
 
 const sanitizeSchema = {
   ...defaultSchema,
@@ -31,6 +33,7 @@ const sanitizeSchema = {
     a: ["href", "title", "className", "id"],
     div: ["className", "data*", "role"],
     span: ["className", "data*"],
+    code: ["className", "title"],
     table: ["className"],
     th: ["className", "data*", "tabindex"],
     td: ["className", "data*"],
@@ -77,6 +80,19 @@ export async function renderMarkdown(
   const file = await unified()
     .use(remarkParse)
     .use(remarkGfm)
+    // Handlers run early so any markdown they emit is processed by the
+    // rest of the pipeline (wikilinks resolve, embeds inline, etc.).
+    // Empty registry (no built-ins, no user handlers) short-circuits to
+    // a no-op walk.
+    .use(handlersPlugin({
+      registry: context.handlers ?? { inline: new Map(), codeBlock: new Map() },
+      context: {
+        pagePath: fallbackTitle,
+        frontmatter: fm,
+        render: context,
+        escape: htmlEscape,
+      },
+    }))
     .use(calloutPlugin({ redactRoles: context.redactRoles }))
     // Bases runs before wikilink/embed: it consumes ```base code fences
     // wholesale and emits raw HTML, so downstream plugins won't try to

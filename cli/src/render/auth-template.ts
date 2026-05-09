@@ -951,12 +951,15 @@ function isSharedAsset(pathname) {
   // ROOT (vs. into _variants/<role>/) must be listed here, otherwise it
   // 404s for every visitor. Build code that places root-level files:
   //   - styles.css / user.css        — build.ts (writeFile join(outputDir, ...))
+  //   - _handlers.js / _handlers.css — build.ts (handler asset bundles)
   //   - login.html                   — build.ts (multi-role only)
   //   - favicon.ico                  — build.ts (buildFavicon)
   //   - functions/_middleware.js     — build.ts (multi-role only; not served)
   // If you add another, add it both here AND in build.ts.
   if (pathname === "/styles.css") return true;
   if (pathname === "/user.css") return true;
+  if (pathname === "/_handlers.js") return true;
+  if (pathname === "/_handlers.css") return true;
   if (pathname === "/login.html") return true;
   if (pathname === "/favicon.ico" || pathname === "/favicon.svg") return true;
   if (pathname === "/robots.txt") return true;

@@ -16,7 +16,7 @@ export interface ScannedFile {
   birthtime: number;
 }
 
-const IGNORED_DIRS = new Set([".git", ".obsidian", ".trash", "node_modules", ".vault-cache"]);
+const IGNORED_DIRS = new Set([".git", ".obsidian", ".trash", "node_modules", ".vault-cache", ".vaults"]);
 const IGNORED_FILES = new Set([".DS_Store", ".vaultrc.json"]);
 
 export async function scanVault(root: string): Promise<ScannedFile[]> {

@@ -28,7 +28,14 @@ import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./set
 import { loadConfig, saveConfig, type VaultConfig } from "./config.js";
 import matter from "gray-matter";
 import { renderAuthMiddleware, LOGIN_HTML } from "./render/auth-template.js";
+import { renderFooterHtml } from "./render/footer.js";
 import type { ImageEntry, PageMeta, RenderContext, RenderWarning } from "./render/types.js";
+import { buildRegistry, type HandlerRegistry } from "./render/handlers/types.js";
+import { loadUserHandlers } from "./render/handlers/loader.js";
+import { BUILTIN_HANDLERS } from "./render/handlers/builtin/index.js";
+import { bundleHandlerAssets } from "./render/handlers/assets.js";
+import { runMigrations } from "./migrate/run.js";
+import { cacheDir } from "./paths.js";
 import { formatDuration, pMap, Progress } from "./util.js";
 
 export interface BuildOptions {
@@ -73,10 +80,10 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   const start = Date.now();
   const concurrency = Math.max(2, availableParallelism());
 
-  // One-shot migration for vaults from before auth config moved to
-  // .vaultrc.json. If the user's settings.md still has roles/auth_type/
-  // role_passwords, copy them over before the canonicalizer strips them.
-  await migrateLegacyAuthFromSettings(opts.vaultPath);
+  // Run any pending schema / layout migrations before reading anything
+  // else. The framework is idempotent: already-migrated vaults pay only
+  // the cost of a few stat() calls. See cli/src/migrate/.
+  await runMigrations(opts.vaultPath);
 
   // ── Settings (user-editable) ─────────────────────────────────────────────
   const settings = await loadSettings(opts.vaultPath);
@@ -91,6 +98,31 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     imageQuality: opts.imageQuality === 85 ? settings.values.image_quality : opts.imageQuality,
     maxFileBytes: opts.maxFileBytes === 25 * 1024 * 1024 ? settings.values.max_file_bytes : opts.maxFileBytes,
   };
+
+  // ── Custom handlers ──────────────────────────────────────────────────────
+  // Built-ins ship with the CLI; user handlers live in `.vaults/handlers/`
+  // and can override built-in names (last-registered wins). One registry
+  // is built once and shared across every variant render.
+  const userHandlers = await loadUserHandlers(opts.vaultPath);
+  const handlerRegistry: HandlerRegistry = buildRegistry([
+    ...BUILTIN_HANDLERS,
+    ...userHandlers.map((h) => h.handler),
+  ]);
+  if (userHandlers.length > 0) {
+    console.log(`  loaded ${userHandlers.length} custom handler(s) from .vaults/handlers/`);
+  }
+  // Concatenate browser-side assets declared by built-in and user handlers
+  // into a single _handlers.js / _handlers.css emitted at the deploy root.
+  // Each unique source is included once, regardless of invocation count.
+  // Two independent flags so a deploy with only-JS or only-CSS doesn't
+  // reference a file that wasn't written.
+  const handlerAssets = await bundleHandlerAssets(userHandlers, BUILTIN_HANDLERS, opts.vaultPath);
+  const hasHandlerJs = handlerAssets.js.length > 0;
+  const hasHandlerCss = handlerAssets.css.length > 0;
+
+  // Footer markdown rendered once per build; the resulting HTML is
+  // embedded verbatim in every page's layout. Empty string = no footer.
+  const footerHtml = await renderFooterHtml(settings.values.footer);
 
   // ── CLI-managed state (auth) ─────────────────────────────────────────────
   const cfg = await loadConfig(opts.vaultPath, {});
@@ -218,8 +250,8 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   const imageStagingDir = join(opts.outputDir, ".image-staging");
   const imageIndex = new Map<string, ImageEntry>();
   if (imageFiles.length > 0) {
-    const cacheDir = join(opts.vaultPath, ".vault-cache", "images", `q${opts.imageQuality}`);
-    await mkdir(cacheDir, { recursive: true });
+    const cacheImageDir = join(cacheDir(opts.vaultPath), "images", `q${opts.imageQuality}`);
+    await mkdir(cacheImageDir, { recursive: true });
     let cacheHits = 0;
     const progress = new Progress("Images");
     progress.update(0, imageFiles.length);
@@ -228,7 +260,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       // SVGs / non-compressible images pass through; everything else gets
       // recoded to webp for size. Either way they land in the staging dir.
       const compressed = opts.imageQuality > 0 && COMPRESSIBLE_EXT_RE.test(f.path)
-        ? await compressImageCached(f, opts.imageQuality, cacheDir, () => { cacheHits++; })
+        ? await compressImageCached(f, opts.imageQuality, cacheImageDir, () => { cacheHits++; })
         : { body: await readFile(f.absolute), outputPath: f.path };
 
       const dest = join(imageStagingDir, compressed.outputPath);
@@ -280,6 +312,12 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   const userCss = await loadObsidianSnippets(opts.vaultPath);
   await writeFile(join(opts.outputDir, "user.css"), userCss);
   if (userCss) console.log(`  loaded user.css from .obsidian/snippets/`);
+
+  // Browser-side handler assets (built-in + user) concatenated into a
+  // single deploy-root JS and CSS file. Skipped entirely if no handler
+  // declared any assets (purely declarative handlers stay overhead-free).
+  if (hasHandlerJs) await writeFile(join(opts.outputDir, "_handlers.js"), handlerAssets.js);
+  if (hasHandlerCss) await writeFile(join(opts.outputDir, "_handlers.css"), handlerAssets.css);
 
   // Favicon; either user-supplied via settings.favicon, or a generated
   // default with the vault's first letter in accent on the theme background.
@@ -338,6 +376,10 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       passthroughStagingDir: otherStagingDir,
       settings: settings.values,
       authConfigured: roles.length > 1,
+      handlerRegistry,
+      hasHandlerJs,
+      hasHandlerCss,
+      footerHtml,
       concurrency,
       allWarnings: opts.allWarnings,
     });
@@ -431,6 +473,14 @@ interface VariantArgs {
   settings: Settings;
   /** Whether the deployment has more than one role (controls auth-box rendering). */
   authConfigured: boolean;
+  /** Built-in + user-defined handler registry, shared across variants. */
+  handlerRegistry: HandlerRegistry;
+  /** Set when /_handlers.js will be emitted at the deploy root. */
+  hasHandlerJs: boolean;
+  /** Set when /_handlers.css will be emitted at the deploy root. */
+  hasHandlerCss: boolean;
+  /** Pre-rendered footer HTML (empty string = footer hidden). */
+  footerHtml: string;
   concurrency: number;
   allWarnings: boolean | undefined;
 }
@@ -484,6 +534,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     bases: a.baseSources,
     defaultImageWidth: a.settings.default_image_width,
     redactRoles: a.redactRoles,
+    handlers: a.handlerRegistry,
   };
 
   // Pass 1: render bodies + collect outlinks + warnings.
@@ -536,6 +587,9 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
       centerImages: a.settings.center_images,
       backlinks,
       authConfigured: a.authConfigured,
+      hasHandlerJs: a.hasHandlerJs,
+      hasHandlerCss: a.hasHandlerCss,
+      footerHtml: a.footerHtml,
       ...(p.mtime != null ? { mtime: p.mtime } : {}),
       ...(p.birthtime != null ? { birthtime: p.birthtime } : {}),
       ...(p.coverImage ? { coverImage: p.coverImage } : {}),
@@ -570,6 +624,9 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     defaultImageWidth: a.settings.default_image_width,
     centerImages: a.settings.center_images,
     authConfigured: a.authConfigured,
+    hasHandlerJs: a.hasHandlerJs,
+    hasHandlerCss: a.hasHandlerCss,
+    footerHtml: a.footerHtml,
   }));
 
   // Per-variant search index. `text` is the page's RENDERED HTML body
@@ -1145,64 +1202,6 @@ function contentTypeForExt(filename: string): string {
     ogg: "audio/ogg",
   };
   return map[ext] ?? "application/octet-stream";
-}
-
-/**
- * Pre-canonicalisation migration. Earlier versions stored roles, auth_type,
- * and role_passwords in settings.md frontmatter; they now live in
- * .vaultrc.json. If we still see them in settings.md (legacy vault), copy
- * over what's missing in .vaultrc.json so the imminent canonicaliser doesn't
- * silently drop them.
- *
- * Idempotent: returns true and logs only if it actually moved something.
- */
-async function migrateLegacyAuthFromSettings(vaultPath: string): Promise<boolean> {
-  const settingsPath = join(vaultPath, SETTINGS_FILE);
-  let raw: string;
-  try {
-    raw = await readFile(settingsPath, "utf8");
-  } catch {
-    return false;
-  }
-  const fm = (matter(raw).data ?? {}) as Record<string, unknown>;
-  const hasLegacy = "roles" in fm || "auth_type" in fm || "role_passwords" in fm;
-  if (!hasLegacy) return false;
-
-  const cfg = await loadConfig(vaultPath, {});
-  const moved: string[] = [];
-
-  // roles: only migrate if cfg is still at the default ["public"].
-  if (Array.isArray(fm.roles)) {
-    const list = fm.roles.filter((r): r is string => typeof r === "string");
-    const isDefault = cfg.roles.length === 0 || (cfg.roles.length === 1 && cfg.roles[0] === "public");
-    if (list.length > 0 && isDefault && !arraysEqual(list, ["public"])) {
-      cfg.roles = list;
-      moved.push("roles");
-    }
-  }
-  if (typeof fm.auth_type === "string" && cfg.authType === "password" && fm.auth_type !== "password") {
-    cfg.authType = fm.auth_type;
-    moved.push("auth_type");
-  }
-  if (fm.role_passwords && typeof fm.role_passwords === "object" && !Array.isArray(fm.role_passwords)
-      && Object.keys(cfg.rolePasswords).length === 0) {
-    const map = fm.role_passwords as Record<string, unknown>;
-    const cleaned: Record<string, string> = {};
-    for (const [k, v] of Object.entries(map)) if (typeof v === "string") cleaned[k] = v;
-    if (Object.keys(cleaned).length > 0) {
-      cfg.rolePasswords = cleaned;
-      moved.push("role_passwords");
-    }
-  }
-
-  if (moved.length === 0) return false;
-  await saveConfig(vaultPath, cfg);
-  console.log(`  migrated ${moved.join(", ")} from settings.md → .vaultrc.json`);
-  return true;
-}
-
-function arraysEqual(a: unknown[], b: unknown[]): boolean {
-  return a.length === b.length && a.every((x, i) => x === b[i]);
 }
 
 function extractPlainText(source: string, max: number): string {

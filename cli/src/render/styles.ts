@@ -280,6 +280,20 @@ main { padding: 2rem 0 4rem; min-width: 0; }
 .page-meta time { font-variant-numeric: tabular-nums; }
 .page-meta .meta-sep { opacity: 0.5; }
 
+/* Site-wide footer rendered from the footer setting (markdown). Sits
+   below the article, outside <article>, so it's clearly chrome and
+   doesn't get caught by article-scoped selectors. */
+.site-footer {
+  margin: 2rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.site-footer a { color: inherit; text-decoration: underline; text-decoration-color: var(--rule); }
+.site-footer a:hover { color: var(--accent); text-decoration-color: var(--accent); }
+
 .frontmatter-toggle {
   display: inline-flex; align-items: center; gap: 0.35rem;
   padding: 0.15rem 0.5rem;
@@ -752,6 +766,21 @@ article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px soli
 .callout-danger > .callout-title, .callout-error > .callout-title { color: #b94a3a; }
 .callout-dm { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .callout-dm > .callout-title { color: var(--accent); }
+
+/* Inline dice-roll buttons emitted by the built-in dice handler. */
+button.dice-roll {
+  display: inline-block; padding: 0.05rem 0.5rem; margin: 0;
+  font: inherit; font-variant-numeric: tabular-nums;
+  background: var(--wikilink-bg); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 4px; cursor: pointer; line-height: 1.4;
+}
+button.dice-roll:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+code.dice-roll-invalid { color: var(--muted); text-decoration: line-through; }
+
+/* Inline frontmatter values emitted by the built-in fm handler when the
+   key is missing — visible so authors notice the typo. */
+code.fm-missing { color: #b94a3a; background: color-mix(in srgb, #b94a3a 10%, transparent); }
 
 /* Embed (transcluded ![[Page]]) */
 .embed {

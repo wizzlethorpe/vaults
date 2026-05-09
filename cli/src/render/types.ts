@@ -43,6 +43,8 @@ export interface RenderContext {
   defaultImageWidth: string;
   /** Set of role names that should be stripped from this render (callouts whose type matches a name in here are dropped). */
   redactRoles: ReadonlySet<string>;
+  /** Built-in + user-defined inline / code-block handlers. Optional; absent = no custom handlers run. */
+  handlers?: import("./handlers/types.js").HandlerRegistry;
   /** Internal: slugs of ancestor pages in the current embed chain (cycle detection). */
   embedAncestors?: ReadonlySet<string>;
   /** Internal: current embed depth. */

@@ -1,10 +1,12 @@
-import { basename, join } from "node:path";
+import { basename } from "node:path";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { loadConfig, saveConfig, saveSessionSecret, type VaultConfig } from "../config.js";
 import { buildSite } from "../build.js";
 import { generateSessionSecret } from "../auth.js";
+import { runMigrations } from "../migrate/run.js";
+import { defaultOutputDir } from "../paths.js";
 
 interface PushOptions {
   projectName?: string;
@@ -16,13 +18,14 @@ interface PushOptions {
 }
 
 export async function push(vaultPath: string, opts: PushOptions): Promise<void> {
+  await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {
     ...(opts.projectName ? { projectName: opts.projectName } : {}),
     ...(opts.imageQuality != null ? { imageQuality: opts.imageQuality } : {}),
   });
 
   const vaultName = opts.vaultName ?? "Vault";
-  const outputDir = join(vaultPath, ".vault-cache", "rendered");
+  const outputDir = defaultOutputDir(vaultPath);
 
   console.log(`Building site from ${vaultPath}...`);
   const result = await buildSite({

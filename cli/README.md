@@ -133,6 +133,66 @@ foundry:                                                # optional doc overrides
 
 Wikilinks (`[[Page]]`, `[[Page|alias]]`, `[[NPCs/Page#section]]`), image embeds (`![[image.png]]`), transclusions (`![[Page]]`), and Obsidian callouts all render the same way they do in Obsidian.
 
+## Custom handlers
+
+Vault authors can extend the renderer with custom inline-code and code-block transforms. Drop a Node ESM module into `.vaults/handlers/<name>.mjs` that exports a `handler` (or `handlers: Handler[]`); vaults-cli loads them at build time and runs them over every page.
+
+- **Inline handler**: matches inline code like `` `prefix: content` ``.
+- **Code-block handler**: matches fenced ` ```language ` blocks.
+
+Both return either `{ markdown }` (re-processed through the rest of the pipeline) or `{ html }` (sanitized and inserted as-is).
+
+```js
+// .vaults/handlers/seealso.mjs
+export const handler = {
+  codeBlock: "seealso",
+  render: (content) => ({
+    markdown: content
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((p) => `- [[${p.trim()}]]`)
+      .join("\n"),
+  }),
+};
+```
+
+### Browser-side assets
+
+If your handler needs to ship browser-side JavaScript or CSS, declare them with the `assets` field. Paths are relative to the handler file. Every declared asset across all handlers is concatenated into one `_handlers.js` and one `_handlers.css` at the deploy root, deduped by absolute path so a shared utility file is only included once.
+
+```js
+// .vaults/handlers/widget.mjs
+export const handler = {
+  codeBlock: "widget",
+  assets: {
+    scripts: ["./widget.runtime.js"],
+    styles: ["./widget.css"],
+  },
+  render: (content) => ({
+    html: `<div class="widget" data-config="${content}"></div>`,
+  }),
+};
+```
+
+```js
+// .vaults/handlers/widget.runtime.js
+(function () {
+  document.querySelectorAll('.widget').forEach((el) => {
+    // wire up el.dataset.config into something interactive
+  });
+})();
+```
+
+The deployed page references `/_handlers.js` (deferred) and `/_handlers.css`; the runtime then finds and hydrates the handler's HTML. Wrap your runtime in an IIFE to avoid global pollution.
+
+**File-naming convention.** Handler module files end in `.mjs`. Browser-side runtime / CSS files end in `.js` / `.css`. The loader only treats `.mjs` files as handler modules; `.js` files in the same directory are picked up only if a handler's `assets.scripts` references them.
+
+### Built-ins
+
+- **`dice:` (inline)** — `` `dice: 1d20+5` `` renders as a clickable button on the deploy that re-rolls on click. Mirrors [Obsidian Dice Roller](https://github.com/javalent/dice-roller) syntax.
+
+User handlers can override built-ins of the same name. Trust model: handlers run with the same permissions as the rest of the build, so only run `vaults push` on vaults whose contents you trust.
+
 ## Auth
 
 Multi-role deploys ship with a small Cloudflare Pages Function (`_middleware.js`) that:
@@ -149,13 +209,33 @@ Single-role (public-only) deploys skip the middleware entirely; everything serve
 
 ## Files this CLI manages locally
 
-| File | Tracked in git? | What it holds |
-|---|---|---|
-| `settings.md` | yes | User-editable settings. |
-| `.vaultrc.json` | **no** | CLI-managed: `SESSION_SECRET`, role password hashes, project name, Patreon credentials, cached settings. |
-| `.vault-cache/` | **no** | Build cache: rendered output, image webp cache. |
+```
+MyVault/
+├── settings.md          ← user-editable settings (Obsidian Properties UI)
+├── …content…
+├── .env                 ← secrets only (SESSION_SECRET, PATREON_CLIENT_SECRET) — gitignored
+└── .vaults/             ← all vaults-cli internal state lives here
+    ├── .gitignore       ← keeps cache + config out of git automatically
+    ├── config.json      ← CLI-managed: roles, password hashes, project name, Patreon config
+    ├── cache/           ← build cache (rendered HTML, image webp cache)
+    └── handlers/        ← optional: custom inline / code-block handlers
+```
 
-`vaults init` adds `.vaultrc.json` and `.vault-cache` to `.gitignore` if your vault is a git repo.
+`settings.md` lives at the vault root (and only there) so Obsidian renders it as an editable Properties form. Everything else is internal and tucked under `.vaults/`. `vaults init` writes `.vaults/.gitignore` automatically; if your vault is a git repo, this is enough to keep the cache + secrets-bearing config from being tracked.
+
+## Migrations
+
+vaults-cli runs schema and layout migrations automatically before every `build` / `push` / `preview`. They're idempotent: already-migrated vaults pay only the cost of a few `stat()` calls.
+
+To run them manually or inspect what would change:
+
+```bash
+vaults migrate --list      # show all known migrations
+vaults migrate --dry-run   # show what would apply on this vault
+vaults migrate             # apply pending migrations
+```
+
+If you're upgrading from a pre-0.7 vault, the first run of any command will move `.vaultrc.json` → `.vaults/config.json` and `.vault-cache/` → `.vaults/cache/` and write a `.vaults/.gitignore`. Renames are atomic on the same filesystem so even large caches migrate instantly.
 
 ## License
 

@@ -1,6 +1,7 @@
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadSettings, writeSettings, SETTINGS_FILE } from "../settings.js";
+import { ensureVaultsGitignore } from "../migrate/0.7-vaults-dir.js";
 
 interface InitOptions {
   force?: boolean;
@@ -34,23 +35,25 @@ export async function init(vaultPath: string, opts: InitOptions): Promise<void> 
   await writeSettings(vaultPath, values);
   console.log(`Wrote ${target}.`);
 
+  // Vaults-internal state lives in .vaults/. Write a .gitignore there now
+  // so the cache + secrets-bearing config stay out of git when this vault
+  // becomes a git repo (cheap forward-compat for non-git vaults too).
+  await ensureVaultsGitignore(vaultPath);
   // .env holds the only real secrets the CLI manages: SESSION_SECRET and
-  // PATREON_CLIENT_SECRET. .vaultrc.json itself is config (project name,
-  // role list, password hashes, Patreon client/campaign IDs + tier map)
-  // and is intentionally trackable so users can sync setup across
-  // machines via git.
-  await ensureGitignoreEntries(vaultPath, [".env", ".vault-cache"]);
+  // PATREON_CLIENT_SECRET. Drop a top-level .gitignore entry for it (and
+  // the .vaults/ dir) only when the vault is already versioned.
+  await ensureRootGitignoreEntries(vaultPath, [".env"]);
 
   console.log("Open it in Obsidian to edit the frontmatter; it'll show as a settings form.");
 }
 
 /**
- * Add `entries` to `.gitignore` if they aren't already there. Only runs
- * when the vault looks like a git repo (`.git` present) or already has
- * a `.gitignore`; otherwise we'd be creating an orphan file in a vault
- * the user never intended to version.
+ * Add `entries` to the vault's root `.gitignore` if they aren't already
+ * there. Only runs when the vault looks like a git repo (`.git` present)
+ * or already has a `.gitignore`; otherwise we'd be creating an orphan
+ * file in a vault the user never intended to version.
  */
-async function ensureGitignoreEntries(vaultPath: string, entries: string[]): Promise<void> {
+async function ensureRootGitignoreEntries(vaultPath: string, entries: string[]): Promise<void> {
   const path = join(vaultPath, ".gitignore");
   let current = "";
   let gitignoreExists = false;
