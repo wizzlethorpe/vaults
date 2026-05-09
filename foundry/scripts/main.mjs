@@ -361,7 +361,7 @@ async function openSettingsDialog(vaultId) {
 
   await DialogV2.wait({
     window: { title: game.i18n.format("VAULTS.Dialog.SettingsTitle", { name: v.label }) },
-    position: { width: 480 },
+    position: { width: 720 },
     classes: ["vaults-app"],
     content,
     buttons: [
