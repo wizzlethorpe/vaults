@@ -26,12 +26,60 @@ import remarkGfm from "remark-gfm";
 import type { HandlerContext, HandlerOutput, HandlerRegistry } from "./types.js";
 
 interface DispatchOpts {
-  context: HandlerContext;
+  /**
+   * Context for handlers, *minus* the recursive applyInlineHandlers helper
+   * (which is constructed here so it can close over the registry).
+   */
+  context: Omit<HandlerContext, "applyInlineHandlers">;
   registry: HandlerRegistry;
 }
 
 /** Cap on handler-emits-handler recursion. Realistically nothing legitimate nests this deep. */
 const MAX_DEPTH = 10;
+
+/**
+ * Pattern for an inline-handler invocation inside arbitrary text:
+ * `` `prefix: content` ``. `prefix` matches the InlineHandler discriminator
+ * shape (lowercase letter then word chars / dashes). A fresh RegExp is
+ * built per call (rather than module-level) because /g + recursion +
+ * shared regex state is a hang waiting to happen.
+ */
+const INLINE_HANDLER_PATTERN = "`([a-z][\\w-]*):\\s*([^`]*)`";
+
+/**
+ * Substitute inline-handler matches in a plain string with their HTML
+ * output. Bounded by MAX_DEPTH so a handler whose HTML output happens to
+ * contain another `` `prefix: …` `` pattern still terminates.
+ */
+async function applyInlineHandlersImpl(
+  text: string,
+  registry: HandlerRegistry,
+  ctx: HandlerContext,
+  depth: number,
+): Promise<string> {
+  if (depth > MAX_DEPTH) return text;
+  const re = new RegExp(INLINE_HANDLER_PATTERN, "g");
+  let out = "";
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const prefix = m[1]!;
+    const content = (m[2] ?? "").trim();
+    const handler = registry.inline.get(prefix);
+    if (!handler) continue;
+    const result = await handler.render(content, ctx);
+    if ("markdown" in result) {
+      // Markdown output can't be safely spliced into a non-markdown context
+      // without re-running the full pipeline. Skip; the original text stays.
+      continue;
+    }
+    out += text.slice(last, m.index);
+    out += await applyInlineHandlersImpl(result.html, registry, ctx, depth + 1);
+    last = m.index + m[0].length;
+  }
+  out += text.slice(last);
+  return out;
+}
 
 /**
  * Single sub-parser instance reused across every handler that returns
@@ -154,7 +202,14 @@ async function dispatchOne(
 }
 
 export function handlersPlugin(opts: DispatchOpts): Plugin<[], Root> {
-  const { registry, context } = opts;
+  const { registry, context: baseContext } = opts;
+  // Build the full HandlerContext once, with applyInlineHandlers closing
+  // over the registry. Self-reference goes through the resulting context
+  // so handler authors who chain calls see the same object.
+  const context: HandlerContext = {
+    ...baseContext,
+    applyInlineHandlers: (text) => applyInlineHandlersImpl(text, registry, context, 0),
+  };
   return () => async (tree: Root) => {
     await walkAndSubstitute(tree as { children: any[] }, registry, context, 0);
   };

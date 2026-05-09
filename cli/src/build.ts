@@ -502,7 +502,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   }
 
   // Synthesize folder indexes from the visible set only.
-  const folderIndexes = generateFolderIndexes(visibleMetas, a.role);
+  const folderIndexes = generateFolderIndexes(visibleMetas, a.role, a.settings.inline_title);
   for (const fi of folderIndexes) {
     visibleMetas.push({ path: fi.path, title: fi.title, role: a.role });
     visibleSources.set(fi.path, fi.markdown);
@@ -783,9 +783,15 @@ interface FolderIndex {
 
 /**
  * Build synthesised index.md for any folder (including the root) that has
- * pages but no existing index.md.
+ * pages but no existing index.md. When `inlineTitle` is true, the layout
+ * already injects an <h1> from the page's title, so the synthesised body
+ * skips its own `# Title` heading to avoid the duplicate.
  */
-function generateFolderIndexes(existing: PageMeta[], _role: string): FolderIndex[] {
+function generateFolderIndexes(
+  existing: PageMeta[],
+  _role: string,
+  inlineTitle: boolean,
+): FolderIndex[] {
   const existingPaths = new Set(existing.map((p) => p.path));
 
   const folders = new Map<string, { folders: Set<string>; pages: PageMeta[] }>();
@@ -838,10 +844,27 @@ function generateFolderIndexes(existing: PageMeta[], _role: string): FolderIndex
       sections.push(`## Pages\n\n\`\`\`base\n${filtersBlock}\n${propsBlock}views:\n  - type: table\n    name: Contents\n    order:\n${orderYaml}\n\`\`\``);
     }
 
-    const heading = title ? `# ${title}\n\n` : "";
-    out.push({ path: indexPath, title: title || "Home", markdown: `${heading}${sections.join("\n\n")}\n` });
+    // With inline_title on, the layout injects an <h1> from the page's
+    // title — which it learns from the markdown's title source. We can
+    // either author the title as a `# Heading` (off-mode) or as YAML
+    // frontmatter (on-mode); the latter avoids the duplicated <h1> while
+    // still letting the renderer surface the right title.
+    const displayTitle = title || "Home";
+    const heading = inlineTitle ? "" : (title ? `# ${title}\n\n` : "");
+    const frontmatter = inlineTitle ? `---\ntitle: ${yamlString(displayTitle)}\n---\n\n` : "";
+    out.push({
+      path: indexPath,
+      title: displayTitle,
+      markdown: `${frontmatter}${heading}${sections.join("\n\n")}\n`,
+    });
   }
   return out;
+}
+
+/** YAML-quote a string only when needed (special chars or ambiguous flow). */
+function yamlString(s: string): string {
+  if (/^[A-Za-z0-9_ .-]+$/.test(s) && !/^(true|false|null|yes|no)$/i.test(s)) return s;
+  return JSON.stringify(s);
 }
 
 /**

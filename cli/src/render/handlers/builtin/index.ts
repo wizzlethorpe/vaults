@@ -6,5 +6,6 @@
 import type { Handler } from "../types.js";
 import { diceHandler } from "./dice.js";
 import { fmHandler } from "./fm.js";
+import { statblockHandler } from "./statblock.js";
 
-export const BUILTIN_HANDLERS: Handler[] = [diceHandler, fmHandler];
+export const BUILTIN_HANDLERS: Handler[] = [diceHandler, fmHandler, statblockHandler];

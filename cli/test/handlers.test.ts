@@ -97,7 +97,7 @@ describe("built-in fm handler", () => {
     try {
       await build(v);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /The Wizard casts\./);
+      assert.match(html, /The <span class="fm-value">Wizard<\/span> casts\./);
     } finally { await cleanup(v); }
   });
 
@@ -109,7 +109,7 @@ describe("built-in fm handler", () => {
     try {
       await build(v);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /Level 7, tags arcane, fire\./);
+      assert.match(html, /Level <span class="fm-value">7<\/span>, tags <span class="fm-value">arcane, fire<\/span>\./);
     } finally { await cleanup(v); }
   });
 
@@ -121,7 +121,38 @@ describe("built-in fm handler", () => {
     try {
       await build(v);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /Born 1239-09-28\./);
+      assert.match(html, /Born <span class="fm-value">1239-09-28<\/span>\./);
+    } finally { await cleanup(v); }
+  });
+
+  it("walks dot-paths into nested objects", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md":
+        "---\n" +
+        "stats:\n" +
+        "  hp: 22\n" +
+        "  abilities:\n" +
+        "    str: 14\n" +
+        "---\n" +
+        "HP `fm: stats.hp`, STR `fm: stats.abilities.str`.",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Page.html"), "utf8");
+      assert.match(html, /HP <span class="fm-value">22<\/span>, STR <span class="fm-value">14<\/span>\./);
+    } finally { await cleanup(v); }
+  });
+
+  it("missing dot-path segments emit the warning marker", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": "---\nstats:\n  hp: 22\n---\nMissing: `fm: stats.nope.deep`.",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Page.html"), "utf8");
+      assert.match(html, /<code class="fm-missing"[^>]*>\{\{stats\.nope\.deep\}\}<\/code>/);
     } finally { await cleanup(v); }
   });
 
@@ -134,6 +165,143 @@ describe("built-in fm handler", () => {
       await build(v);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
       assert.match(html, /<code class="fm-missing"[^>]*>\{\{nope\}\}<\/code>/);
+    } finally { await cleanup(v); }
+  });
+});
+
+// ── Built-in statblock handler ────────────────────────────────────────────
+
+describe("built-in statblock handler", () => {
+  it("renders a basic 5e statblock with header, ac/hp/speed, stats, and traits", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Goblin.md":
+        "```statblock\n" +
+        "name: Goblin\n" +
+        "size: Small\n" +
+        "type: humanoid\n" +
+        "alignment: neutral evil\n" +
+        "ac: 15\n" +
+        "ac_class: leather armor, shield\n" +
+        "hp: 7\n" +
+        "hit_dice: 2d6\n" +
+        "speed: 30 ft.\n" +
+        "stats: [8, 14, 10, 10, 8, 8]\n" +
+        "saves:\n" +
+        "  - dexterity: 5\n" +
+        "skillsaves:\n" +
+        "  - stealth: 6\n" +
+        "senses: darkvision 60 ft., passive Perception 9\n" +
+        "languages: Common, Goblin\n" +
+        "cr: \"1/4\"\n" +
+        "traits:\n" +
+        "  - name: Nimble Escape\n" +
+        "    desc: The goblin can take the **Disengage** or *Hide* action.\n" +
+        "actions:\n" +
+        "  - name: Scimitar\n" +
+        "    desc: \"Melee Weapon Attack: +4 to hit.\"\n" +
+        "```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Goblin.html"), "utf8");
+      assert.match(html, /<div class="statblock-name">Goblin<\/div>/);
+      assert.match(html, /Small humanoid neutral evil/);
+      assert.match(html, /<strong>Armor Class<\/strong> 15 \(leather armor, shield\)/);
+      assert.match(html, /<strong>Hit Points<\/strong> 7 \(2d6\)/);
+      assert.match(html, /<strong>Speed<\/strong> 30 ft\./);
+      // Stat block: 6 cells, each with name + value+modifier.
+      assert.match(html, /<div class="statblock-stat-name">STR<\/div>/);
+      assert.match(html, /<div class="statblock-stat-value">14 \(\+2\)<\/div>/);
+      assert.match(html, /<strong>Saving Throws<\/strong> Dex \+5/);
+      assert.match(html, /<strong>Skills<\/strong> Stealth \+6/);
+      assert.match(html, /<strong>Challenge<\/strong> 1\/4/);
+      assert.match(html, /<strong><em>Nimble Escape\.<\/em><\/strong>/);
+      // Inline markdown in desc fields renders.
+      assert.match(html, /<strong>Disengage<\/strong>/);
+      assert.match(html, /<em>Hide<\/em>/);
+      // Actions section heading.
+      assert.match(html, /<h3 class="statblock-section-heading"[^>]*>Actions<\/h3>/);
+    } finally { await cleanup(v); }
+  });
+
+  it("supports inline handlers (fm:, dice:) in top-level statblock fields", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Goblin.md":
+        "---\n" +
+        "foundry:\n" +
+        "  system:\n" +
+        "    details:\n" +
+        "      cr: 1/4\n" +
+        "---\n" +
+        "```statblock\n" +
+        "name: Goblin\n" +
+        "ac: 15\n" +
+        "hp: 7\n" +
+        "speed: 30 ft.\n" +
+        "cr: \"`fm: foundry.system.details.cr`\"\n" +
+        "actions:\n" +
+        "  - name: Scimitar\n" +
+        "    desc: \"Hit: `dice: 1d6+2` slashing damage.\"\n" +
+        "```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Goblin.html"), "utf8");
+      // CR pulled from frontmatter via fm: dot-path inside a top-level field.
+      assert.match(html, /<strong>Challenge<\/strong> <span class="fm-value">1\/4<\/span>/);
+      // dice: still chains in desc fields (regression check).
+      assert.match(html, /class="dice-roll"[^>]*data-formula="1d6\+2"/);
+    } finally { await cleanup(v); }
+  });
+
+  it("emits a parse-error block when the YAML is invalid", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Bad.md": "```statblock\nname: [unclosed\n```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Bad.html"), "utf8");
+      assert.match(html, /class="statblock statblock-error"/);
+      assert.match(html, /statblock parse error/);
+    } finally { await cleanup(v); }
+  });
+
+  it("inline handlers like `dice:` inside desc fields render through to HTML", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Wraith.md":
+        "```statblock\n" +
+        "name: Wraith\n" +
+        "ac: 13\n" +
+        "hp: 67\n" +
+        "traits:\n" +
+        "  - name: Incorporeal Movement\n" +
+        "    desc: \"Takes 5 (`dice: 1d10`) force damage if it ends inside an object.\"\n" +
+        "```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Wraith.html"), "utf8");
+      // Dice handler ran inside the desc and produced a clickable button.
+      assert.match(html, /Takes 5 \(<button[^>]*class="dice-roll"[^>]*data-formula="1d10"[^>]*>1d10<\/button>\) force damage/);
+      // Sentinel tokens should not leak into the output.
+      assert.doesNotMatch(html, /VAULTSTATBLOCK_HANDLER/);
+    } finally { await cleanup(v); }
+  });
+
+  it("ships statblock CSS in /_handlers.css when used", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": "```statblock\nname: Test\n```\n",
+    });
+    try {
+      await build(v);
+      const css = await readFile(join(v.out, "_handlers.css"), "utf8");
+      assert.match(css, /\.statblock-name/);
+      assert.match(css, /\.statblock-stats/);
     } finally { await cleanup(v); }
   });
 });
@@ -467,7 +635,7 @@ describe("handler asset bundling", () => {
     } finally { await cleanup(v); }
   });
 
-  it("skips emitting bundle files when no handler declares assets", async () => {
+  it("user handlers without assets don't add to bundles beyond what built-ins contribute", async () => {
     const v = await setupVault({
       ".vaultrc.json": VAULTRC_1,
       ".vaults/handlers/pure.mjs":
@@ -477,22 +645,19 @@ describe("handler asset bundling", () => {
     });
     try {
       await build(v);
-      // Built-in dice handler always declares assets, so _handlers.js
-      // exists; the test is about whether *additional* user content
-      // appears. Just confirm no handler-CSS file (no built-in CSS).
-      try {
-        await readFile(join(v.out, "_handlers.css"), "utf8");
-        assert.fail("expected no _handlers.css when no handler declared CSS");
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-      }
+      const js = await readFile(join(v.out, "_handlers.js"), "utf8");
+      // Built-in dice runtime sentinel — pure user handler shouldn't shadow it.
+      assert.match(js, /FORMULA_RE = \/\^/);
+      // No user-handler-source comments; user handler declared no assets.
+      assert.doesNotMatch(js, /pure\.mjs|widget\.runtime/);
     } finally { await cleanup(v); }
   });
 
-  it("layout omits the CSS link tag when no handler declares CSS", async () => {
-    // Regression test: previously a single `hasHandlerAssets` flag included
-    // both _handlers.js and _handlers.css unconditionally, so JS-only
-    // deploys referenced a missing CSS file and browsers complained.
+  it("layout link/script tags follow the JS and CSS bundles independently", async () => {
+    // Regression test: previously a single `hasHandlerAssets` flag covered
+    // both files, so JS-only deploys referenced a missing CSS file. The two
+    // flags are now independent. Built-in handlers contribute both: dice ships
+    // JS, statblock ships CSS — so a default build emits both tags.
     const v = await setupVault({
       ".vaultrc.json": VAULTRC_1,
       "Page.md": "Roll: `dice: 1d20`.",
@@ -501,7 +666,7 @@ describe("handler asset bundling", () => {
       await build(v);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
       assert.match(html, /<script src="\/_handlers\.js"/);
-      assert.doesNotMatch(html, /<link[^>]*_handlers\.css/);
+      assert.match(html, /<link[^>]*_handlers\.css/);
     } finally { await cleanup(v); }
   });
 

@@ -29,6 +29,16 @@ export interface HandlerContext {
   render: RenderContext;
   /** HTML-escape a string. Convenience helper. */
   escape(s: string): string;
+  /**
+   * Apply registered inline handlers to a plain string and return HTML.
+   * Use this when a handler renders its own non-markdown content (e.g. a
+   * statblock's bespoke layout) and wants to support nested inline handlers
+   * like `dice:` inside that content. Only handlers that return HTML are
+   * substituted; markdown-emitting handlers are left as their original
+   * `` `prefix: …` `` text. Other inline formatting (bold, italic, code,
+   * wikilinks) is the caller's responsibility.
+   */
+  applyInlineHandlers(text: string): Promise<string>;
 }
 
 /**
