@@ -1,6 +1,6 @@
 # Wizzlethorpe Vaults: Foundry VTT Module
 
-Sync an Obsidian vault deployed via [vaults-cli](https://github.com/wizzlethorpe/vaults-cli) into Foundry VTT as journal entries (and optionally Actors / Items). Manifest-based incremental sync, role-based auth, multi-vault support, local image cache.
+Sync an Obsidian vault deployed via [vaults-cli](https://github.com/wizzlethorpe/vaults) into Foundry VTT as journal entries (and optionally Actors / Items). Manifest-based incremental sync, role-based auth, multi-vault support, local image cache.
 
 ## Status
 

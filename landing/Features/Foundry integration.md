@@ -12,7 +12,7 @@ dir.
 > The module is on the [Foundry package directory](https://foundryvtt.com/packages/vaults).
 > In Foundry, open *Add-on Modules → Install Module*, search for
 > **Wizzlethorpe Vaults**, and click Install. Source on
-> [GitHub](https://github.com/wizzlethorpe/vaults-foundry).
+> [GitHub](https://github.com/wizzlethorpe/vaults).
 
 Pages can additionally **clone a compendium document** into the world by
 setting `foundry_base: <UUID>` in frontmatter. This is useful for NPCs and

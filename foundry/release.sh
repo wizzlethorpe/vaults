@@ -28,7 +28,7 @@ fi
 
 CURRENT_VERSION=$(jq -r '.version' module.json)
 MODULE_ID=$(jq -r '.id' module.json)
-GITHUB_REPO="wizzlethorpe/vaults-foundry"
+GITHUB_REPO="wizzlethorpe/vaults"
 
 echo -e "${GREEN}Vaults Release Script${NC}"
 echo "========================================"

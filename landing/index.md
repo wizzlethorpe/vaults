@@ -3,7 +3,7 @@ title: Wizzlethorpe Vaults
 image: wizzlethorpe.webp
 ---
 
-Wizzlethorpe Vaults is a tool that turns an Obsidian vault into a self-hosted, role-gated, FoundryVTT-importable wiki on your own (free-tier) Cloudflare account. **This page is itself a deployed Vault**. Every feature you read about works live, right here. Poke around, sign in at higher tiers, view source, then [grab the CLI](https://github.com/wizzlethorpe/vaults-cli) and deploy your own!
+Wizzlethorpe Vaults is a tool that turns an Obsidian vault into a self-hosted, role-gated, FoundryVTT-importable wiki on your own (free-tier) Cloudflare account. **This page is itself a deployed Vault**. Every feature you read about works live, right here. Poke around, sign in at higher tiers, view source, then [grab the CLI](https://github.com/wizzlethorpe/vaults) and deploy your own!
 
 
 > [!info] Try the role gating
@@ -82,4 +82,4 @@ vaults preview        # local preview at http://localhost:8788
 vaults push           # one-shot deploy to Cloudflare Pages
 ```
 
-Full docs: [github.com/wizzlethorpe/vaults-cli](https://github.com/wizzlethorpe/vaults-cli).
+Full docs: [github.com/wizzlethorpe/vaults](https://github.com/wizzlethorpe/vaults).

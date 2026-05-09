@@ -1,0 +1,17 @@
+# Generic
+node_modules/
+.DS_Store
+*.log
+.env
+
+# CLI build artifacts
+cli/dist/
+cli/*.tsbuildinfo
+
+# Wrangler / Cloudflare local state
+.wrangler/
+
+# Per-vault internal state (vaults-cli writes config + cache here)
+**/.vaults/cache/
+**/.vaults/config.json
+.vault-cache/

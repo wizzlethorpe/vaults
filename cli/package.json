@@ -1,6 +1,6 @@
 {
   "name": "@wizzlethorpe/vaults",
-  "version": "0.6.1",
+  "version": "1.0.0",
   "description": "Sync an Obsidian vault to a Cloudflare-hosted wiki with role-based access. Renders locally, deploys to Cloudflare Pages.",
   "keywords": [
     "obsidian",
@@ -10,11 +10,11 @@
     "ttrpg",
     "knowledge-base"
   ],
-  "homepage": "https://github.com/wizzlethorpe/vaults-cli#readme",
-  "bugs": "https://github.com/wizzlethorpe/vaults-cli/issues",
+  "homepage": "https://github.com/wizzlethorpe/vaults#readme",
+  "bugs": "https://github.com/wizzlethorpe/vaults/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wizzlethorpe/vaults-cli.git",
+    "url": "git+https://github.com/wizzlethorpe/vaults.git",
     "directory": "cli"
   },
   "license": "MIT",

@@ -4,7 +4,7 @@
 
 This repo is the source of the Vaults landing page — and **it's a Vault
 itself.** Every feature shown on the live site is rendered live from the
-markdown in this repo by [Wizzlethorpe Vaults](https://github.com/wizzlethorpe/vaults-cli),
+markdown in this repo by [Wizzlethorpe Vaults](https://github.com/wizzlethorpe/vaults),
 the CLI that publishes Obsidian vaults as self-hosted, role-gated wikis
 on Cloudflare Pages.
 
@@ -114,7 +114,7 @@ covers this).
 
 ## Reporting bugs / feature requests
 
-This is a demo of the [vaults-cli](https://github.com/wizzlethorpe/vaults-cli)
+This is a demo of the [vaults-cli](https://github.com/wizzlethorpe/vaults)
 project. File issues there. PRs to this repo are welcome if you spot a
 typo, want to demonstrate a feature better, or have an idea for additional
 content.
