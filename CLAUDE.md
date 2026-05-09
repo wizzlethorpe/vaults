@@ -27,7 +27,7 @@ vaults/                      this repo (single git history)
 └── landing/                 Demo vault (deployed at vaults.wizzlethorpe.com)
 ```
 
-This was previously three submodules pinned by SHA in a parent repo. The submodule model added friction without giving useful isolation: most non-trivial features touch CLI + Foundry + landing in one logical change, which previously meant three commits + a parent SHA bump for one feature. The monorepo unifies them under a single shared version (`v1.0.0`, `v1.1.0`, …) so a release tag pins the exact behavior across all three.
+This was previously three submodules pinned by SHA in a parent repo. The submodule model added friction without giving useful isolation: most non-trivial features touch CLI + Foundry + landing in one logical change, which previously meant three commits + a parent SHA bump for one feature. The monorepo unifies them under a single shared version (`v0.7.0`, `v0.8.0`, …) so a release tag pins the exact behavior across all three.
 
 ## Where work happens
 

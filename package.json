@@ -1,7 +1,7 @@
 {
   "name": "vaults-monorepo",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.7.0",
   "description": "Monorepo: vaults CLI, Foundry VTT module, and landing-site vault.",
   "scripts": {
     "typecheck": "pnpm -r exec tsc --noEmit",
