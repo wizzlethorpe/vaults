@@ -1,0 +1,221 @@
+#!/usr/bin/env node
+import { Command } from "commander";
+import { push } from "./commands/push.js";
+import { build } from "./commands/build.js";
+import { preview } from "./commands/preview.js";
+import { init } from "./commands/init.js";
+import { password } from "./commands/password.js";
+import { roleAdd, roleDemote, roleList, rolePromote, roleRemove } from "./commands/role.js";
+import { patreonClear, patreonConfigure, patreonLink, patreonStatus, patreonUnlink } from "./commands/patreon.js";
+import { listMigrations, runMigrations } from "./migrate/run.js";
+
+const program = new Command();
+
+// Default vault path: honour $VAULT_PATH first so users can drop
+// `export VAULT_PATH=~/Documents/MyVault` in their shell rc and not pass it
+// to every command. Falls back to cwd.
+const VAULT_PATH_DEFAULT = process.env.VAULT_PATH ?? process.cwd();
+
+program
+  .name("vaults")
+  .description("Sync an Obsidian vault to a Cloudflare-hosted wiki")
+  .version("0.1.0");
+
+const role = program
+  .command("role")
+  .description("Manage roles (access tiers) in the vault");
+
+role
+  .command("add")
+  .description("Add a role and (for non-default roles) set its password")
+  .argument("<name>", "Role name")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (name: string, vaultPath: string) => {
+    try { await roleAdd(name, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+role
+  .command("remove")
+  .description("Remove a role and its password")
+  .argument("<name>", "Role name")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (name: string, vaultPath: string) => {
+    try { await roleRemove(name, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+role
+  .command("list")
+  .description("Show roles configured for this vault")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (vaultPath: string) => {
+    try { await roleList(vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+role
+  .command("promote")
+  .description("Increase a role's rank by one (move toward the highest tier)")
+  .argument("<name>", "Role name")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (name: string, vaultPath: string) => {
+    try { await rolePromote(name, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+role
+  .command("demote")
+  .description("Decrease a role's rank by one (move toward the default)")
+  .argument("<name>", "Role name")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (name: string, vaultPath: string) => {
+    try { await roleDemote(name, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+program
+  .command("password")
+  .description("Reset the password for an existing role")
+  .argument("<role>", "Role name (must already exist)")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (role: string, vaultPath: string) => {
+    try { await password(vaultPath, role, {}); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+const patreon = program
+  .command("patreon")
+  .description("Configure optional Patreon OAuth login for paying-tier roles");
+
+patreon
+  .command("configure")
+  .description("Set Patreon OAuth client_id / client_secret / campaign_id")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (vaultPath: string) => {
+    try { await patreonConfigure(vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+patreon
+  .command("link")
+  .description("Map a role to a Patreon tier ID (find tier IDs on patreon.com under your tier list)")
+  .argument("<role>", "Role name (must already exist)")
+  .argument("<tier-id>", "Patreon tier ID (numeric)")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (role: string, tierId: string, vaultPath: string) => {
+    try { await patreonLink(role, tierId, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+patreon
+  .command("unlink")
+  .description("Remove a role's Patreon tier mapping (password access stays)")
+  .argument("<role>", "Role name")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (role: string, vaultPath: string) => {
+    try { await patreonUnlink(role, vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+patreon
+  .command("clear")
+  .description("Remove the entire Patreon configuration")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (vaultPath: string) => {
+    try { await patreonClear(vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+patreon
+  .command("status")
+  .description("Show current Patreon configuration + tier mappings")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(async (vaultPath: string) => {
+    try { await patreonStatus(vaultPath); }
+    catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
+  });
+
+program
+  .command("init")
+  .description("Initialise a vault with a settings.md file")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .option("-f, --force", "Overwrite an existing settings.md")
+  .action(wrap(init));
+
+program
+  .command("build")
+  .description("Render the vault to a local output directory")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .option("-o, --output <dir>", "Output directory (default: <vault>/.vaults/cache/rendered)")
+  .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
+  .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
+  .option("--all-warnings", "Print every page with warnings instead of truncating at 20")
+  .action(wrap(build));
+
+program
+  .command("preview")
+  .description("Render the vault and serve it locally via `wrangler pages dev` (Functions run)")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .option("-o, --output <dir>", "Output directory (default: <vault>/.vaults/cache/rendered)")
+  .option("-p, --port <n>", "Port for the preview server", (v) => parseInt(v, 10), 4173)
+  .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
+  .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
+  .action(wrap(preview));
+
+program
+  .command("migrate")
+  .description("Run pending vault layout / schema migrations")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .option("--dry-run", "Show what would migrate without changing anything")
+  .option("--only <id>", "Run only the migration with this id")
+  .option("--list", "List all known migrations and exit")
+  .action(async (vaultPath: string, opts: { dryRun?: boolean; only?: string; list?: boolean }) => {
+    try {
+      if (opts.list) {
+        for (const m of listMigrations()) {
+          console.log(`  ${m.id}\n    ${m.description}`);
+        }
+        return;
+      }
+      const result = await runMigrations(vaultPath, { dryRun: opts.dryRun, ...(opts.only ? { only: opts.only } : {}) });
+      if (result.applied.length === 0) {
+        console.log("No pending migrations.");
+      } else if (opts.dryRun) {
+        console.log(`Would apply ${result.applied.length} migration(s).`);
+      } else {
+        console.log(`Applied ${result.applied.length} migration(s).`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("push")
+  .description("Render and deploy the vault to Cloudflare Pages")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .option("-p, --project-name <name>", "Cloudflare Pages project name")
+  .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
+  .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
+  .option("--dry-run", "Render without deploying")
+  .option("--rotate-secret", "Generate a fresh SESSION_SECRET, invalidating all issued tokens")
+  .option("--all-warnings", "Print every page with warnings instead of truncating at 20")
+  .action(wrap(push));
+
+program.parseAsync().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+
+function wrap<T extends (...args: never[]) => Promise<void>>(fn: T): (...args: Parameters<T>) => Promise<void> {
+  return async (...args: Parameters<T>) => {
+    try {
+      await fn(...args);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  };
+}
