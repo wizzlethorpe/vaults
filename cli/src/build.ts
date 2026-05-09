@@ -390,6 +390,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       redactRoles,
       variantDir,
       vaultName: opts.vaultName,
+      vaultPath: opts.vaultPath,
       allPageMetas,
       sources,
       parsedSources,
@@ -521,6 +522,8 @@ interface VariantArgs {
   redactRoles: ReadonlySet<string>;
   variantDir: string;
   vaultName: string;
+  /** Vault root, used to resolve `foundry.data_json` paths declared in page frontmatter. */
+  vaultPath: string;
   allPageMetas: PageMeta[];
   sources: Map<string, string>;
   /** Per-page pre-parsed gray-matter result, threaded through to renderMarkdown. */
@@ -680,7 +683,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     const bodyPath = outputBase + ".body.html";
     await writeFile(join(a.variantDir, bodyPath), r.html);
 
-    bodyMeta.set(bodyPath, collectBodyMeta(p));
+    bodyMeta.set(bodyPath, await collectBodyMeta(p, a.vaultPath));
 
     const source = visibleSources.get(p.path)!;
     const preview = await buildPreview(source, r.title);
@@ -746,7 +749,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
  * alongside `foundry: { ...data... }`. Those have NO back-compat path
  * here — the user explicitly opted into a clean break.
  */
-function collectBodyMeta(p: PageMeta): BodyMeta {
+async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<BodyMeta> {
   const fm = p.frontmatter ?? {};
   const out: BodyMeta = { role: p.role };
 
@@ -762,12 +765,46 @@ function collectBodyMeta(p: PageMeta): BodyMeta {
     if (typeof embed === "boolean") block.embed = embed;
     const data = (fo as Record<string, unknown>)["data"];
     if (data && typeof data === "object" && !Array.isArray(data)) block.data = data;
+    // foundry.data_json: vault-relative path to a JSON file. Read + parse
+    // at build time and inline into the meta as `data_json`. The Foundry
+    // module deep-merges it onto the base doc BEFORE foundry.data, so a
+    // user can layer hand-tuned overrides on top of an exported sheet.
+    // Folding the parsed object into meta means the body-row hash already
+    // changes when the JSON content does — no separate change-detection.
+    const dataJsonPath = (fo as Record<string, unknown>)["data_json"];
+    if (typeof dataJsonPath === "string" && dataJsonPath.trim().length > 0) {
+      const parsed = await loadDataJson(vaultPath, dataJsonPath.trim(), p.path);
+      if (parsed !== null) block.data_json = parsed;
+    }
     if (Object.keys(block).length > 0) out.foundry = block;
   }
 
   if (p.coverImage) out.image = p.coverImage;
 
   return out;
+}
+
+/** Read + parse a vault-relative JSON file referenced by `foundry.data_json`.
+ *  Warns on missing / unparseable file and returns null so the page renders
+ *  without the overlay rather than failing the build. */
+async function loadDataJson(
+  vaultPath: string,
+  relPath: string,
+  pagePath: string,
+): Promise<unknown | null> {
+  const abs = join(vaultPath, relPath);
+  try {
+    const raw = await readFile(abs, "utf8");
+    return JSON.parse(raw) as unknown;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      console.warn(`  ${pagePath}: foundry.data_json "${relPath}" not found, skipping`);
+    } else {
+      console.warn(`  ${pagePath}: foundry.data_json "${relPath}" failed to parse: ${(err as Error).message}`);
+    }
+    return null;
+  }
 }
 
 const EMBED_RE = /!\[\[([^\[\]|#\n]+?)(?:\|[^\[\]#\n]*)?\]\]/g;

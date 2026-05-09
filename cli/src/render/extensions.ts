@@ -12,10 +12,13 @@
 //                           historical import path keeps working.
 //
 //   PASSTHROUGH_EXT_RE    — non-image media that ride alongside the wiki
-//                           (audio, video, PDF, epub). Shipped per-variant so
-//                           e.g. DM-only audio doesn't leak to the public
-//                           deploy. Anything outside this list is "unknown"
-//                           and skipped unless include_unknown_files is on.
+//                           (audio, video, PDF, epub, JSON). Shipped
+//                           per-variant so e.g. DM-only audio doesn't leak
+//                           to the public deploy. JSON support is here
+//                           specifically so a page can reference a
+//                           foundry.data_json file in its frontmatter.
+//                           Anything outside this list is "unknown" and
+//                           skipped unless include_unknown_files is on.
 //
 //   contentTypeForExt()   — best-effort MIME lookup keyed off the extension.
 //                           Used by manifests so the deploy and Foundry sync
@@ -25,7 +28,7 @@ export { COMPRESSIBLE_EXT_RE } from "../images.js";
 
 export const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?|bmp|heic|apng)$/i;
 
-export const PASSTHROUGH_EXT_RE = /\.(ogg|mp3|m4a|wav|flac|opus|aac|mp4|webm|mov|ogv|pdf|epub)$/i;
+export const PASSTHROUGH_EXT_RE = /\.(ogg|mp3|m4a|wav|flac|opus|aac|mp4|webm|mov|ogv|pdf|epub|json)$/i;
 
 const CONTENT_TYPES: Record<string, string> = {
   // Text / markup

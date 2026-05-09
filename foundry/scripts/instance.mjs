@@ -121,18 +121,32 @@ export async function applyInstance(vault, vaultPath, meta) {
   const docClass = CONFIG[docName].documentClass;
   const id = await instanceId(vault.id, vaultPath);
 
+  // Layer order, low → high precedence:
+  //   1. baseData    (template clone OR { type } for blank doc)
+  //   2. data_json   (user-supplied JSON file, e.g. an exported sheet)
+  //   3. overlay     (page-driven name/img/embed + foundry.data)
+  // data_json sits below `foundry.data` so a user can use a hand-shared
+  // JSON as the base and patch its fields via the data block on top.
+  const dataJson = fm.data_json && typeof fm.data_json === "object" && !Array.isArray(fm.data_json)
+    ? fm.data_json
+    : null;
   const overlay = await buildOverlay(vault, vaultPath, meta, docName);
 
   const existing = collection.get(id);
   if (existing) {
+    // Update: data_json + overlay applied together, since the existing
+    // doc already absorbed the previous data_json on its create.
+    const updatePatch = dataJson ? deepMerge(structuredClone(dataJson), overlay) : overlay;
     try {
-      await existing.update(overlay);
+      await existing.update(updatePatch);
     } catch (err) {
       console.warn(`Vaults | foundry.base update failed for ${vaultPath}:`, err);
     }
     return;
   }
 
+  // Create: layer data_json onto baseData first, then overlay on top.
+  if (dataJson) deepMerge(baseData, dataJson);
   baseData._id = id;
   deepMerge(baseData, overlay);
 

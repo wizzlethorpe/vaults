@@ -29,6 +29,7 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 | `foundry.base: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
 | `foundry.embed: false` | Skip auto-embedding the page article into the doc's description field |
 | `foundry.data` | Deep-merge overlay applied to the resulting document |
+| `foundry.data_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.data` (use for exported sheets / community-shared dumps) |
 
 ## Actor / Item cloning via `foundry.base`
 
@@ -119,6 +120,34 @@ In this vault:
 frontmatter, the article body embedded as the description, the
 `foundry.system.description.chat` override visible in the chat
 description block.
+
+---
+
+### Starting from an exported JSON sheet
+
+When you've got a hand-tuned Actor / Item / Scene from elsewhere (a
+community share, an export from a previous campaign, a custom-built
+sheet), point `foundry.data_json` at a JSON file in the vault and
+the module deep-merges it onto the new document *before* `foundry.data`
+applies. Lets you reuse the bulk of an existing sheet and still patch
+specific fields per page:
+
+```yaml
+---
+title: Strahd von Zarovich
+foundry:
+  base: Actor:npc
+  data_json: ./sheets/strahd-export.json   # vault-relative path
+  data:
+    system:
+      attributes:
+        hp: { value: 144, max: 200 }       # patches strahd-export.json
+---
+```
+
+JSON files ship to the deploy as passthroughs (gated per role like any
+other file), and the build hashes the parsed content into the page's
+manifest entry — change the JSON, re-sync triggers an update.
 
 ---
 
