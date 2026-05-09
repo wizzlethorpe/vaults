@@ -38,7 +38,7 @@ A single shared version applies across all three subprojects. The root `release.
 
 ## Contributing
 
-Working on a single subproject is normal — `cd cli && pnpm typecheck && pnpm test` etc. Cross-cutting features that touch CLI + foundry + landing in one PR are welcome and easier here than they were in the prior submodule layout.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide. Short version: working on a single subproject is normal (`cd cli && pnpm typecheck && pnpm test`, etc.); cross-cutting PRs touching CLI + Foundry + landing together are welcome and easier here than they were in the prior submodule layout. Contributions are governed by the [Contributor License Agreement](./CLA.md).
 
 ## License
 
