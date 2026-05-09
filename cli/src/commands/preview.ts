@@ -11,7 +11,6 @@ interface PreviewOptions {
   port?: number;
   imageQuality?: number;
   vaultName?: string;
-  maxFileBytes?: number;
 }
 
 const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
@@ -34,7 +33,7 @@ export async function preview(vaultPath: string, opts: PreviewOptions): Promise<
     outputDir,
     vaultName: opts.vaultName ?? "Vault",
     imageQuality: opts.imageQuality ?? 85,
-    maxFileBytes: opts.maxFileBytes ?? DEFAULT_MAX_BYTES,
+    maxFileBytes: DEFAULT_MAX_BYTES,
   });
   const summary = Object.entries(result.perRolePageCount)
     .map(([role, n]) => `${role}: ${n}`)
@@ -59,8 +58,8 @@ export async function preview(vaultPath: string, opts: PreviewOptions): Promise<
       console.log("Generated SESSION_SECRET (saved to config).");
     }
     wranglerArgs.push(`--binding=SESSION_SECRET=${secret}`);
-    if (cfg.patreon?.clientSecret) {
-      wranglerArgs.push(`--binding=PATREON_CLIENT_SECRET=${cfg.patreon.clientSecret}`);
+    if (cfg.oauth?.patreon?.clientSecret) {
+      wranglerArgs.push(`--binding=PATREON_CLIENT_SECRET=${cfg.oauth.patreon.clientSecret}`);
       console.log(`  Patreon login active; sign-in flows through localhost:${port}/auth/patreon/callback`);
     }
     console.log(`  multi-role build; sign in at http://localhost:${port}/login.html`);

@@ -8,7 +8,7 @@ import type { RenderContext, RenderWarning } from "./types.js";
 import { slugify } from "./slug.js";
 import { renderBase } from "./bases.js";
 
-const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?)$/i;
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?|bmp|heic|apng)$/i;
 const EMBED_INLINE_RE = /!\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]*))?\]\]/g;
 // A line that is *only* an embed; used for page transclusion.
 const EMBED_PARAGRAPH_RE = /^!\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]*))?\]\]$/;
@@ -185,6 +185,13 @@ function stripFrontmatter(source: string): string {
 }
 
 function extractSection(body: string, anchor: string): string | null {
+  // Obsidian block references: `[[Page#^block-id]]` resolves to the block
+  // (paragraph or list item) ending with `^block-id`. The marker sits at
+  // the END of the block; in source it is either trailing on the last line
+  // or alone on a line directly after the block.
+  if (anchor.startsWith("^")) {
+    return extractBlock(body, anchor.slice(1));
+  }
   const target = slugify(anchor);
   const lines = body.split("\n");
   let inSection = false;
@@ -205,6 +212,44 @@ function extractSection(body: string, anchor: string): string | null {
     if (inSection) out.push(line);
   }
   return inSection ? out.join("\n").trim() : null;
+}
+
+// Find the block (paragraph or list item) terminated by `^<id>`. The marker
+// is either trailing on the block's last line (`Some text ^id`) or alone on
+// the line immediately after the block. Returns the block content with the
+// marker stripped, or null if no such block exists.
+function extractBlock(body: string, blockId: string): string | null {
+  const lines = body.split("\n");
+  const trailRe = new RegExp(`(?:^|\\s)\\^${escapeRegex(blockId)}\\s*$`);
+  const aloneRe = new RegExp(`^\\s*\\^${escapeRegex(blockId)}\\s*$`);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    // Trailing form: marker on the same line as the block's last text.
+    if (trailRe.test(line) && !aloneRe.test(line)) {
+      const start = blockStart(lines, i);
+      const block = lines.slice(start, i + 1).join("\n");
+      return block.replace(trailRe, "").trimEnd();
+    }
+    // Alone-on-its-own-line form: previous non-empty line ends the block.
+    if (aloneRe.test(line)) {
+      let end = i - 1;
+      while (end >= 0 && lines[end]!.trim() === "") end--;
+      if (end < 0) continue;
+      const start = blockStart(lines, end);
+      return lines.slice(start, end + 1).join("\n").trimEnd();
+    }
+  }
+  return null;
+}
+
+function blockStart(lines: string[], end: number): number {
+  let start = end;
+  while (start > 0 && lines[start - 1]!.trim() !== "") start--;
+  return start;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseSizeHint(alias: string | undefined): string {

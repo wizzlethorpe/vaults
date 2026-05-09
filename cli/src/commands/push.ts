@@ -75,8 +75,8 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
   // this on every push (not just first) so a `vaults patreon configure`
   // that updates the secret without rotating the session also takes
   // effect — Wrangler's secret put is idempotent for the same value.
-  if (cfg.patreon?.clientSecret) {
-    await wranglerSecret(cfg.projectName!, "PATREON_CLIENT_SECRET", cfg.patreon.clientSecret);
+  if (cfg.oauth?.patreon?.clientSecret) {
+    await wranglerSecret(cfg.projectName!, "PATREON_CLIENT_SECRET", cfg.oauth.patreon.clientSecret);
   }
 
   await wranglerDeploy(outputDir, cfg.projectName!);
@@ -181,7 +181,7 @@ async function wranglerDeploy(outputDir: string, projectName: string): Promise<v
   console.log(`Deploying to Cloudflare Pages project '${projectName}'…`);
   // Wrangler resolves functions/ relative to cwd (not the deploy path arg),
   // so run it from outputDir. The `.wrangler/` cache it creates lives
-  // inside the vault's .vault-cache/, which is already gitignored.
+  // inside the vault's .vaults/cache/, which is already gitignored.
   // --branch=main ensures Production-tagged deploys; --commit-dirty
   // silences a noisy git warning.
   await runWranglerInteractive(

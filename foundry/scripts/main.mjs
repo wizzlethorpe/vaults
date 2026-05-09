@@ -2,12 +2,14 @@
 // journal-directory Sync Vault button.
 
 import { registerSettings } from "./settings.mjs";
-import { listVaults, getVault, addVault, updateVault, removeVault, deriveLabel, migrateLegacyIfNeeded } from "./vaults.mjs";
+import { listVaults, getVault, addVault, updateVault, removeVault, migrateLegacyIfNeeded } from "./vaults.mjs";
+import { applyHandlerAssetsWithConfirm, removeHandlerAssets } from "./handler-assets.mjs";
 import { sync } from "./sync.mjs";
 import { fetchManifest } from "./api.mjs";
 import { disconnect, tokenInfo } from "./auth.mjs";
 import { deleteVaultJournals } from "./importer.mjs";
 import { deleteVaultCache } from "./media.mjs";
+import { escapeAttr, escapeHtml as escapeText } from "./util.mjs";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -15,6 +17,20 @@ Hooks.once("init", () => {
 
 Hooks.once("ready", async () => {
   await migrateLegacyIfNeeded();
+  // Handler-asset re-application is deferred past `ready` and run
+  // fire-and-forget so a slow / offline vault doesn't stall world boot.
+  // The setTimeout(0) yields to the event loop so the world's render hooks
+  // finish first; CSS injection then takes effect immediately. JS imports
+  // additionally surface a per-session confirmation dialog (see
+  // applyHandlerAssetsWithConfirm) so the GM re-acknowledges any new code
+  // on every reload — the persistent toggle records intent, but a vault
+  // updating its handler bundle between sessions still gets fresh consent.
+  setTimeout(() => {
+    listVaults().forEach((v) => {
+      applyHandlerAssetsWithConfirm(v, { reason: "ready" }).catch((err) =>
+        console.warn(`Vaults | handler-asset import failed for ${v.label}:`, err));
+    });
+  }, 0);
 });
 
 Hooks.on("renderJournalDirectory", (_app, html) => {
@@ -148,7 +164,7 @@ async function handleListAction(action, vaultId, dialog) {
       await dialog.close();
       const url = await openAddVaultDialog();
       if (url) {
-        const entry = await addVault({ url, label: deriveLabel(url) });
+        const entry = await addVault({ url });
         // Probe the manifest so the settings dialog opens with the dmRole
         // picker already populated (otherwise the picker is hidden until
         // after the first sync, which is a worse first-run experience).
@@ -303,6 +319,26 @@ async function openSettingsDialog(vaultId) {
        </div>`
     : "";
 
+  // Handler-asset import is a separate trust gate: handler authors must opt
+  // their assets in via assets.foundry.{styles,scripts}, and the GM must
+  // tick the matching box here. Defaults off; flipping on triggers a
+  // confirmation dialog (handled in the save callback).
+  const handlerAssetsField = `
+    <div class="form-group">
+      <label>${escapeText(game.i18n.localize("VAULTS.Dialog.HandlerAssetsLabel"))}</label>
+      <div>
+        <label class="checkbox" style="display:block; font-weight:normal;">
+          <input id="vaults-edit-import-styles" type="checkbox"${v.importHandlerStyles ? " checked" : ""}>
+          ${escapeText(game.i18n.localize("VAULTS.Dialog.ImportHandlerStyles"))}
+        </label>
+        <label class="checkbox" style="display:block; font-weight:normal;">
+          <input id="vaults-edit-import-scripts" type="checkbox"${v.importHandlerScripts ? " checked" : ""}>
+          ${escapeText(game.i18n.localize("VAULTS.Dialog.ImportHandlerScripts"))}
+        </label>
+      </div>
+      <p class="notes">${escapeText(game.i18n.localize("VAULTS.Dialog.HandlerAssetsHint"))}</p>
+    </div>`;
+
   const content = `
     <div class="vaults-form">
       <div class="form-group">
@@ -318,6 +354,7 @@ async function openSettingsDialog(vaultId) {
         <input id="vaults-edit-root" type="text" value="${escapeAttr(v.rootFolder)}">
       </div>
       ${dmRoleField}
+      ${handlerAssetsField}
       <p class="notes">${escapeText(game.i18n.localize("VAULTS.Dialog.RemoveHint"))}</p>
     </div>`;
 
@@ -340,11 +377,35 @@ async function openSettingsDialog(vaultId) {
           // ?? guard keeps the field absent (no patch) on first-add saves.
           const dmRoleEl = root.querySelector("#vaults-edit-dmrole");
           if (dmRoleEl) patch.dmRole = dmRoleEl.value;
+
+          const wantStyles = !!root.querySelector("#vaults-edit-import-styles")?.checked;
+          const wantScripts = !!root.querySelector("#vaults-edit-import-scripts")?.checked;
+          // Only require confirmation when transitioning OFF → ON. Flipping
+          // either OFF or leaving ON unchanged is a no-op for trust.
+          const flippingOnStyles = wantStyles && !v.importHandlerStyles;
+          const flippingOnScripts = wantScripts && !v.importHandlerScripts;
+          if (flippingOnStyles || flippingOnScripts) {
+            const ok = await confirmHandlerAssetImport({
+              vault: v, styles: flippingOnStyles, scripts: flippingOnScripts,
+            });
+            if (!ok) return false;
+          }
+          patch.importHandlerStyles = wantStyles;
+          patch.importHandlerScripts = wantScripts;
+
           if (!patch.url) {
             ui.notifications.warn(game.i18n.localize("VAULTS.Dialog.UrlRequired"));
             return false;
           }
           await updateVault(vaultId, patch);
+          // Reflect handler-asset toggle changes immediately. A turn-on
+          // fetches + injects; a turn-off removes the previously-injected
+          // <style>/<script>; an idempotent re-save just refreshes content.
+          if (patch.importHandlerStyles !== v.importHandlerStyles
+              || patch.importHandlerScripts !== v.importHandlerScripts) {
+            await applyHandlerAssetsWithConfirm(getVault(vaultId), { reason: "settings" })
+              .catch((err) => console.warn(`Vaults | handler-asset refresh failed:`, err));
+          }
           return true;
         },
       },
@@ -355,6 +416,11 @@ async function openSettingsDialog(vaultId) {
           if (!ok) return false;
           await deleteVaultJournals(vaultId);
           await deleteVaultCache(vaultId);
+          // Drop any injected handler-asset elements for this vault before
+          // the registry entry goes away. JS already-running effects (event
+          // handlers, hooks attached at execution time) survive until the
+          // GM reloads the world; CSS removal is immediate.
+          removeHandlerAssets(vaultId);
           await removeVault(vaultId);
           ui.notifications.info(game.i18n.format("VAULTS.Dialog.Removed", { name: v.label }));
           return true;
@@ -370,6 +436,33 @@ async function confirmRemoveVault(v) {
   return DialogV2.confirm({
     window: { title: game.i18n.localize("VAULTS.Dialog.RemoveConfirmTitle") },
     content: `<p>${escapeText(game.i18n.format("VAULTS.Dialog.RemoveConfirmBody", { name: v.label }))}</p>`,
+  });
+}
+
+/**
+ * Warning dialog shown the first time a GM enables handler-asset import for
+ * a vault. Custom CSS at worst restyles a journal sheet (low risk); custom
+ * JS runs in Foundry's global scope and can interact with `game`, `canvas`,
+ * hooks, and document data — that needs an eyes-open consent.
+ *
+ * Returns true if the GM accepts (proceed with the toggle); false to roll
+ * the form's checkbox state back to the unchecked baseline.
+ */
+async function confirmHandlerAssetImport({ vault, styles, scripts }) {
+  const DialogV2 = foundry.applications.api.DialogV2;
+  const lines = [];
+  if (styles) lines.push(`<li>${escapeText(game.i18n.localize("VAULTS.HandlerAssets.WarnStyles"))}</li>`);
+  if (scripts) lines.push(`<li><strong>${escapeText(game.i18n.localize("VAULTS.HandlerAssets.WarnScripts"))}</strong></li>`);
+  const body = `
+    <p>${escapeText(game.i18n.format("VAULTS.HandlerAssets.WarnIntro", { name: vault.label }))}</p>
+    <ul>${lines.join("")}</ul>
+    <p>${escapeText(game.i18n.localize("VAULTS.HandlerAssets.WarnTrust"))}</p>
+    <p class="notes">${escapeText(game.i18n.localize("VAULTS.HandlerAssets.WarnReversible"))}</p>`;
+  return DialogV2.confirm({
+    window: { title: game.i18n.localize("VAULTS.HandlerAssets.WarnTitle") },
+    content: body,
+    yes: { label: game.i18n.localize("VAULTS.HandlerAssets.WarnAccept") },
+    no:  { label: game.i18n.localize("VAULTS.HandlerAssets.WarnCancel") },
   });
 }
 
@@ -458,9 +551,6 @@ async function openConnectDialog(vaultId) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-function escapeAttr(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-function escapeText(s) { return String(s ?? "").replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 
 // Expose for macros / debugging.
 globalThis.Vaults = { sync, listVaults, getVault, openVaultsDialog };

@@ -4,9 +4,14 @@ import { findAndReplace } from "mdast-util-find-and-replace";
 import type { RenderContext, RenderWarning } from "./types.js";
 import { slugify } from "./slug.js";
 
-// Matches [[Page]], [[Page|alias]], [[Page#anchor]], [[Page#anchor|alias]].
-// Negative lookbehind blocks ![[embed]] from being consumed here.
-const WIKILINK_RE = /(?<!!)(?<!\[)\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]+?))?\]\]/g;
+// Matches [[Page]], [[Page|alias]], [[Page#anchor]], [[Page#anchor|alias]],
+// and chained [[Page#H1#H2]] (Obsidian's nested-heading form). Negative
+// lookbehind blocks ![[embed]] from being consumed here.
+//
+// The anchor capture allows `#` so chained headings parse as a single
+// anchor string; the resolver below splits on `#` and uses the deepest
+// segment for the URL fragment.
+const WIKILINK_RE = /(?<!!)(?<!\[)\[\[([^\[\]|#\n]+?)(?:#([^\[\]|\n]+?))?(?:\|([^\[\]#\n]+?))?\]\]/g;
 
 export function wikiLinkPlugin(opts: {
   context: RenderContext;
@@ -21,7 +26,13 @@ export function wikiLinkPlugin(opts: {
         WIKILINK_RE,
         (_match: string, rawName: string, rawAnchor?: string, rawAlias?: string) => {
           const name = rawName.trim();
-          const anchor = rawAnchor?.trim();
+          // Chained heading anchors like `H1#H2` resolve to the deepest segment
+          // (the actual heading the reader lands on); the URL fragment is just
+          // that final slug since rehype-slug emits one slug per heading.
+          const rawAnchorTrimmed = rawAnchor?.trim();
+          const anchor = rawAnchorTrimmed?.includes("#")
+            ? rawAnchorTrimmed.split("#").map((s) => s.trim()).filter(Boolean).pop()
+            : rawAnchorTrimmed;
           const display = rawAlias?.trim() ?? name;
           const slug = slugify(name);
 

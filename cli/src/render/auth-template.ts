@@ -620,6 +620,12 @@ function renderConnectCopyPage({ token, role, app }) {
 </html>\`;
 }
 
+// These two helpers are intentionally inline and not imported: this file
+// generates a Cloudflare Pages Function as a string template, so the
+// emitted worker can't \`import\` from cli/src/escape.ts at runtime. Keep the
+// behaviour in sync with the canonical helpers in cli/src/escape.ts; the
+// \`auth-template escape helpers stay in sync\` test in
+// cli/test/handlers.test.ts asserts the source strings match.
 function escHtml(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
 function escAttr(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
@@ -951,11 +957,17 @@ function isSharedAsset(pathname) {
   // ROOT (vs. into _variants/<role>/) must be listed here, otherwise it
   // 404s for every visitor. Build code that places root-level files:
   //   - styles.css / user.css        — build.ts (writeFile join(outputDir, ...))
-  //   - _handlers.js / _handlers.css — build.ts (handler asset bundles)
+  //   - _handlers.js / _handlers.css — build.ts (handler asset bundles, root)
   //   - login.html                   — build.ts (multi-role only)
   //   - favicon.ico                  — build.ts (buildFavicon)
   //   - functions/_middleware.js     — build.ts (multi-role only; not served)
   // If you add another, add it both here AND in build.ts.
+  //
+  // _handlers.foundry.{js,css} is *deliberately not* listed: it lives in
+  // each variant directory so the middleware rewrites root requests to
+  // /_variants/<role>/_handlers.foundry.* per the requester's role,
+  // gating higher-tier handler assets behind authentication the same way
+  // page bodies are.
   if (pathname === "/styles.css") return true;
   if (pathname === "/user.css") return true;
   if (pathname === "/_handlers.js") return true;

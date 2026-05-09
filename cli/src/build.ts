@@ -1,23 +1,20 @@
-import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { relative } from "node:path";
 import { dirname, join } from "node:path";
 import { availableParallelism } from "node:os";
 import picomatch from "picomatch";
 import { scanVault, type ScannedFile } from "./scan.js";
-import { compressImage, COMPRESSIBLE_EXT_RE } from "./images.js";
+import { compressImage } from "./images.js";
+import {
+  IMAGE_EXT_RE,
+  PASSTHROUGH_EXT_RE,
+  COMPRESSIBLE_EXT_RE,
+  contentTypeForExt,
+} from "./render/extensions.js";
 import { buildFavicon } from "./favicon.js";
-
-// Any image format that can be referenced via ![[name.ext]]; superset of
-// COMPRESSIBLE_EXT_RE since SVGs/GIFs ship as-is rather than being recoded.
-const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?)$/i;
-// Recognised non-image media that ride alongside the wiki: audio, video,
-// portable docs. Ship per-variant just like images (only into variants
-// whose visible pages reference them) so DM-only audio cues can't leak
-// into the public deploy. Anything outside this list is treated as
-// "unknown" and skipped by default; see the include_unknown_files setting.
-const PASSTHROUGH_EXT_RE = /\.(ogg|mp3|m4a|wav|flac|opus|aac|mp4|webm|mov|ogv|pdf|epub)$/i;
-import { renderMarkdown } from "./render/pipeline.js";
+import { renderMarkdown, type PreParsedFrontmatter } from "./render/pipeline.js";
+import { CLI_VERSION, MANIFEST_VERSION, ID_SCHEME } from "./version.js";
 import { renderLayout, render404 } from "./render/layout.js";
 import { slugify } from "./render/slug.js";
 import { buildPreview } from "./render/preview.js";
@@ -104,10 +101,10 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // and can override built-in names (last-registered wins). One registry
   // is built once and shared across every variant render.
   const userHandlers = await loadUserHandlers(opts.vaultPath);
-  const handlerRegistry: HandlerRegistry = buildRegistry([
-    ...BUILTIN_HANDLERS,
-    ...userHandlers.map((h) => h.handler),
-  ]);
+  const handlerRegistry: HandlerRegistry = buildRegistry(
+    BUILTIN_HANDLERS,
+    userHandlers.map((h) => h.handler),
+  );
   if (userHandlers.length > 0) {
     console.log(`  loaded ${userHandlers.length} custom handler(s) from .vaults/handlers/`);
   }
@@ -161,8 +158,15 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     return true;
   });
 
-  await rm(opts.outputDir, { recursive: true, force: true });
-  await mkdir(opts.outputDir, { recursive: true });
+  // Atomic build: write into <outputDir>.tmp and rename at the end.
+  // A failed mid-build leaves the previous deploy intact instead of
+  // serving half a website. Re-point opts.outputDir at the work dir so
+  // every downstream writeFile / mkdir lands in the right place.
+  const finalOutputDir = opts.outputDir;
+  const workOutputDir = finalOutputDir + ".tmp";
+  await rm(workOutputDir, { recursive: true, force: true });
+  await mkdir(workOutputDir, { recursive: true });
+  opts = { ...opts, outputDir: workOutputDir };
 
   const markdownFiles = withinLimit.filter((f) => /\.md$/i.test(f.path));
   const imageFiles = withinLimit.filter((f) => IMAGE_EXT_RE.test(f.path));
@@ -217,6 +221,20 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     baseSources.set(slugify(basename), await readFile(f.absolute, "utf8"));
   });
 
+  // Per-page parsed gray-matter result (data + content), cached so the render
+  // pipeline doesn't have to re-run gray-matter on every page. Two parses per
+  // page (this gray-matter + parseFrontmatter's regex) is intentional: the
+  // regex is more forgiving for malformed YAML and still extracts title/role,
+  // while gray-matter gives us the full property set for Bases. Removing the
+  // remaining duplication would mean folding one into the other and either
+  // losing resilience or losing the "real YAML" semantics.
+  // TODO: consider unifying once we settle on whether to gate rendering on
+  // YAML validity; today we render anyway and just drop the property block.
+  const parsedSources = new Map<string, PreParsedFrontmatter>();
+  for (const f of markdownFiles) {
+    parsedSources.set(f.path, parseFullFrontmatterWithContent(sources.get(f.path)!));
+  }
+
   // Parse role + title per page. Pages with an unrecognised role fall back
   // to the default with a warning; better than silently dropping them. We
   // also stash the full frontmatter on each PageMeta so the Bases plugin
@@ -224,7 +242,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   const allPageMetas: PageMeta[] = markdownFiles.map((f) => {
     const src = sources.get(f.path)!;
     const meta = parseFrontmatter(src);
-    const fullFm = parseFullFrontmatter(src);
+    const fullFm = parsedSources.get(f.path)!.data;
     let role = meta.role ?? defaultRole;
     if (!allRoleSet.has(role)) {
       console.warn(`  ${f.path}: role "${role}" not in settings.roles, using "${defaultRole}"`);
@@ -318,6 +336,11 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // declared any assets (purely declarative handlers stay overhead-free).
   if (hasHandlerJs) await writeFile(join(opts.outputDir, "_handlers.js"), handlerAssets.js);
   if (hasHandlerCss) await writeFile(join(opts.outputDir, "_handlers.css"), handlerAssets.css);
+  // Foundry-import bundles are written per-variant inside the role loop
+  // below (instead of at the root) so the middleware role-gates them. A
+  // public visitor can't fetch the dm-tier handler bundle even if it
+  // contains different content. The path stays `/_handlers.foundry.{js,css}`
+  // — the middleware rewrites root requests to the matching variant.
 
   // Favicon; either user-supplied via settings.favicon, or a generated
   // default with the vault's first letter in accent on the theme background.
@@ -369,6 +392,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       vaultName: opts.vaultName,
       allPageMetas,
       sources,
+      parsedSources,
       baseSources,
       imageIndex,
       imageStagingDir,
@@ -386,12 +410,40 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     perRolePageCount[role] = stats.pageCount;
     if (!collapseToRoot) console.log(`  variant '${role}': ${stats.pageCount} pages`);
 
+    // Foundry-import opt-in bundles, emitted INSIDE the variant directory
+    // (not at the deploy root) so the auth middleware role-gates them.
+    // Single-role builds collapse variantDir to outputDir, so the file
+    // ends up at root automatically. The Foundry module fetches by the
+    // canonical `/_handlers.foundry.{js,css}` path; the middleware
+    // rewrites that to the matching `_variants/<role>/...` per the
+    // requesting bearer token's role.
+    // Per-target opt-in subset bundles (_handlers.<target>.{js,css}).
+    // Currently only the "foundry" target exists; the loop is generic so
+    // future targets (mcp, discord, …) plug in by adding a key under
+    // assets.targets in their handler declaration.
+    for (const [name, bundle] of Object.entries(handlerAssets.targets)) {
+      if (bundle.js.length > 0) {
+        await writeFile(join(variantDir, `_handlers.${name}.js`), bundle.js);
+      }
+      if (bundle.css.length > 0) {
+        await writeFile(join(variantDir, `_handlers.${name}.css`), bundle.css);
+      }
+    }
+
     // Write a per-variant _manifest.json so external clients (Foundry, MCP,
     // etc.) can do an incremental diff. Includes EVERY file that variant
     // serves; html, md, images (as relative paths into shared root), css.
     // bodyMeta carries per-page Foundry reskin metadata; folded into each
     // body row's hash so meta-only changes trigger a re-sync.
-    const manifest = await buildManifest(opts.outputDir, variantDir, stats.bodyMeta, !collapseToRoot, roles, opts.vaultName);
+    const manifest = await buildManifest(
+      opts.outputDir, variantDir, stats.bodyMeta, !collapseToRoot, roles, opts.vaultName,
+      {
+        hasHandlerJs,
+        hasHandlerCss,
+        hasFoundryJs: (handlerAssets.targets.foundry?.js.length ?? 0) > 0,
+        hasFoundryCss: (handlerAssets.targets.foundry?.css.length ?? 0) > 0,
+      },
+    );
     await writeFile(join(variantDir, "_manifest.json"), JSON.stringify(manifest));
   }
 
@@ -405,11 +457,12 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     // mapped to a tier. clientSecret stays out of the bundle — it lives in
     // the Wrangler secret PATREON_CLIENT_SECRET, read from env in the
     // Function. The CLI uploads it on every push.
-    const patreonForFn = cfg.patreon && cfg.patreon.tiers && Object.keys(cfg.patreon.tiers).length > 0
+    const patreon = cfg.oauth?.patreon;
+    const patreonForFn = patreon && patreon.tiers && Object.keys(patreon.tiers).length > 0
       ? {
-          clientId: cfg.patreon.clientId,
-          campaignId: cfg.patreon.campaignId,
-          tiers: cfg.patreon.tiers,
+          clientId: patreon.clientId,
+          campaignId: patreon.campaignId,
+          tiers: patreon.tiers,
         }
       : null;
     const middleware = renderAuthMiddleware({
@@ -443,6 +496,14 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   await rm(imageStagingDir, { recursive: true, force: true });
   await rm(otherStagingDir, { recursive: true, force: true });
 
+  // Atomic swap: move the freshly-built tree into the final location.
+  // rm-then-rename instead of rename-with-overwrite because
+  // `node:fs/promises` rename refuses to overwrite a non-empty dir.
+  // A crash between the rm and the rename leaves the deploy missing,
+  // which is the right failure mode (visible) vs. a silent half-build.
+  await rm(finalOutputDir, { recursive: true, force: true });
+  await rename(workOutputDir, finalOutputDir);
+
   console.log(`Built in ${formatDuration(Date.now() - start)}.`);
   return {
     files,
@@ -462,6 +523,8 @@ interface VariantArgs {
   vaultName: string;
   allPageMetas: PageMeta[];
   sources: Map<string, string>;
+  /** Per-page pre-parsed gray-matter result, threaded through to renderMarkdown. */
+  parsedSources: Map<string, PreParsedFrontmatter>;
   /** slugified basename → raw YAML for standalone `.base` files. */
   baseSources: Map<string, string>;
   imageIndex: Map<string, ImageEntry>;
@@ -487,7 +550,7 @@ interface VariantArgs {
 
 interface VariantStats {
   pageCount: number;
-  /** Maps `.body.html` path (variant-relative) to its meta payload. Empty unless any page sets foundry_base / image. */
+  /** Maps `.body.html` path (variant-relative) to its meta payload. Empty unless any page sets a foundry block / image. */
   bodyMeta: Map<string, BodyMeta>;
 }
 
@@ -527,6 +590,11 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     markdownContent.set(pathSlug, visibleSources.get(p.path)!);
   }
 
+  // Pre-compute outlinks per page so the Bases plugin can answer
+  // file.hasLink() during render (Bases runs before the wikilink plugin
+  // populates the per-render outlinks list).
+  const outlinksByPath = collectOutlinksByPath(visibleMetas, visibleSources, pageIndex);
+
   const context: RenderContext = {
     pages: pageIndex,
     images: a.imageIndex,
@@ -535,6 +603,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     defaultImageWidth: a.settings.default_image_width,
     redactRoles: a.redactRoles,
     handlers: a.handlerRegistry,
+    outlinksByPath,
   };
 
   // Pass 1: render bodies + collect outlinks + warnings.
@@ -544,7 +613,12 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   const progress = new Progress(`Pages (${a.role})`);
   progress.update(0, visibleMetas.length);
   await pMap(visibleMetas, a.concurrency, async (p) => {
-    const result = await renderMarkdown(visibleSources.get(p.path)!, context, basenameNoExt(p.path));
+    const result = await renderMarkdown(
+      visibleSources.get(p.path)!,
+      context,
+      basenameNoExt(p.path),
+      a.parsedSources.get(p.path),
+    );
     rendered.set(p.path, {
       title: result.title,
       html: result.html,
@@ -660,7 +734,17 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
 /**
  * Build the per-body manifest meta from a page's frontmatter + resolved
  * cover image. `role` always lands so the Foundry side can apply the
- * dmRole permission gate; the foundry_base / image fields are conditional.
+ * dmRole permission gate; the foundry / image fields are conditional.
+ *
+ * Frontmatter shape forwarded to clients:
+ *   foundry:
+ *     base: <UUID> | <Type>[:<subtype>]   # required for instantiation
+ *     embed: false                          # default true
+ *     data: { … deep-merged into the doc }
+ *
+ * Pre-0.7 vaults used flat `foundry_base` and `foundry_no_embed` keys
+ * alongside `foundry: { ...data... }`. Those have NO back-compat path
+ * here — the user explicitly opted into a clean break.
  */
 function collectBodyMeta(p: PageMeta): BodyMeta {
   const fm = p.frontmatter ?? {};
@@ -669,14 +753,16 @@ function collectBodyMeta(p: PageMeta): BodyMeta {
   const basename = p.path.split("/").pop()!.replace(/\.md$/i, "");
   if (p.title && p.title !== basename) out.title = p.title;
 
-  const fb = fm["foundry_base"];
-  if (typeof fb === "string" && fb.trim().length > 0) {
-    out.foundry_base = fb.trim();
-  }
-
   const fo = fm["foundry"];
   if (fo && typeof fo === "object" && !Array.isArray(fo)) {
-    out.foundry = fo as Record<string, unknown>;
+    const block: Record<string, unknown> = {};
+    const base = (fo as Record<string, unknown>)["base"];
+    if (typeof base === "string" && base.trim().length > 0) block.base = base.trim();
+    const embed = (fo as Record<string, unknown>)["embed"];
+    if (typeof embed === "boolean") block.embed = embed;
+    const data = (fo as Record<string, unknown>)["data"];
+    if (data && typeof data === "object" && !Array.isArray(data)) block.data = data;
+    if (Object.keys(block).length > 0) out.foundry = block;
   }
 
   if (p.coverImage) out.image = p.coverImage;
@@ -934,6 +1020,37 @@ interface PageFrontmatter { title?: string; role?: string; aliases?: string[]; }
  * spread it directly into the LayoutInput; missing frontmatter contributes
  * nothing to the layout.
  */
+// Pre-compute outgoing wikilinks per page (vault path → set of vault paths).
+// Bases needs this before render runs so file.hasLink() can answer truthfully
+// during render; the wikilink plugin's per-render outlinks list is collected
+// after Bases has already drawn the table. A regex scan over markdown source
+// (rather than rebuilding the AST) is fine: this only needs to detect link
+// targets, and an embedded ![[image.png]] resolves to no page anyway.
+const WIKILINK_SCAN_RE = /(?<!!)(?<!\[)\[\[([^\[\]|#\n]+?)(?:#[^\[\]|\n]+?)?(?:\|[^\[\]#\n]+?)?\]\]/g;
+function collectOutlinksByPath(
+  metas: PageMeta[],
+  sources: Map<string, string>,
+  pageIndex: Map<string, PageMeta>,
+): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const p of metas) {
+    const src = sources.get(p.path);
+    if (!src) continue;
+    const targets = new Set<string>();
+    for (const match of src.matchAll(WIKILINK_SCAN_RE)) {
+      const name = match[1]!.trim();
+      const slug = slugify(name);
+      const last = name.includes("/") ? name.split("/").pop()! : "";
+      const page = pageIndex.get(slug)
+        ?? pageIndex.get(slugify(name + "/index"))
+        ?? (last ? pageIndex.get(slugify(last)) : undefined);
+      if (page && page.path !== p.path) targets.add(page.path);
+    }
+    if (targets.size > 0) out.set(p.path, targets);
+  }
+  return out;
+}
+
 function extractFrontmatterBlock(source: string): { frontmatterYaml: string } | null {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(source);
   if (!m || !m[1] || !m[1].trim()) return null;
@@ -954,21 +1071,24 @@ function parseFrontmatter(source: string): PageFrontmatter {
 }
 
 /**
- * Full YAML frontmatter, used by the Bases plugin so any property a user
- * defines (location, status, npc-class, etc.) is queryable. We delegate
- * to gray-matter so we get real YAML rather than the regex-narrow set
- * `parseFrontmatter` extracts.
+ * Full YAML frontmatter + body content, used by the Bases plugin (frontmatter
+ * properties) and threaded through to renderMarkdown so the pipeline doesn't
+ * have to call gray-matter again. `data` is real YAML; falls back to {} on
+ * malformed YAML so the page still renders. Content matches what gray-matter
+ * would give the pipeline (frontmatter block stripped from the head).
  */
-function parseFullFrontmatter(source: string): Record<string, unknown> {
-  if (!source.startsWith("---")) return {};
+function parseFullFrontmatterWithContent(source: string): PreParsedFrontmatter {
+  if (!source.startsWith("---")) return { data: {}, content: source };
   try {
-    const data = matter(source).data;
-    return (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const m = matter(source);
+    const data = (m.data && typeof m.data === "object" ? m.data : {}) as Record<string, unknown>;
+    return { data, content: m.content };
   } catch {
     // Malformed YAML; the existing parseFrontmatter is more forgiving for
-    // the title/role/aliases keys we actually need. Return empty here so
-    // the page still renders.
-    return {};
+    // the title/role/aliases keys we actually need. Return empty data + the
+    // body with the leading `---\n…\n---\n` stripped via regex so the rest
+    // of the pipeline still sees a clean body.
+    return { data: {}, content: source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "") };
   }
 }
 
@@ -1083,15 +1203,12 @@ export interface BodyMeta {
    */
   title?: string;
   /**
-   * Foundry document UUID the page should reskin (e.g. "Actor.AbcDef…").
-   * The Foundry side runs fromUuid() to resolve this; we don't validate
-   * shape here beyond "non-empty string".
-   */
-  foundry_base?: string;
-  /**
-   * Arbitrary frontmatter under `foundry:` deep-merged into the target
-   * document on update. Lets users override system fields (HP, biography,
-   * etc.) without us knowing the system schema.
+   * Foundry-instantiation block. `foundry.base` names a template
+   * (compendium UUID or `Type[:subtype]`); `foundry.data` is the
+   * deep-merge overlay applied to the resulting doc; `foundry.embed`
+   * (default true) controls whether the page's article auto-embeds
+   * into the doc's description field. Forwarded verbatim to clients
+   * — the CLI doesn't interpret it beyond shape validation.
    */
   foundry?: Record<string, unknown>;
   /** Resolved cover image (served URL). Used as the reskinned actor/item img. */
@@ -1114,6 +1231,33 @@ interface ManifestEntry {
  * variant dir but inside the deploy root) are listed too; clients use a
  * single manifest to diff the entire site, not just the role-specific bits.
  */
+interface AssetAdvertisement {
+  hasHandlerJs: boolean;
+  hasHandlerCss: boolean;
+  hasFoundryJs: boolean;
+  hasFoundryCss: boolean;
+}
+
+interface Manifest {
+  /** Schema/protocol version. Increment on breaking shape changes; clients
+   *  ignore unknown additive fields. Currently 1. */
+  manifest_version: typeof MANIFEST_VERSION;
+  /** CLI version that built this deploy. Clients can warn on major skew. */
+  cli_version: string;
+  /** Document-id derivation scheme; advertised so a future change can be
+   *  detected by clients holding entries derived under the prior scheme. */
+  id_scheme: typeof ID_SCHEME;
+  name: string;
+  auth: { required: boolean; roles: string[] };
+  /** Paths to handler asset bundles, when emitted. Clients fetch these
+   *  instead of guessing well-known paths so future renames don't break. */
+  assets?: {
+    browser?: { js?: string; css?: string };
+    foundry?: { js?: string; css?: string };
+  };
+  files: ManifestEntry[];
+}
+
 async function buildManifest(
   rootDir: string,
   variantDir: string,
@@ -1121,7 +1265,8 @@ async function buildManifest(
   authRequired: boolean,
   roles: string[],
   vaultName: string,
-): Promise<{ name: string; auth: { required: boolean; roles: string[] }; files: ManifestEntry[] }> {
+  assets: AssetAdvertisement,
+): Promise<Manifest> {
   const files: ManifestEntry[] = [];
   const seen = new Set<string>();
 
@@ -1149,7 +1294,30 @@ async function buildManifest(
   // like the Foundry module use it as the default label + root folder when
   // a user adds the vault, so they get something readable instead of a
   // host-derived slug.
-  return { name: vaultName, auth: { required: authRequired, roles }, files };
+  // Asset advertisement so clients (Foundry, MCP) fetch the right paths
+  // instead of guessing well-known names — lets us move things later.
+  const assetBlock: Manifest["assets"] = {};
+  if (assets.hasHandlerJs || assets.hasHandlerCss) {
+    assetBlock.browser = {
+      ...(assets.hasHandlerJs ? { js: "/_handlers.js" } : {}),
+      ...(assets.hasHandlerCss ? { css: "/_handlers.css" } : {}),
+    };
+  }
+  if (assets.hasFoundryJs || assets.hasFoundryCss) {
+    assetBlock.foundry = {
+      ...(assets.hasFoundryJs ? { js: "/_handlers.foundry.js" } : {}),
+      ...(assets.hasFoundryCss ? { css: "/_handlers.foundry.css" } : {}),
+    };
+  }
+  return {
+    manifest_version: MANIFEST_VERSION,
+    cli_version: CLI_VERSION,
+    id_scheme: ID_SCHEME,
+    name: vaultName,
+    auth: { required: authRequired, roles },
+    ...(Object.keys(assetBlock).length > 0 ? { assets: assetBlock } : {}),
+    files,
+  };
 }
 
 async function walkAndIndex(
@@ -1176,7 +1344,7 @@ async function walkAndIndex(
     const body = await readFile(abs);
     const info = await stat(abs);
     const meta = bodyMeta.get(path);
-    // Fold meta JSON into the hash so meta-only edits (e.g. a foundry_base
+    // Fold meta JSON into the hash so meta-only edits (e.g. a foundry.base
     // tweak with no body change) still bump the row hash and trigger sync.
     const hasher = createHash("md5").update(body);
     if (meta) hasher.update("\x00meta:" + stableStringify(meta));
@@ -1202,48 +1370,6 @@ function stableStringify(value: unknown): string {
   const obj = value as Record<string, unknown>;
   const keys = Object.keys(obj).sort();
   return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableStringify(obj[k])).join(",") + "}";
-}
-
-function contentTypeForExt(filename: string): string {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  const map: Record<string, string> = {
-    html: "text/html; charset=utf-8",
-    md: "text/markdown; charset=utf-8",
-    json: "application/json",
-    css: "text/css; charset=utf-8",
-    js: "application/javascript; charset=utf-8",
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    webp: "image/webp",
-    gif: "image/gif",
-    svg: "image/svg+xml",
-    avif: "image/avif",
-    pdf: "application/pdf",
-    mp3: "audio/mpeg",
-    wav: "audio/wav",
-    ogg: "audio/ogg",
-  };
-  return map[ext] ?? "application/octet-stream";
-}
-
-function extractPlainText(source: string, max: number): string {
-  return source
-    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "")
-    .replace(/%%[\s\S]*?%%/g, "")
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/!\[\[[^\]]+\]\]/g, "")
-    .replace(/\[\[([^\]|#]+)(?:[#|][^\]]+)?\]\]/g, "$1")
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/[*_~]+([^*_~\n]+)[*_~]+/g, "$1")
-    .replace(/^>\s?\[![^\]]+\][+-]?\s*(.*)$/gm, "$1")
-    .replace(/^>\s?/gm, "")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max);
 }
 
 /**

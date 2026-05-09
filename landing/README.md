@@ -36,7 +36,7 @@ wikilinks instead of working anchors), not CSS-hidden content.
 | Image handling, social meta, auto-discovery | `Features/Images.md` |
 | Bases (filtered card / table / list views) | `Features/Bases.md`, embedded on the homepage |
 | Role gating (page-level + callout-level) | `Features/Role gating.md` |
-| Foundry VTT integration + `foundry_base` clones | `Features/Foundry integration.md` |
+| Foundry VTT integration + `foundry.base` clones | `Features/Foundry integration.md` |
 | Audio / video / PDF passthroughs (per-variant gated) | `Features/Passthrough files.md` |
 | Frontmatter dialog (`{}` button) | Every page's top-right corner |
 | Per-page OG / Twitter card meta | View source on any page |
@@ -94,7 +94,7 @@ patterns at a glance:
   `Lore/Hidden Caves.md` (dm). Shows `role:` frontmatter.
 - **A page with role-gated callouts** — `NPCs/Aelar.md`. Visible to
   everyone; the patron + dm paragraphs strip per tier.
-- **An NPC clone** — `NPCs/Dr. Bixby Wizzlethorpe.md` with `foundry_base:`
+- **An NPC clone** — `NPCs/Dr. Bixby Wizzlethorpe.md` with `foundry.base:`
   pointing at the SRD Archmage. Foundry clones it; the `foundry:` block
   patches HP/CR/token name. Same pattern for `NPCs/Aelar.md` (SRD Scout)
   and `NPCs/Bram.md` (SRD Commoner).

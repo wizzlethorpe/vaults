@@ -292,6 +292,36 @@ describe("built-in statblock handler", () => {
     } finally { await cleanup(v); }
   });
 
+  it("renders a Spellcasting trait with per-level lines and italicized spells", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Mage.md":
+        "```statblock\n" +
+        "name: Mage\n" +
+        "ac: 12\n" +
+        "hp: 40\n" +
+        "spells:\n" +
+        "  - \"The mage is a 9th-level spellcaster (spell save DC 14).\"\n" +
+        "  - \"Cantrips (at will): fire bolt, light, mage hand, prestidigitation\"\n" +
+        "  - \"1st level (4 slots): detect magic, mage armor, magic missile, shield\"\n" +
+        "  - \"5th level (1 slot): cone of cold\"\n" +
+        "```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Mage.html"), "utf8");
+      // Spellcasting header trait with intro prose.
+      assert.match(html, /<strong><em>Spellcasting\.<\/em><\/strong> The mage is a 9th-level spellcaster/);
+      // Each level entry renders as its own paragraph.
+      const levels = html.match(/class="statblock-spell-level"/g) ?? [];
+      assert.equal(levels.length, 3);
+      // Level label is bolded, spell names italicized.
+      assert.match(html, /<strong>Cantrips \(at will\)<\/strong>/);
+      assert.match(html, /<em>fire bolt<\/em>/);
+      assert.match(html, /<em>cone of cold<\/em>/);
+    } finally { await cleanup(v); }
+  });
+
   it("ships statblock CSS in /_handlers.css when used", async () => {
     const v = await setupVault({
       ".vaultrc.json": VAULTRC_1,
@@ -302,6 +332,144 @@ describe("built-in statblock handler", () => {
       const css = await readFile(join(v.out, "_handlers.css"), "utf8");
       assert.match(css, /\.statblock-name/);
       assert.match(css, /\.statblock-stats/);
+    } finally { await cleanup(v); }
+  });
+
+  // ── Fantasy Statblocks compatibility (saves/skillsaves shapes, spells
+  //    object form, image, extra action sections, nested traits, source/note)
+
+  it("saves accept either array-of-single-key-objects or a flat object", async () => {
+    // Both shapes should produce the same rendered output. Two statblocks in
+    // one file lets us compare directly without spinning up two builds.
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Saves.md":
+        "```statblock\nname: ArrayShape\nac: 13\nhp: 40\n" +
+        "saves:\n  - dexterity: 5\n  - wisdom: 7\n" +
+        "skillsaves:\n  - stealth: 6\n  - perception: 4\n" +
+        "```\n\n" +
+        "```statblock\nname: ObjectShape\nac: 13\nhp: 40\n" +
+        "saves:\n  dexterity: 5\n  wisdom: 7\n" +
+        "skillsaves:\n  stealth: 6\n  perception: 4\n" +
+        "```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Saves.html"), "utf8");
+      const both = html.match(/<strong>Saving Throws<\/strong> Dex \+5, Wis \+7/g) ?? [];
+      assert.equal(both.length, 2);
+      const skills = html.match(/<strong>Skills<\/strong> Stealth \+6, Perception \+4/g) ?? [];
+      assert.equal(skills.length, 2);
+    } finally { await cleanup(v); }
+  });
+
+  it("spells: accepts object entries (FS Spell = string | { [level]: list })", async () => {
+    // Plain string entries used to crash with `s.split is not a function`
+    // when an object slipped in; this test pins the per-entry detection.
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Mage.md":
+        "```statblock\n" +
+        "name: ObjMage\n" +
+        "ac: 12\n" +
+        "hp: 40\n" +
+        "spells:\n" +
+        "  - \"The mage is a 9th-level spellcaster.\"\n" +
+        "  - Cantrips (at will): fire bolt, light\n" +
+        "  - 1st level (4 slots): magic missile, shield\n" +
+        "```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Mage.html"), "utf8");
+      assert.match(html, /<strong>Cantrips \(at will\)<\/strong>: <em>fire bolt<\/em>, <em>light<\/em>/);
+      assert.match(html, /<strong>1st level \(4 slots\)<\/strong>: <em>magic missile<\/em>, <em>shield<\/em>/);
+    } finally { await cleanup(v); }
+  });
+
+  it("image: emits a portrait <img class='statblock-image'> in the header", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Goblin.md":
+        "```statblock\nname: Goblin\nimage: portraits/goblin.webp\nac: 15\nhp: 7\n```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Goblin.html"), "utf8");
+      assert.match(html, /<img[^>]*class="statblock-image"[^>]*src="portraits\/goblin\.webp"[^>]*>/);
+      // CSS rule for the image lands in _handlers.css.
+      const css = await readFile(join(v.out, "_handlers.css"), "utf8");
+      assert.match(css, /\.statblock-image/);
+    } finally { await cleanup(v); }
+  });
+
+  it("renders bonus_actions, mythic_actions, lair_actions, triggered_actions sections", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Tarrasque.md":
+        "```statblock\n" +
+        "name: Tarrasque\nac: 25\nhp: 676\n" +
+        "bonus_actions:\n  - name: Reckless\n    desc: Until the start of its next turn.\n" +
+        "mythic_description: \"If you choose to use this monster's mythic trait, the following actions are available.\"\n" +
+        "mythic_actions:\n  - name: World Render\n    desc: Bites once and uses Tail.\n" +
+        "lair_actions:\n  - name: Quake\n    desc: Each creature on the ground falls prone.\n" +
+        "triggered_actions:\n  - name: Bloodied\n    desc: Triggers when reduced below half HP.\n" +
+        "```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Tarrasque.html"), "utf8");
+      assert.match(html, /<h3 class="statblock-section-heading"[^>]*>Bonus Actions<\/h3>/);
+      assert.match(html, /<h3 class="statblock-section-heading"[^>]*>Mythic Actions<\/h3>/);
+      assert.match(html, /<h3 class="statblock-section-heading"[^>]*>Lair Actions<\/h3>/);
+      assert.match(html, /<h3 class="statblock-section-heading"[^>]*>Triggered Actions<\/h3>/);
+      // Mythic intro paragraph rides right after the heading.
+      assert.match(html, /class="statblock-section-intro">If you choose to use this monster's mythic trait/);
+    } finally { await cleanup(v); }
+  });
+
+  it("nested traits flatten one level with the parent's name as a prefix", async () => {
+    // FS allows traits[i].traits recursively. v1 hack: flat with prefix.
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Hydra.md":
+        "```statblock\nname: Hydra\nac: 15\nhp: 172\n" +
+        "traits:\n" +
+        "  - name: Multiple Heads\n" +
+        "    desc: The hydra has five heads.\n" +
+        "    traits:\n" +
+        "      - name: Reactive Heads\n" +
+        "        desc: For each head, the hydra gets an extra reaction.\n" +
+        "      - name: Wakeful\n" +
+        "        desc: While the hydra sleeps, at least one head is awake.\n" +
+        "```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Hydra.html"), "utf8");
+      assert.match(html, /<strong><em>Multiple Heads\.<\/em><\/strong>/);
+      assert.match(html, /<strong><em>Multiple Heads: Reactive Heads\.<\/em><\/strong>/);
+      assert.match(html, /<strong><em>Multiple Heads: Wakeful\.<\/em><\/strong>/);
+    } finally { await cleanup(v); }
+  });
+
+  it("source and note render as small italic text below the statblock body", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Goblin.md":
+        "```statblock\nname: Goblin\nac: 15\nhp: 7\n" +
+        "source: \"Monster Manual p. 166\"\n" +
+        "note: \"Variant: Goblin Boss has +2 HP.\"\n" +
+        "```\n",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Goblin.html"), "utf8");
+      assert.match(html, /<p class="statblock-source"><em>Monster Manual p\. 166<\/em><\/p>/);
+      assert.match(html, /<p class="statblock-note"><em>Variant: Goblin Boss has \+2 HP\.<\/em><\/p>/);
+      const css = await readFile(join(v.out, "_handlers.css"), "utf8");
+      assert.match(css, /\.statblock-source/);
+      assert.match(css, /\.statblock-note/);
     } finally { await cleanup(v); }
   });
 });
@@ -539,6 +707,110 @@ describe("handler asset bundling", () => {
     } finally { await cleanup(v); }
   });
 
+  it("user handler with assets.foundry.{scripts,styles} ships in the foundry-import bundle; default-off handlers don't", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      ".vaults/handlers/optedin.mjs":
+        "export const handler = {\n" +
+        "  codeBlock: 'optedin',\n" +
+        "  assets: {\n" +
+        "    scripts: ['./optedin.runtime.js'],\n" +
+        "    styles: ['./optedin.css'],\n" +
+        "    targets: { foundry: { scripts: true, styles: true } },\n" +
+        "  },\n" +
+        "  render: () => ({ html: '<div class=\"optedin\"></div>' }),\n" +
+        "};\n",
+      ".vaults/handlers/optedin.runtime.js":
+        "(function(){ window.__optedin = 'OPTEDIN-MARKER'; })();\n",
+      ".vaults/handlers/optedin.css":
+        ".optedin { color: tomato; }\n",
+      ".vaults/handlers/silent.mjs":
+        // No foundry opt-in; should NOT appear in foundry bundles even though
+        // it ships its assets to the browser bundles.
+        "export const handler = {\n" +
+        "  codeBlock: 'silent',\n" +
+        "  assets: { scripts: ['./silent.runtime.js'], styles: ['./silent.css'] },\n" +
+        "  render: () => ({ html: '<div class=\"silent\"></div>' }),\n" +
+        "};\n",
+      ".vaults/handlers/silent.runtime.js":
+        "(function(){ window.__silent = 'SILENT-MARKER'; })();\n",
+      ".vaults/handlers/silent.css":
+        ".silent { color: silver; }\n",
+      "Page.md": "```optedin\n```\n\n```silent\n```\n",
+    });
+    try {
+      await build(v);
+      // Browser bundles contain BOTH handlers' assets (opt-in is for Foundry,
+      // not the wiki itself).
+      const browserJs = await readFile(join(v.out, "_handlers.js"), "utf8");
+      const browserCss = await readFile(join(v.out, "_handlers.css"), "utf8");
+      assert.match(browserJs, /OPTEDIN-MARKER/);
+      assert.match(browserJs, /SILENT-MARKER/);
+      assert.match(browserCss, /tomato/);
+      assert.match(browserCss, /silver/);
+      // Foundry bundles contain ONLY the opted-in handler.
+      const fjs = await readFile(join(v.out, "_handlers.foundry.js"), "utf8");
+      const fcss = await readFile(join(v.out, "_handlers.foundry.css"), "utf8");
+      assert.match(fjs, /OPTEDIN-MARKER/);
+      assert.doesNotMatch(fjs, /SILENT-MARKER/);
+      assert.match(fcss, /tomato/);
+      assert.doesNotMatch(fcss, /silver/);
+    } finally { await cleanup(v); }
+  });
+
+  it("foundry-import JS bundle is absent when no handler opts JS in (default state)", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": "Roll: `dice: 1d20`.",
+    });
+    try {
+      await build(v);
+      // Built-in dice JS isn't opted in (Foundry rewrites dice to native
+      // [[/r]] enrichers, so the runtime would be redundant). Built-in
+      // statblock CSS *is* opted in for Foundry visual parity, so the CSS
+      // bundle exists even with no user handlers — that's by design.
+      try {
+        await readFile(join(v.out, "_handlers.foundry.js"), "utf8");
+        assert.fail("expected _handlers.foundry.js to not exist (no handler opted JS in)");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+    } finally { await cleanup(v); }
+  });
+
+  it("partial opt-in: assets.foundry.styles only ships CSS, not JS", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      ".vaults/handlers/css-only.mjs":
+        "export const handler = {\n" +
+        "  codeBlock: 'cssonly',\n" +
+        "  assets: {\n" +
+        "    scripts: ['./css-only.runtime.js'],\n" +
+        "    styles: ['./css-only.css'],\n" +
+        "    targets: { foundry: { styles: true } },\n" +  // scripts intentionally omitted
+        "  },\n" +
+        "  render: () => ({ html: '<div class=\"cssonly\"></div>' }),\n" +
+        "};\n",
+      ".vaults/handlers/css-only.runtime.js":
+        "(function(){ window.__cssonly = 'CSSONLY-MARKER'; })();\n",
+      ".vaults/handlers/css-only.css":
+        ".cssonly { color: olive; }\n",
+      "Page.md": "```cssonly\n```\n",
+    });
+    try {
+      await build(v);
+      const fcss = await readFile(join(v.out, "_handlers.foundry.css"), "utf8");
+      assert.match(fcss, /olive/);
+      // JS bundle should not exist since nothing opted in for scripts.
+      try {
+        await readFile(join(v.out, "_handlers.foundry.js"), "utf8");
+        assert.fail("expected _handlers.foundry.js to not exist");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+    } finally { await cleanup(v); }
+  });
+
   it("multi-role middleware allowlists /_handlers.js and /_handlers.css so they don't 404", async () => {
     const v = await setupVault({
       ".vaultrc.json": JSON.stringify({
@@ -560,6 +832,12 @@ describe("handler asset bundling", () => {
       const mw = await readFile(join(v.out, "functions/_middleware.js"), "utf8");
       assert.match(mw, /pathname === "\/_handlers\.js"/);
       assert.match(mw, /pathname === "\/_handlers\.css"/);
+      // Foundry-import bundles are deliberately NOT in the shared-asset
+      // allowlist: they live per-variant so the middleware role-gates
+      // them. A public visitor can't read /_handlers.foundry.css via
+      // the rewrite path unless they have a public-tier token.
+      assert.doesNotMatch(mw, /pathname === "\/_handlers\.foundry\.js"/);
+      assert.doesNotMatch(mw, /pathname === "\/_handlers\.foundry\.css"/);
     } finally { await cleanup(v); }
   });
 
@@ -700,16 +978,53 @@ describe("handler asset bundling", () => {
 
 describe("buildRegistry + htmlEscape", () => {
   it("buildRegistry separates inline and codeBlock handlers; later wins", () => {
-    const reg = buildRegistry([
-      { inline: "a", render: () => ({ html: "first" }) },
-      { inline: "a", render: () => ({ html: "second" }) },
-      { codeBlock: "b", render: () => ({ html: "block" }) },
-    ]);
+    const reg = buildRegistry(
+      [{ inline: "a", render: () => ({ html: "first" }) }],
+      [
+        { inline: "a", render: () => ({ html: "second" }) },
+        { codeBlock: "b", render: () => ({ html: "block" }) },
+      ],
+    );
     assert.equal(reg.inline.size, 1);
     assert.equal(reg.codeBlock.size, 1);
-    // Last-registered wins on conflict.
+    // User handler wins over built-in on the same prefix.
     const a = reg.inline.get("a")!;
     assert.deepEqual(a.render("", null as never), { html: "second" });
+  });
+
+  it("buildRegistry warns when a user handler shadows a built-in", () => {
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => { warnings.push(msg); };
+    try {
+      buildRegistry(
+        [
+          { inline: "dice", render: () => ({ html: "builtin" }) },
+          { codeBlock: "statblock", render: () => ({ html: "builtin" }) },
+        ],
+        [
+          { inline: "dice", render: () => ({ html: "user" }) },
+          { codeBlock: "statblock", render: () => ({ html: "user" }) },
+        ],
+      );
+    } finally { console.warn = origWarn; }
+    assert.equal(warnings.length, 2);
+    assert.match(warnings[0]!, /shadows the built-in/);
+    assert.match(warnings[0]!, /dice/);
+    assert.match(warnings[1]!, /statblock/);
+  });
+
+  it("buildRegistry stays silent when user handlers don't collide with built-ins", () => {
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => { warnings.push(msg); };
+    try {
+      buildRegistry(
+        [{ inline: "dice", render: () => ({ html: "builtin" }) }],
+        [{ inline: "shout", render: () => ({ html: "user" }) }],
+      );
+    } finally { console.warn = origWarn; }
+    assert.equal(warnings.length, 0);
   });
 
   it("htmlEscape covers the dangerous-five characters", () => {

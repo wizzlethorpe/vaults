@@ -4,9 +4,7 @@ import { hashPassword } from "../auth.js";
 import { loadConfig, saveConfig } from "../config.js";
 import { runMigrations } from "../migrate/run.js";
 
-interface PasswordOptions {}
-
-export async function password(vaultPath: string, role: string, _opts: PasswordOptions): Promise<void> {
+export async function password(vaultPath: string, role: string): Promise<void> {
   await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
 

@@ -29,6 +29,7 @@
 
 import type { InlineHandler } from "../types.js";
 import { htmlEscape } from "../types.js";
+import { formatInline } from "./inline-format.js";
 
 export const fmHandler: InlineHandler = {
   inline: "fm",
@@ -60,17 +61,6 @@ function lookup(root: Record<string, unknown>, path: string): unknown {
     cursor = (cursor as Record<string, unknown>)[seg];
   }
   return cursor;
-}
-
-// HTML-escape, then a tiny inline-markdown pass: bold (** **) before italic
-// (* *) so bold doesn't get eaten, then code spans. Matches the same subset
-// the statblock handler's formatInline supports — keep these in sync.
-function formatInline(s: string): string {
-  let out = htmlEscape(s);
-  out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  out = out.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
-  out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
-  return out;
 }
 
 function formatScalar(v: unknown): string | null {

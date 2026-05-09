@@ -13,6 +13,7 @@
 import { entryId, pageId } from "./ids.mjs";
 import { localImageUrl } from "./media.mjs";
 import { IMAGE_EXT_RE } from "./parser.mjs";
+import { escapeAttr, escapeHtml } from "./util.mjs";
 
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 const IMG_RE = /<img\b([^>]*?)src="([^"]+)"([^>]*)>/gi;
@@ -288,5 +289,3 @@ function rewriteImages(vaultId, html) {
 
 function stripTags(s) { return s.replace(TAG_RE, "").trim(); }
 function escapeBraces(s) { return s.replace(/[{}]/g, ""); }
-function escapeAttr(s) { return String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-function escapeHtml(s) { return String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }

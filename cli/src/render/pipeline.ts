@@ -40,6 +40,9 @@ const sanitizeSchema = {
     tr: ["className", "data*"],
     input: ["type", "placeholder", "className", "ariaLabel"],
     button: ["type", "className", "data*", "role", "ariaSelected", "ariaLabel", "ariaHaspopup", "tabindex", "title"],
+    // Foldable callouts emit <details open>; the default schema allows
+    // `open` on <summary> only.
+    details: ["className", "data*", "open"],
   },
   // The default schema forces <input> to type=checkbox and disabled=true
   // to safely render GFM task lists. We don't render task lists here, and
@@ -57,13 +60,28 @@ export interface RenderResult {
   warnings: RenderWarning[];
 }
 
+/**
+ * Optional pre-parsed frontmatter passed in by the build pipeline so we don't
+ * have to re-run gray-matter on every page. When omitted, we fall back to
+ * parsing the source ourselves — keeps single-call entry points (tests,
+ * one-off renders) working without forcing them to do the parse first.
+ */
+export interface PreParsedFrontmatter {
+  data: Record<string, unknown>;
+  content: string;
+}
+
 export async function renderMarkdown(
   source: string,
   context: RenderContext,
   fallbackTitle: string,
+  preParsed?: PreParsedFrontmatter,
 ): Promise<RenderResult> {
-  const parsed = matter(source);
-  const fm = parsed.data as Record<string, unknown>;
+  const parsed = preParsed ?? (() => {
+    const m = matter(source);
+    return { data: (m.data ?? {}) as Record<string, unknown>, content: m.content };
+  })();
+  const fm = parsed.data;
   const outlinks: string[] = [];
   const warnings: RenderWarning[] = [];
 

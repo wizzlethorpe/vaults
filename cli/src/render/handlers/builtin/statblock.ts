@@ -30,20 +30,30 @@
 //
 // Coverage: name/size/type/subtype/alignment, ac (+ ac_class), hp (+ hit_dice),
 // speed, six abilities (stats), saves, skillsaves, damage_*, condition_immunities,
-// senses, languages, cr, traits, actions, reactions, legendary_actions
-// (+ legendary_description). Inline markdown in `desc` fields supports **bold**,
-// *italic*, and `code`. Other Fantasy Statblocks features (spells nested
-// formatting, custom layouts, dice-roller integration, JS callbacks, image
-// fields) are not supported in v1.
+// senses, languages, cr, traits, spells (basic spellcasting list), actions,
+// reactions, legendary_actions (+ legendary_description). Inline markdown in
+// `desc` fields supports **bold**, *italic*, and `code`. Other Fantasy Statblocks
+// features (innate spellcasting, PF2e/13th-age custom layouts, dice-roller
+// integration, JS callbacks, image fields) are not supported in v1.
 
 import yaml from "js-yaml";
 import type { CodeBlockHandler, HandlerContext } from "../types.js";
 import { htmlEscape } from "../types.js";
 import { registerBuiltinAssets } from "../assets.js";
 
-interface NamedDesc { name?: string; desc?: string; }
+interface NamedDesc { name?: string; desc?: string; traits?: NamedDesc[]; }
+
+// Fantasy Statblocks accepts saves/skillsaves either as an array of single-key
+// objects ([{dexterity: 5}, {wisdom: 7}]) or as a single flat object
+// ({dexterity: 5, wisdom: 7}). bonusList() normalizes both shapes.
+type BonusEntries = Array<Record<string, number>> | Record<string, number>;
+
+// Fantasy Statblocks Spell = string | { [key: string]: string }. Object form's
+// keys are the level labels and values are the spell list strings.
+type SpellEntry = string | Record<string, string>;
 
 interface Monster {
+  image?: string;
   name?: string;
   size?: string;
   type?: string;
@@ -55,8 +65,8 @@ interface Monster {
   hit_dice?: string;
   speed?: string;
   stats?: number[];
-  saves?: Array<Record<string, number>>;
-  skillsaves?: Array<Record<string, number>>;
+  saves?: BonusEntries;
+  skillsaves?: BonusEntries;
   damage_vulnerabilities?: string;
   damage_resistances?: string;
   damage_immunities?: string;
@@ -65,10 +75,18 @@ interface Monster {
   languages?: string;
   cr?: string | number;
   traits?: NamedDesc[];
+  spells?: SpellEntry[];
   actions?: NamedDesc[];
+  bonus_actions?: NamedDesc[];
   reactions?: NamedDesc[];
   legendary_actions?: NamedDesc[];
   legendary_description?: string;
+  mythic_actions?: NamedDesc[];
+  mythic_description?: string;
+  lair_actions?: NamedDesc[];
+  triggered_actions?: NamedDesc[];
+  source?: string | string[];
+  note?: string;
 }
 
 const ABILITY_NAMES = ["STR", "DEX", "CON", "INT", "WIS", "CHA"] as const;
@@ -145,9 +163,23 @@ async function preprocessHandlers(
   for (const k of Object.keys(mAny)) {
     if (typeof mAny[k] === "string") mAny[k] = await tokenize(mAny[k] as string);
   }
-  // Per-entry name and desc inside trait/action lists.
+  // Per-entry name and desc inside trait/action lists. Nested traits are
+  // hoisted to the top level prefixed with the parent's name (v1: flat).
   const list = async (xs: NamedDesc[] | undefined): Promise<void> => {
     if (!xs) return;
+    // Inline-flatten one level of nested .traits[].traits before tokenizing.
+    for (let i = 0; i < xs.length; i++) {
+      const x = xs[i]!;
+      if (Array.isArray(x.traits) && x.traits.length) {
+        const parentName = x.name ?? "";
+        const flattened = x.traits.map((nested) => ({
+          ...nested,
+          name: parentName ? `${parentName}: ${nested.name ?? ""}`.trim() : (nested.name ?? ""),
+        }));
+        delete x.traits;
+        xs.splice(i + 1, 0, ...flattened);
+      }
+    }
     for (const x of xs) {
       if (typeof x.name === "string") x.name = await tokenize(x.name);
       if (typeof x.desc === "string") x.desc = await tokenize(x.desc);
@@ -155,8 +187,28 @@ async function preprocessHandlers(
   };
   await list(m.traits);
   await list(m.actions);
+  await list(m.bonus_actions);
   await list(m.reactions);
   await list(m.legendary_actions);
+  await list(m.mythic_actions);
+  await list(m.lair_actions);
+  await list(m.triggered_actions);
+  // spells: each entry is a string OR object. Tokenize string values
+  // (top-level entries and per-key values inside object entries) so
+  // dice:/fm: work inside.
+  if (m.spells) {
+    for (let i = 0; i < m.spells.length; i++) {
+      const s = m.spells[i];
+      if (typeof s === "string") {
+        m.spells[i] = (await tokenize(s)) ?? s;
+      } else if (s && typeof s === "object") {
+        for (const k of Object.keys(s)) {
+          const v = s[k];
+          if (typeof v === "string") s[k] = (await tokenize(v)) ?? v;
+        }
+      }
+    }
+  }
   return spliceback;
 }
 
@@ -169,11 +221,18 @@ function header(m: Monster, spliceback: string[]): string {
   const name = m.name ?? "Unnamed";
   const sub = [m.size, m.type, m.subtype && `(${m.subtype})`, m.alignment]
     .filter(Boolean).join(" ");
+  // The image path is treated as a vault-relative reference; we emit it
+  // verbatim. Authors typically use a path their wiki's image cache serves
+  // (e.g. "portraits/foo.webp"). The sanitizer allows src/alt/class on img.
+  const img = m.image
+    ? `<img class="statblock-image" src="${htmlEscape(m.image)}" alt="${htmlEscape(name)}">`
+    : "";
   // Rendered as a div, not an h2: the page sanitizer restricts <h2> to
   // class="sr-only" only (GFM footnotes use it). The name is also not part
   // of the page's article outline — pages can have multiple statblocks.
   return (
     `<div class="statblock-header">` +
+    img +
     `<div class="statblock-name">${formatInline(name, spliceback)}</div>` +
     (sub ? `<p class="statblock-subheading">${formatInline(sub, spliceback)}</p>` : "") +
     `</div>`
@@ -203,19 +262,30 @@ function stats(m: Monster): string {
   return `<div class="statblock-stats">${cells}</div>`;
 }
 
+// FS accepts saves/skillsaves either as an array of single-key objects OR a
+// single multi-key object. Normalize to a flat list of [key, val] pairs.
 function bonusList(
-  entries: Array<Record<string, number>> | undefined,
+  entries: BonusEntries | undefined,
   labelFor: (key: string) => string,
 ): string {
-  if (!entries?.length) return "";
-  return entries.map(entry => {
-    const pair = Object.entries(entry)[0];
-    if (!pair) return "";
-    const [key, val] = pair;
-    if (val === undefined) return "";
+  if (!entries) return "";
+  const pairs: Array<[string, number]> = [];
+  if (Array.isArray(entries)) {
+    for (const entry of entries) {
+      for (const [k, v] of Object.entries(entry)) {
+        if (typeof v === "number") pairs.push([k, v]);
+      }
+    }
+  } else if (typeof entries === "object") {
+    for (const [k, v] of Object.entries(entries)) {
+      if (typeof v === "number") pairs.push([k, v]);
+    }
+  }
+  if (!pairs.length) return "";
+  return pairs.map(([key, val]) => {
     const sign = val >= 0 ? "+" : "";
     return `${labelFor(key)} ${sign}${val}`;
-  }).filter(Boolean).join(", ");
+  }).join(", ");
 }
 
 function midProperties(m: Monster, spliceback: string[]): string {
@@ -239,6 +309,52 @@ function trait(t: NamedDesc, spliceback: string[]): string {
     `<strong><em>${formatInline(t.name ?? "", spliceback)}.</em></strong> ` +
     formatInline(t.desc ?? "", spliceback) +
     `</p>`;
+}
+
+// Render a single per-level line: bold label + comma-separated, auto-italicized
+// spell list. Used for both string entries (split on first `:`) and object
+// entries (key = label, value = spell list string).
+function spellLevelLine(label: string, list: string, spliceback: string[]): string {
+  const spellList = list.split(",")
+    .map(s => s.trim()).filter(Boolean)
+    .map(s => `<em>${formatInline(s, spliceback)}</em>`)
+    .join(", ");
+  return `<p class="statblock-spell-level">` +
+    `<strong>${formatInline(label, spliceback)}</strong>: ${spellList}` +
+    `</p>`;
+}
+
+// Render Fantasy Statblocks `spells:` — first entry is intro prose shown as
+// a Spellcasting trait header; remaining entries are per-level lines.
+//
+// Each entry can be a string (split on `:`) OR an object whose keys are
+// level labels and values are the spell list strings (FS Spell type).
+// Entries without a `:` fall through as plain paragraphs.
+function spellcasting(spells: SpellEntry[] | undefined, spliceback: string[]): string {
+  if (!spells?.length) return "";
+  const [first, ...rest] = spells;
+  // Object as the first entry has no obvious "intro prose" interpretation;
+  // treat all entries as levels in that case (no Spellcasting header).
+  const introIsString = typeof first === "string";
+  const head = introIsString
+    ? `<p class="statblock-trait">` +
+      `<strong><em>Spellcasting.</em></strong> ` +
+      formatInline(first as string, spliceback) +
+      `</p>`
+    : "";
+  const levels = introIsString ? rest : spells;
+  const lines = levels.map(entry => {
+    if (typeof entry === "string") {
+      const colon = entry.indexOf(":");
+      if (colon < 0) return `<p class="statblock-spell-level">${formatInline(entry, spliceback)}</p>`;
+      return spellLevelLine(entry.slice(0, colon), entry.slice(colon + 1), spliceback);
+    }
+    // Object form: render each key/value pair as its own level line.
+    return Object.entries(entry)
+      .map(([label, list]) => spellLevelLine(label, String(list ?? ""), spliceback))
+      .join("");
+  }).join("");
+  return head + lines;
 }
 
 function section(
@@ -275,8 +391,16 @@ export const statblockHandler: CodeBlockHandler = {
     // fields with sentinel tokens; spliceback holds the resulting HTML and
     // formatInline weaves it back in after escaping.
     const spliceback = await preprocessHandlers(m, ctx);
-    const traitsHtml = m.traits?.length
-      ? `<div class="statblock-section">${m.traits.map(t => trait(t, spliceback)).join("")}</div>`
+    const spellsHtml = spellcasting(m.spells, spliceback);
+    const traitsHtml = m.traits?.length || spellsHtml
+      ? `<div class="statblock-section">${(m.traits ?? []).map(t => trait(t, spliceback)).join("")}${spellsHtml}</div>`
+      : "";
+    const sourceText = Array.isArray(m.source) ? m.source.join(", ") : m.source;
+    const sourceHtml = sourceText
+      ? `<p class="statblock-source"><em>${formatInline(sourceText, spliceback)}</em></p>`
+      : "";
+    const noteHtml = m.note
+      ? `<p class="statblock-note"><em>${formatInline(m.note, spliceback)}</em></p>`
       : "";
     const body = [
       header(m, spliceback),
@@ -289,8 +413,14 @@ export const statblockHandler: CodeBlockHandler = {
       `<div class="statblock-rule statblock-rule-tapered"></div>`,
       traitsHtml,
       section("Actions", m.actions, spliceback),
+      section("Bonus Actions", m.bonus_actions, spliceback),
       section("Reactions", m.reactions, spliceback),
       section("Legendary Actions", m.legendary_actions, spliceback, m.legendary_description),
+      section("Mythic Actions", m.mythic_actions, spliceback, m.mythic_description),
+      section("Lair Actions", m.lair_actions, spliceback),
+      section("Triggered Actions", m.triggered_actions, spliceback),
+      sourceHtml,
+      noteHtml,
     ].join("");
     return { html: `<div class="statblock">${body}</div>` };
   },
@@ -382,6 +512,11 @@ const STATBLOCK_CSS = `
   font-weight: bold;
   font-style: italic;
 }
+.statblock-spell-level {
+  margin: 0.15rem 0 0.15rem 1rem;
+  text-indent: -1rem;
+  padding-left: 1rem;
+}
 .statblock-section-intro {
   font-style: italic;
   margin: 0.3rem 0;
@@ -391,8 +526,33 @@ const STATBLOCK_CSS = `
   color: #7a200d;
   border-color: #7a200d;
 }
+.statblock-image {
+  float: right;
+  width: 75px;
+  height: 75px;
+  object-fit: cover;
+  margin: 0 0 0.4rem 0.5rem;
+  border: 2px solid var(--statblock-rule-color);
+  border-radius: 2px;
+}
+.statblock-source,
+.statblock-note {
+  font-size: 0.85rem;
+  margin-top: 0.4rem;
+  color: #555;
+}
 `;
 
 registerBuiltinAssets(statblockHandler, {
   styles: [{ source: "builtin/statblock.css", content: STATBLOCK_CSS }],
+  // Opt the styles into the Foundry-import bundle so a vault carrying
+  // statblocks renders identically when synced into Foundry. The Foundry
+  // module also vendors this CSS in vaults.css, so journals always look
+  // right whether the GM enabled the import toggle or not — the bundle
+  // export is here for symmetry with user handlers and so the styling
+  // tracks future edits to STATBLOCK_CSS without a Foundry-module release.
+  // Scripts intentionally omitted: dice-style runtime is replaced by
+  // Foundry's native [[/r]] enricher in links.mjs, so there's nothing
+  // useful to import.
+  targets: { foundry: { styles: true } },
 });

@@ -28,7 +28,7 @@ export function folderOfPath(path) {
 export const entryId = (vaultId, path) => det("entry", `${vaultId}:${folderOfPath(path)}`);
 export const pageId = (vaultId, path) => det("page", `${vaultId}:${path}`);
 export const folderId = (vaultId, path) => det("folder", `${vaultId}:${path}`);
-// Deterministic id for the world-level Actor/Item that a page with foundry_base
+// Deterministic id for the world-level Actor/Item that a page with foundry.base
 // instantiates. One id space across both collections is fine (Foundry keys
 // each document type's collection separately, so an Actor and an Item could
 // even share an id without colliding).

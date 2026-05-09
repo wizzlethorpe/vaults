@@ -197,6 +197,41 @@ function ownershipFor(vault, pageRole) {
 }
 
 /**
+ * Re-place every existing entry into the folder it should currently live
+ * in. Catches the trivial→non-trivial folder transition (a folder that
+ * gained a subfolder and should no longer be leaf-collapsed into the
+ * parent) and the reverse (a folder that lost its only subfolder and
+ * should now collapse). Cheap: one pass over the vault's journals,
+ * compares current folder.id to the expected one.
+ *
+ * Called from sync after every refresh; idempotent when nothing changed.
+ */
+export async function reconcileEntryPlacement(vault, folderInfo) {
+  const ours = game.journal.contents.filter(
+    (j) => j.getFlag(MODULE_ID, "vaultId") === vault.id,
+  );
+  for (const entry of ours) {
+    // Each entry's first page carries the source path on the vaults flag.
+    // The folder we want is derived from that path's folderPath (with
+    // leaf-collapse applied per the current folderInfo).
+    const firstPage = entry.pages.contents[0];
+    const path = firstPage?.getFlag(MODULE_ID, "path");
+    if (!path) continue;
+    const segs = path.split("/");
+    segs.pop();
+    const folderPath = segs.join("/");
+    const fInfo = folderInfo?.get(folderPath);
+    const leaf = !!fInfo && folderPath !== "" && !fInfo.hasSubfolders;
+    const hostSegs = leaf ? segs.slice(0, -1) : segs;
+    const expectedFolderId = await ensureFolderChain(vault, hostSegs);
+    if (entry.folder?.id !== expectedFolderId) {
+      try { await entry.update({ folder: expectedFolderId }); }
+      catch (err) { console.warn(`Vaults | re-place ${path} → ${expectedFolderId} failed:`, err); }
+    }
+  }
+}
+
+/**
  * Delete the page for a vault path. Multiple pages can share an entry now
  * (one entry per directory), so only the embedded page goes away here. The
  * entry itself sticks around as long as any page remains; once the last

@@ -45,8 +45,11 @@ export interface RenderContext {
   redactRoles: ReadonlySet<string>;
   /** Built-in + user-defined inline / code-block handlers. Optional; absent = no custom handlers run. */
   handlers?: import("./handlers/types.js").HandlerRegistry;
-  /** Internal: slugs of ancestor pages in the current embed chain (cycle detection). */
-  embedAncestors?: ReadonlySet<string>;
-  /** Internal: current embed depth. */
-  embedDepth?: number;
+  /**
+   * Vault-relative source path → set of vault-relative paths it links to.
+   * Pre-computed at build time from a wikilink scan over each page's source.
+   * Used by Bases `file.hasLink("Target")` to evaluate without ordering
+   * dependencies between page renders.
+   */
+  outlinksByPath?: Map<string, Set<string>>;
 }

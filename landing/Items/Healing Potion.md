@@ -1,15 +1,16 @@
 ---
 title: Potion of Healing (Mossfoot Brew)
 image: healing-potion.webp
-foundry_base: Compendium.dnd5e.items.Item.ytlsBjYsZ7OBSEBs
 foundry:
-  system:
-    description:
-      chat: "A bittersweet, mossy aftertaste. Brewed by the Mossfoot family."
-    rarity: common
-    price:
-      value: 50
-      denomination: gp
+  base: Compendium.dnd5e.items.Item.ytlsBjYsZ7OBSEBs
+  data:
+    system:
+      description:
+        chat: "A bittersweet, mossy aftertaste. Brewed by the Mossfoot family."
+      rarity: common
+      price:
+        value: 50
+        denomination: gp
 ---
 
 A local variant of the standard healing potion, distilled by the

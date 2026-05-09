@@ -51,5 +51,30 @@
   "VAULTS.Dialog.Public": "public",
   "VAULTS.Dialog.DmRoleLabel": "DM role",
   "VAULTS.Dialog.DmRoleNone": "(none — everything imports as GM-only)",
-  "VAULTS.Dialog.DmRoleHint": "Pages whose role is below this tier are imported as player-visible (Observer ownership). Pages at this tier or higher stay GM-only."
+  "VAULTS.Dialog.DmRoleHint": "Pages whose role is below this tier are imported as player-visible (Observer ownership). Pages at this tier or higher stay GM-only.",
+
+  "VAULTS.Dialog.HandlerAssetsLabel": "Handler assets",
+  "VAULTS.Dialog.ImportHandlerStyles": "Import handler stylesheets (CSS)",
+  "VAULTS.Dialog.ImportHandlerScripts": "Import handler scripts (JS)",
+  "VAULTS.Dialog.HandlerAssetsHint": "Optional: pull handler-shipped CSS/JS from this vault into Foundry. Each handler also has to opt in (assets.foundry.{styles,scripts}). Off by default.",
+
+  "VAULTS.HandlerAssets.WarnTitle": "Enable handler-asset import?",
+  "VAULTS.HandlerAssets.WarnIntro": "You're about to enable handler-asset import for \"{name}\". The vault's deployed wiki may ship these assets:",
+  "VAULTS.HandlerAssets.WarnStyles": "CSS will be injected into Foundry. At worst this restyles a journal sheet.",
+  "VAULTS.HandlerAssets.WarnScripts": "JavaScript will run inside Foundry. It can read and modify game state, hook into combat, alter actor data, or call out to external URLs. Treat this like installing a Foundry module from the same author.",
+  "VAULTS.HandlerAssets.WarnTrust": "Only enable this if you trust whoever authored the handlers in this vault.",
+  "VAULTS.HandlerAssets.WarnReversible": "You can turn this off at any time and reload the world to undo the injection.",
+  "VAULTS.HandlerAssets.WarnAccept": "Enable",
+  "VAULTS.HandlerAssets.WarnCancel": "Cancel",
+
+  "VAULTS.HandlerAssets.SessionPromptTitle": "Run handler scripts from this vault?",
+  "VAULTS.HandlerAssets.SessionPromptIntro": "Vault \"{name}\" is about to run {size} KB of JavaScript inside this Foundry session ({reason}).",
+  "VAULTS.HandlerAssets.SessionPromptWarn": "This script will run with full access to game state, hooks, and document data. It can read player input, modify actors, or call external services.",
+  "VAULTS.HandlerAssets.SessionPromptDecline": "If you decline, the persistent setting stays on; you'll be asked again next time the vault syncs (or on next world load).",
+  "VAULTS.HandlerAssets.SessionPromptAccept": "Run this session",
+  "VAULTS.HandlerAssets.SessionPromptCancel": "Skip this session",
+  "VAULTS.HandlerAssets.ReasonReady": "world load",
+  "VAULTS.HandlerAssets.ReasonSync": "sync complete",
+  "VAULTS.HandlerAssets.ReasonSettings": "settings change",
+  "VAULTS.HandlerAssets.ReasonImport": "import"
 }

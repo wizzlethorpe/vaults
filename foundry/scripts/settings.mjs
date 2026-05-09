@@ -8,8 +8,18 @@
 export const MODULE_ID = "vaults";
 
 export const SETTINGS = {
-  /** Array of vault entries; see VAULT_DEFAULTS for shape. */
+  /** Array of vault entries; see VAULT_DEFAULTS for shape. Lightweight: the
+   *  per-vault sync state (lastManifest, lastImageManifest) lives in
+   *  `vaultManifests` instead so per-vault config patches don't round-trip
+   *  every other vault's full file list on every save. */
   vaults: "vaults",
+
+  /** Object keyed by vaultId → { lastManifest, lastImageManifest }. Stored
+   *  separately from `vaults` because manifest objects can be multi-MB on
+   *  large vaults; co-locating them with vault config means every settings
+   *  change re-serializes every vault's full file list. Splitting keeps
+   *  config writes O(1) and manifest writes O(N pages of ONE vault). */
+  vaultManifests: "vaultManifests",
 
   // Legacy single-vault keys (pre-0.4). Read once at migration, never
   // written to after that. Don't reference these in new code.
@@ -19,10 +29,12 @@ export const SETTINGS = {
   rootFolder: "rootFolder",
   lastManifest: "lastManifest",
   lastImageManifest: "lastImageManifest",
-  pendingState: "pendingState",
 };
 
-/** Default shape for a new vault entry. */
+/** Default shape for a new vault entry. lastManifest / lastImageManifest are
+ *  NOT here — they live in the separate `vaultManifests` setting (see
+ *  vault-manifests.mjs). Keeping the entry skinny means a per-vault config
+ *  edit doesn't re-serialize every vault's sync state. */
 export const VAULT_DEFAULTS = {
   id: "",
   label: "",
@@ -30,9 +42,6 @@ export const VAULT_DEFAULTS = {
   rootFolder: "Vault",
   token: "",
   role: "",
-  lastManifest: {},
-  lastImageManifest: {},
-  pendingState: "",
   // Set when the deploy is single-role (no auth middleware, no /_batch
   // endpoints). Refreshed from the manifest's auth.required flag on every
   // sync, so a public→private flip self-corrects on the next manifest fetch.
@@ -45,6 +54,20 @@ export const VAULT_DEFAULTS = {
   // (player-visible) on import; pages at dmRole or higher stay GM-only.
   // Empty string = no gating; everything imports as GM-only.
   dmRole: "",
+  // Per-vault opt-in to import handler-shipped CSS/JS from the deployed
+  // wiki. Both default false: a handler author has to opt in by setting
+  // `assets.foundry.{styles,scripts} = true` AND the GM has to flip the
+  // matching toggle here. CSS at worst restyles a journal sheet; JS runs
+  // in Foundry's global scope and can interact with `game`, `canvas`,
+  // hooks, and document data — treat both flips as "I trust this vault's
+  // handler authors with my world".
+  importHandlerStyles: false,
+  importHandlerScripts: false,
+  // Asset URLs the deploy advertises in its manifest's `assets.foundry`
+  // block. Cached here so applyHandlerAssets fetches via the canonical
+  // path instead of guessing /_handlers.foundry.{js,css}. Empty / null
+  // fields fall back to the well-known names for older deploys.
+  handlerAssetPaths: { foundryJs: null, foundryCss: null },
 };
 
 export function registerSettings() {
@@ -53,10 +76,13 @@ export function registerSettings() {
   g.register(MODULE_ID, SETTINGS.vaults, {
     scope: "world", config: false, type: Array, default: [],
   });
+  g.register(MODULE_ID, SETTINGS.vaultManifests, {
+    scope: "world", config: false, type: Object, default: {},
+  });
 
   // Legacy keys; registered so existing worlds load without crashes.
   // Migrated to vaults[] on first load.
-  for (const key of [SETTINGS.url, SETTINGS.token, SETTINGS.role, SETTINGS.pendingState]) {
+  for (const key of [SETTINGS.url, SETTINGS.token, SETTINGS.role]) {
     g.register(MODULE_ID, key, { scope: "world", config: false, type: String, default: "" });
   }
   g.register(MODULE_ID, SETTINGS.rootFolder, { scope: "world", config: false, type: String, default: "Vault" });

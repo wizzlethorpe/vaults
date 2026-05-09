@@ -36,7 +36,7 @@ Setting `image:` in the page's frontmatter does three things:
    cards plugin uses this property to populate each card's cover. (See
    [[Features/Bases]] for the card view in action.)
 3. **Foundry portraits**: when the page is cloned into Foundry via
-   `foundry_base`, this image becomes the Actor/Item `img` and prototype
+   `foundry.base`, this image becomes the Actor/Item `img` and prototype
    token texture. (See [[Features/Foundry integration]].)
 
 ## Auto-discovery

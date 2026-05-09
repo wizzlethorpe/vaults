@@ -41,6 +41,7 @@ import type { Root, Code, Html } from "mdast";
 import { visit } from "unist-util-visit";
 import yaml from "js-yaml";
 import type { PageMeta, RenderContext, RenderWarning } from "./types.js";
+import { slugify } from "./slug.js";
 
 const BASE_LANG_RE = /^bases?$/i;
 
@@ -179,6 +180,10 @@ function wrapAsTabs(blocks: string[], views: ViewSpec[]): string {
 interface Row {
   page: PageMeta;
   fm: Record<string, unknown>;
+  /** Pre-computed outgoing wikilinks for this row's page (vault paths). */
+  outlinks?: Set<string>;
+  /** Looks up another page's path by name/alias for hasLink resolution. */
+  resolvePage?: (name: string) => string | undefined;
   /** Parsed formula expressions, shared across rows in the same base. */
   formulaExprs?: Record<string, Expr>;
   /** Per-row memoized formula results; values may be FORMULA_VISITING during eval. */
@@ -228,10 +233,29 @@ function collectRows(context: RenderContext): Row[] {
   // Dedupe by `path` so each page appears once.
   const seen = new Set<string>();
   const rows: Row[] = [];
+  // Closure captures the page-resolution rules so file.hasLink can match
+  // either a vault path (NPCs/Aldric.md) or a basename/alias (Aldric).
+  // Mirror wikilink.ts's resolution order so file.hasLink("Aldric") works
+  // even when the page is at NPCs/Aldric.md. Build once per base render.
+  const resolvePage = (name: string): string | undefined => {
+    const cleaned = name.trim().replace(/\.md$/i, "");
+    if (!cleaned) return undefined;
+    const slug = slugify(cleaned);
+    const last = cleaned.includes("/") ? cleaned.split("/").pop()! : "";
+    const page = context.pages.get(slug)
+      ?? context.pages.get(slugify(cleaned + "/index"))
+      ?? (last ? context.pages.get(slugify(last)) : undefined);
+    return page?.path;
+  };
   for (const page of context.pages.values()) {
     if (seen.has(page.path)) continue;
     seen.add(page.path);
-    rows.push({ page, fm: page.frontmatter ?? {} });
+    rows.push({
+      page,
+      fm: page.frontmatter ?? {},
+      outlinks: context.outlinksByPath?.get(page.path),
+      resolvePage,
+    });
   }
   // Sort by path so output is stable across runs.
   rows.sort((a, b) => a.page.path.localeCompare(b.page.path));
@@ -481,6 +505,10 @@ function evalExpr(e: Expr, row: Row): unknown {
 
 function looseEq(a: unknown, b: unknown): boolean {
   if (a == null || b == null) return a === b;
+  // Date == Date by instant, not by reference. YAML parses date scalars
+  // and today() returns Date instances; without this branch every Date
+  // comparison falls through to reference equality and is always false.
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
   if (typeof a === typeof b) return a === b;
   // Allow "5" == 5 type comparisons because frontmatter is YAML-loose.
   return String(a) === String(b);
@@ -541,9 +569,17 @@ function callFileMethod(name: string, args: unknown[], row: Row): unknown {
       return folder === want || folder.startsWith(want + "/");
     }
     case "hasLink": {
-      // Not modelled in our index; deferred. Evaluate to false so filter
-      // semantics stay sane.
-      return false;
+      // True when the row's page links (via [[wikilink]]) to the named target.
+      // Target may be supplied as a vault path or as a name/alias; we resolve
+      // both forms to a vault path before comparing against the pre-computed
+      // outlink set.
+      if (!row.outlinks || row.outlinks.size === 0) return false;
+      const want = String(args[0] ?? "").trim();
+      if (!want) return false;
+      const direct = want.replace(/^\/+/, "");
+      if (row.outlinks.has(direct)) return true;
+      const resolved = row.resolvePage?.(want);
+      return resolved != null && row.outlinks.has(resolved);
     }
   }
   throw new Error(`Unknown file method: file.${name}`);
@@ -586,8 +622,14 @@ function callGlobalFunction(name: string, args: unknown[]): unknown {
     case "if": return toBool(args[0]) ? args[1] : args[2];
     case "min": return Math.min(...args.map(Number));
     case "max": return Math.max(...args.map(Number));
-    case "now":
-    case "today": return new Date();
+    case "now": return new Date();
+    case "today": {
+      // Midnight UTC of today. Frontmatter date fields parse as YYYY-MM-DD
+      // → midnight UTC; we want `today() == fileCreatedDate` to compare
+      // sanely on the day itself, not "now > today" because of wall time.
+      const d = new Date();
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    }
     case "number": return Number(args[0]);
   }
   throw new Error(`Unknown function: ${name}`);

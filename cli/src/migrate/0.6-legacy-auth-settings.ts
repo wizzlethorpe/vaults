@@ -77,10 +77,9 @@ function liftLegacyAuth(
     }
   }
 
-  if (typeof fm.auth_type === "string" && cfg.authType === "password" && fm.auth_type !== "password") {
-    if (!opts.dryRun) cfg.authType = fm.auth_type;
-    moved.push("auth_type");
-  }
+  // `auth_type` was a forward-looking knob (password vs cloudflare-access vs
+  // oauth-jwt) that nothing has ever read. The field was removed from
+  // VaultConfig; lifting it would be a no-op, so we don't bother.
 
   if (fm.role_passwords && typeof fm.role_passwords === "object" && !Array.isArray(fm.role_passwords)
       && Object.keys(cfg.rolePasswords).length === 0) {

@@ -87,6 +87,46 @@ legendary_actions:
 legendary_description: The dragon can take 3 legendary actions, choosing from the options below. Only one legendary action option can be used at a time and only at the end of another creature's turn. The dragon regains spent legendary actions at the start of its turn.
 ```
 
+## Spellcasting
+
+The `spells:` field takes a list of strings. The first string is the intro
+prose (it renders as a Spellcasting trait); each following string is one
+spell-level line `"<label>: <comma-separated spells>"`. Spell names get
+italicized automatically — write them in plain lowercase.
+
+```statblock
+name: Mage
+size: Medium
+type: humanoid
+alignment: any
+ac: 12
+ac_class: 15 with mage armor
+hp: 40
+hit_dice: 9d8
+speed: 30 ft.
+stats: [9, 14, 11, 17, 12, 11]
+saves:
+  - intelligence: 6
+  - wisdom: 4
+skillsaves:
+  - arcana: 6
+  - history: 6
+senses: passive Perception 11
+languages: any four languages
+cr: "6"
+spells:
+  - "The mage is a 9th-level spellcaster. Its spellcasting ability is Intelligence (spell save DC 14, +6 to hit with spell attacks). The mage has the following wizard spells prepared:"
+  - "Cantrips (at will): fire bolt, light, mage hand, prestidigitation"
+  - "1st level (4 slots): detect magic, mage armor, magic missile, shield"
+  - "2nd level (3 slots): misty step, suggestion"
+  - "3rd level (3 slots): counterspell, fireball, fly"
+  - "4th level (3 slots): greater invisibility, ice storm"
+  - "5th level (1 slot): cone of cold"
+actions:
+  - name: Dagger
+    desc: "*Melee or Ranged Weapon Attack:* +5 to hit, reach 5 ft. or range 20/60 ft., one target. *Hit:* `dice: 1d4+2` piercing damage."
+```
+
 ## Supported fields
 
 | Field | Notes |
@@ -103,6 +143,7 @@ legendary_description: The dragon can take 3 legendary actions, choosing from th
 | `senses`, `languages` | Free-form strings. |
 | `cr` | Quote `"1/4"` etc. so YAML doesn't parse it as a fraction. |
 | `traits`, `actions`, `reactions`, `legendary_actions` | Lists of `{ name, desc }`. `desc` supports inline `**bold**`/`*italic*`/`` `code` `` and chains through inline handlers (so `dice:` works inside descriptions). |
+| `spells` | Basic 5e spellcasting block. List of strings: first is the intro prose (rendered as a Spellcasting trait), the rest are per-level entries `"<label>: <comma-separated spells>"`. Spell names are auto-italicized. |
 | `legendary_description` | Optional intro paragraph for legendary actions. |
 
 Every string field tokenizes inline-handler invocations, so you can pull
@@ -132,7 +173,7 @@ the `foundry:` data block, Foundry sync and wiki render share the YAML.
 
 ## What's not (yet) supported
 
-- Spellcasting blocks with nested formatting (the Fantasy Statblocks `spells` field). Workaround: write spell lists into a `traits` entry as plain text.
+- Innate spellcasting (`innate_spellcasting:`) and PF2e/13th-age spell variants. The basic 5e `spells:` array (intro + per-level lines) is supported — see [Spellcasting](#spellcasting).
 - Custom layouts (Pathfinder 2e, 13th age, etc.). The current handler always renders the basic 5e layout.
 - Image fields. Use a regular Obsidian image embed `![[portrait.png]]` next to the statblock.
 - Wikilinks inside `desc` fields. They render as literal `[[...]]` text. Cross-references to other pages should live in surrounding prose.

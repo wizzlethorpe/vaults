@@ -4,17 +4,18 @@ image: aelar-portrait.webp
 role-class: Ranger
 location: Mossfoot Inn
 cr: 3
-foundry_base: Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa
 foundry:
-  system:
-    attributes:
-      hp:
-        value: 22
-        max: 30
-    details:
-      cr: 3
-  prototypeToken:
-    name: "Aelar (wounded)"
+  base: Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa
+  data:
+    system:
+      attributes:
+        hp:
+          value: 22
+          max: 30
+      details:
+        cr: 3
+    prototypeToken:
+      name: "Aelar (wounded)"
 ---
 
 A weary elven ranger, scarred from too many nights along the Witchwood

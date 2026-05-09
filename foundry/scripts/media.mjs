@@ -6,6 +6,8 @@
 
 import { IMAGE_EXT_RE } from "./parser.mjs";
 import { updateVault } from "./vaults.mjs";
+import { getVaultManifest, setVaultManifest } from "./vault-manifests.mjs";
+import { url as vaultUrl } from "./api.mjs";
 
 // Where the cache lives inside the world data dir. No leading dot. Foundry's
 // FilePicker validation hides dotfile paths from listings and may reject
@@ -35,9 +37,10 @@ export function vaultCacheDir(vaultId) {
 
 /**
  * Reconcile a vault's local image cache with its manifest. Downloads any
- * image whose hash differs from `vault.lastImageManifest`, deletes orphans
- * where the Foundry API allows it, and persists the updated manifest back
- * onto the vault entry. Returns counts for the user-facing notification.
+ * image whose hash differs from the cached image manifest, deletes orphans
+ * where the Foundry API allows it, and persists the updated manifest into
+ * the per-vault sync state (vaultManifests). Returns counts for the
+ * user-facing notification.
  */
 export async function syncImages(vault, manifestFiles) {
   const remoteImages = new Map();
@@ -45,7 +48,8 @@ export async function syncImages(vault, manifestFiles) {
     if (IMAGE_EXT_RE.test(f.path)) remoteImages.set(f.path, f.hash);
   }
 
-  const last = new Map(Object.entries(vault.lastImageManifest || {}));
+  const lastImageManifest = getVaultManifest(vault.id).lastImageManifest;
+  const last = new Map(Object.entries(lastImageManifest || {}));
 
   const toDownload = [];
   for (const [path, hash] of remoteImages) {
@@ -136,7 +140,7 @@ export async function syncImages(vault, manifestFiles) {
     if (last.get(path) === hash) { persisted[path] = hash; continue; }
     if (downloaded.includes(path)) persisted[path] = hash;
   }
-  await updateVault(vault.id, { lastImageManifest: persisted });
+  await setVaultManifest(vault.id, { lastImageManifest: persisted });
 
   return { downloaded: downloaded.length, removed, errors: errors.length };
 }
@@ -170,10 +174,7 @@ async function fetchImagesBatch(vault, paths) {
   // option for static deploys.
   if (vault.public) return fetchImagesDirect(vault, paths);
 
-  const u = new URL("/_batch-images", vault.url.endsWith("/") ? vault.url : vault.url + "/");
-  if (vault.token) u.searchParams.set("_token", vault.token);
-
-  const res = await fetch(u.toString(), {
+  const res = await fetch(vaultUrl(vault, "/_batch-images"), {
     method: "POST",
     headers: { "Content-Type": "text/plain" }, // CORS-simple, no preflight
     body: paths.join("\n"),
@@ -189,7 +190,6 @@ async function fetchImagesBatch(vault, paths) {
 }
 
 async function fetchImagesDirect(vault, paths) {
-  const baseHasTrailingSlash = vault.url.endsWith("/");
   const out = new Map();
   // Match BATCH_CONCURRENCY's polite-but-quick profile; images are larger
   // than text bodies so we don't want to fan out as wide as the source-text
@@ -200,9 +200,8 @@ async function fetchImagesDirect(vault, paths) {
     while (next < paths.length) {
       const idx = next++;
       const path = paths[idx];
-      const u = new URL("/" + path, baseHasTrailingSlash ? vault.url : vault.url + "/");
       try {
-        const res = await fetch(u.toString());
+        const res = await fetch(vaultUrl(vault, "/" + path));
         if (!res.ok) continue;
         const blob = await res.blob();
         // Some Cloudflare deploys serve images with a generic content-type;

@@ -8,6 +8,7 @@ import { password } from "./commands/password.js";
 import { roleAdd, roleDemote, roleList, rolePromote, roleRemove } from "./commands/role.js";
 import { patreonClear, patreonConfigure, patreonLink, patreonStatus, patreonUnlink } from "./commands/patreon.js";
 import { listMigrations, runMigrations } from "./migrate/run.js";
+import { CLI_VERSION } from "./version.js";
 
 const program = new Command();
 
@@ -19,7 +20,7 @@ const VAULT_PATH_DEFAULT = process.env.VAULT_PATH ?? process.cwd();
 program
   .name("vaults")
   .description("Sync an Obsidian vault to a Cloudflare-hosted wiki")
-  .version("0.1.0");
+  .version(CLI_VERSION);
 
 const role = program
   .command("role")
@@ -80,7 +81,7 @@ program
   .argument("<role>", "Role name (must already exist)")
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .action(async (role: string, vaultPath: string) => {
-    try { await password(vaultPath, role, {}); }
+    try { await password(vaultPath, role); }
     catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
   });
 

@@ -19,9 +19,6 @@ export const CONFIG_FILE = "config.json";
 /** Build artifact directory (rendered HTML, image webp cache). */
 export const CACHE_DIR = "cache";
 
-/** Custom handler modules + assets (already established in .vaults/). */
-export const HANDLERS_DIR = "handlers";
-
 /** Internal .gitignore so cache + secrets stay out of git when the vault becomes a git repo. */
 export const VAULTS_GITIGNORE = ".gitignore";
 
@@ -38,11 +35,6 @@ export function cacheDir(vaultPath: string): string {
 /** Fully-qualified rendered output directory (default for build/preview/push). */
 export function defaultOutputDir(vaultPath: string): string {
   return join(cacheDir(vaultPath), "rendered");
-}
-
-/** Fully-qualified handlers directory path. */
-export function handlersDir(vaultPath: string): string {
-  return join(vaultPath, VAULTS_DIR, HANDLERS_DIR);
 }
 
 /** Fully-qualified .vaults/.gitignore path. */

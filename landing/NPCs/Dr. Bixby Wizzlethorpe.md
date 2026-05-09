@@ -4,15 +4,16 @@ image: wizzlethorpe.webp
 role-class: Archmage
 location: Mossfoot Inn (sabbatical)
 cr: 12
-foundry_base: Compendium.dnd5e.monsters.Actor.B7lBOr1AahNZs4a6
 foundry:
-  system:
-    attributes:
-      hp: { value: 99, max: 99 }
-    details:
-      cr: 12
-  prototypeToken:
-    name: "Dr. Wizzlethorpe"
+  base: Compendium.dnd5e.monsters.Actor.B7lBOr1AahNZs4a6
+  data:
+    system:
+      attributes:
+        hp: { value: 99, max: 99 }
+      details:
+        cr: 12
+    prototypeToken:
+      name: "Dr. Wizzlethorpe"
 ---
 
 Inventor, archivist, and reluctant celebrity of the [[The Mossfoot Inn]].

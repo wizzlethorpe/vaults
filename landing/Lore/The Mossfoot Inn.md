@@ -5,7 +5,7 @@ location: Witchwood Road
 ---
 
 A two-storey timber-and-stone inn at the last bend of the Witchwood Road
-before travellers commit to the deeper trees. No `foundry_base` here — this
+before travellers commit to the deeper trees. No `foundry.base` here, this
 page demonstrates the plain-journal pipeline.
 
 ![[moss-tavern.webp|420]]

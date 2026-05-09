@@ -50,7 +50,7 @@ This vault includes [tavern-jingle.ogg](Audio/tavern-jingle.ogg) to demonstrate 
 
 ## Try it in Foundry VTT
 
-The companion module syncs this vault into a Foundry world: every page becomes a JournalEntry, every wikilink rewires to a Foundry document link, and pages with `foundry_base` frontmatter clone an existing compendium document into the world (NPCs become real Actors, items become real Items).
+The companion module syncs this vault into a Foundry world: every page becomes a JournalEntry, every wikilink rewires to a Foundry document link, and pages with `foundry.base` frontmatter clone an existing compendium document into the world (NPCs become real Actors, items become real Items).
 
 > [!tip] Import this vault into Foundry
 > 1. Install the **Wizzlethorpe Vaults** module: in Foundry → *Add-on

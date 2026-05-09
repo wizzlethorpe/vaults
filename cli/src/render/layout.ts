@@ -1,4 +1,5 @@
 import type { PageMeta } from "./types.js";
+import { htmlEscape as esc, htmlAttr as attr } from "../escape.js";
 
 export interface LayoutInput {
   title: string;
@@ -285,14 +286,6 @@ function sitemapItem(p: PageMeta, currentPath: string): string {
   const href = "/" + p.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/");
   const cur = p.path === currentPath ? ' aria-current="page"' : "";
   return `<li><a href="${attr(href)}"${cur} class="internal internal-link">${esc(p.title)}</a></li>`;
-}
-
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function attr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
 // Opens the Explorer <details> on desktop so its [open] state matches the

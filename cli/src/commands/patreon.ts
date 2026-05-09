@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { loadConfig, saveConfig } from "../config.js";
 import { runMigrations } from "../migrate/run.js";
+import { htmlEscape } from "../escape.js";
 
 // Fixed port for the one-shot CLI OAuth dance. Reuses `vaults preview`'s
 // default port (4173) so a single registered redirect URI covers both
@@ -29,7 +30,7 @@ const OAUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes is plenty for the user to c
 export async function patreonConfigure(vaultPath: string): Promise<void> {
   await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
-  const existing = cfg.patreon;
+  const existing = cfg.oauth?.patreon;
 
   if (!stdin.isTTY) {
     throw new Error("vaults patreon configure must be run interactively (need to prompt for client_id/secret).");
@@ -141,11 +142,14 @@ export async function patreonConfigure(vaultPath: string): Promise<void> {
       }
     }
 
-    cfg.patreon = {
-      clientId,
-      clientSecret,
-      campaignId,
-      ...(Object.keys(newTiers).length > 0 ? { tiers: newTiers } : {}),
+    cfg.oauth = {
+      ...(cfg.oauth ?? {}),
+      patreon: {
+        clientId,
+        clientSecret,
+        campaignId,
+        ...(Object.keys(newTiers).length > 0 ? { tiers: newTiers } : {}),
+      },
     };
     await saveConfig(vaultPath, cfg);
     console.log("");
@@ -296,7 +300,7 @@ function listenForCallback(expectedState: string): Promise<string> {
       const err = url.searchParams.get("error");
       if (err) {
         res.writeHead(400, { "Content-Type": "text/html" });
-        res.end(`<html><body style="font-family: system-ui; padding: 2rem;"><h2>Patreon authorisation failed</h2><p>${escapeHtml(err)}</p></body></html>`);
+        res.end(`<html><body style="font-family: system-ui; padding: 2rem;"><h2>Patreon authorisation failed</h2><p>${htmlEscape(err)}</p></body></html>`);
         server.close();
         clearTimeout(timer);
         reject(new Error(`Patreon returned error: ${err}`));
@@ -350,14 +354,10 @@ function cryptoRandomState(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function escapeHtml(s: string): string {
-  return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
-}
-
 export async function patreonLink(role: string, tierId: string, vaultPath: string): Promise<void> {
   await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
-  if (!cfg.patreon) {
+  if (!cfg.oauth?.patreon) {
     throw new Error("Patreon is not configured yet. Run `vaults patreon configure` first.");
   }
   if (!cfg.roles.includes(role)) {
@@ -370,7 +370,7 @@ export async function patreonLink(role: string, tierId: string, vaultPath: strin
     throw new Error(`Tier ID looks wrong: '${tierId}'. Patreon tier IDs are numeric.`);
   }
 
-  cfg.patreon.tiers = { ...(cfg.patreon.tiers ?? {}), [role]: tierId.trim() };
+  cfg.oauth.patreon.tiers = { ...(cfg.oauth.patreon.tiers ?? {}), [role]: tierId.trim() };
   await saveConfig(vaultPath, cfg);
   console.log(`Linked role '${role}' → Patreon tier ${tierId.trim()}.`);
   console.log(`  Patrons whose pledge grants this tier can now sign in to '${role}'`);
@@ -380,11 +380,11 @@ export async function patreonLink(role: string, tierId: string, vaultPath: strin
 export async function patreonUnlink(role: string, vaultPath: string): Promise<void> {
   await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
-  if (!cfg.patreon?.tiers || !(role in cfg.patreon.tiers)) {
+  if (!cfg.oauth?.patreon?.tiers || !(role in cfg.oauth.patreon.tiers)) {
     throw new Error(`Role '${role}' has no Patreon tier mapping.`);
   }
-  delete cfg.patreon.tiers[role];
-  if (Object.keys(cfg.patreon.tiers).length === 0) delete cfg.patreon.tiers;
+  delete cfg.oauth.patreon.tiers[role];
+  if (Object.keys(cfg.oauth.patreon.tiers).length === 0) delete cfg.oauth.patreon.tiers;
   await saveConfig(vaultPath, cfg);
   console.log(`Unlinked role '${role}' from its Patreon tier. Password access still works.`);
 }
@@ -392,7 +392,7 @@ export async function patreonUnlink(role: string, vaultPath: string): Promise<vo
 export async function patreonClear(vaultPath: string): Promise<void> {
   await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
-  if (!cfg.patreon) {
+  if (!cfg.oauth?.patreon) {
     console.log("No Patreon configuration to clear.");
     return;
   }
@@ -405,7 +405,9 @@ export async function patreonClear(vaultPath: string): Promise<void> {
       if (ans !== "y" && ans !== "yes") { console.log("Cancelled."); return; }
     } finally { rl.close(); }
   }
-  delete cfg.patreon;
+  delete cfg.oauth.patreon;
+  // Drop the empty oauth block so saveConfig doesn't persist an empty object.
+  if (cfg.oauth && Object.keys(cfg.oauth).length === 0) delete cfg.oauth;
   await saveConfig(vaultPath, cfg);
   console.log("Removed Patreon configuration. Run `vaults push --rotate-secret` if you also want");
   console.log("to invalidate any sessions that were issued via the Patreon path.");
@@ -414,11 +416,11 @@ export async function patreonClear(vaultPath: string): Promise<void> {
 export async function patreonStatus(vaultPath: string): Promise<void> {
   await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {});
-  if (!cfg.patreon) {
+  if (!cfg.oauth?.patreon) {
     console.log("Patreon: not configured. Run `vaults patreon configure` to enable.");
     return;
   }
-  const { clientId, campaignId, tiers } = cfg.patreon;
+  const { clientId, campaignId, tiers } = cfg.oauth.patreon;
   console.log(`Patreon: configured`);
   console.log(`  client ID:    ${maskMid(clientId)}`);
   console.log(`  campaign ID:  ${campaignId}`);

@@ -66,7 +66,7 @@ The module clones the `foundry_base` document into the world under a determinist
 
 All state lives under a single `vaults` setting, an array of vault entries. The per-vault dialog edits one entry. Legacy single-vault keys (`url`, `token`, `rootFolder`, …) auto-migrate on first load.
 
-Each vault entry tracks: `id`, `label`, `url`, `rootFolder`, `token`, `role`, `public`, `knownRoles`, `dmRole`, `lastManifest`, `lastImageManifest`, `pendingState`.
+Each vault entry tracks: `id`, `label`, `url`, `rootFolder`, `token`, `role`, `public`, `knownRoles`, `dmRole`, `lastManifest`, `lastImageManifest`.
 
 ## Public API
 

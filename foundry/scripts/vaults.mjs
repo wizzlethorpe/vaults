@@ -2,6 +2,7 @@
 // small CRUD API + a one-time migration from the legacy single-vault keys.
 
 import { MODULE_ID, SETTINGS, VAULT_DEFAULTS, get, set } from "./settings.mjs";
+import { setVaultManifest, removeVaultManifest, migrateInlineManifestsIfNeeded } from "./vault-manifests.mjs";
 
 let migrated = false;
 
@@ -10,26 +11,32 @@ export async function migrateLegacyIfNeeded() {
   if (migrated) return;
   migrated = true;
 
+  // Lift any inline lastManifest/lastImageManifest off existing vault
+  // entries into the separate per-vault setting (pre-0.7 layout).
+  await migrateInlineManifestsIfNeeded();
+
   const list = get(SETTINGS.vaults) || [];
   if (list.length > 0) return; // already on the new model
 
   const legacyUrl = get(SETTINGS.url) || "";
   if (!legacyUrl) return; // nothing to migrate
 
+  const id = newVaultId();
   const entry = {
     ...VAULT_DEFAULTS,
-    id: newVaultId(),
+    id,
     label: deriveLabel(legacyUrl),
     url: legacyUrl,
     rootFolder: get(SETTINGS.rootFolder) || "Vault",
     token: get(SETTINGS.token) || "",
     role: get(SETTINGS.role) || "",
+  };
+  await set(SETTINGS.vaults, [entry]);
+  // Sync state from legacy single-vault setting → per-vault entry.
+  await setVaultManifest(id, {
     lastManifest: { ...(get(SETTINGS.lastManifest) || {}) },
     lastImageManifest: { ...(get(SETTINGS.lastImageManifest) || {}) },
-    pendingState: get(SETTINGS.pendingState) || "",
-  };
-
-  await set(SETTINGS.vaults, [entry]);
+  });
   console.info(`Vaults | migrated single-vault config to multi-vault registry: ${entry.label}`);
 }
 
@@ -67,10 +74,13 @@ export async function updateVault(id, patch) {
   return list[idx];
 }
 
-/** Remove a vault entry by id. Caller is responsible for cleanup of journals/images. */
+/** Remove a vault entry by id. Caller is responsible for cleanup of journals/images.
+ *  The per-vault sync state in vaultManifests is dropped here so the world
+ *  doesn't accumulate orphan manifest entries after repeated add/remove cycles. */
 export async function removeVault(id) {
   const list = listVaults().filter((v) => v.id !== id);
   await set(SETTINGS.vaults, list);
+  await removeVaultManifest(id);
 }
 
 /** Pretty label derived from a URL host. */

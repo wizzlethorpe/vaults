@@ -62,12 +62,26 @@ export type HandlerOutput =
  * the deploy root; styles into one `_handlers.css`. Each unique source
  * file is included exactly once, even if multiple handlers reference it,
  * so shared utility files don't duplicate.
+ *
+ * The optional `targets` block lists secondary consumers (currently just
+ * the Foundry VTT companion module under the key `"foundry"`) that the
+ * handler wants its assets shipped to. Each consumer requires its own
+ * opt-in *and* a runtime opt-in by whoever installs the consumer (the GM
+ * for Foundry). New consumers (MCP server, future VTTs) plug in here
+ * without growing the top-level HandlerAssets surface.
  */
 export interface HandlerAssets {
   /** Browser-side JS source files. Wrap your code in an IIFE to avoid global pollution. */
   scripts?: string[];
   /** Stylesheet source files. */
   styles?: string[];
+  /**
+   * Per-target opt-in for secondary asset bundles. Each key is the target
+   * name (e.g. `"foundry"`); each value declares whether the handler's
+   * scripts and/or styles should ride into that target's bundle. Default
+   * empty: nothing reaches secondary consumers without explicit opt-in.
+   */
+  targets?: { [target: string]: { scripts?: boolean; styles?: boolean } };
 }
 
 export interface InlineHandler {
@@ -95,26 +109,55 @@ export interface HandlerRegistry {
   codeBlock: Map<string, CodeBlockHandler>;
 }
 
-export function buildRegistry(handlers: Handler[]): HandlerRegistry {
+/**
+ * Build the dispatch registry from built-in + user handlers. User handlers
+ * register after built-ins so they win on prefix/lang collision (documented
+ * "user override" semantics) — but a *silent* override is a footgun: the
+ * built-in's contract may change between CLI versions and the user's
+ * shadowing handler keeps an old shape, breaking quietly. Surface every
+ * shadow at registration time with a console.warn so the override is at
+ * least visible in build logs.
+ *
+ * Pass user handlers as `[]` if there are none — callers shouldn't need to
+ * gate on emptiness.
+ */
+export function buildRegistry(builtin: Handler[], user: Handler[] = []): HandlerRegistry {
   const inline = new Map<string, InlineHandler>();
   const codeBlock = new Map<string, CodeBlockHandler>();
-  for (const h of handlers) {
-    // Last-registered wins on conflict; user handlers loaded after built-ins
-    // can therefore override the built-in.
-    if ("inline" in h) inline.set(h.inline, h);
-    else codeBlock.set(h.codeBlock, h);
+  const builtinInlineIds = new Set<string>();
+  const builtinCodeBlockIds = new Set<string>();
+
+  for (const h of builtin) {
+    if ("inline" in h) {
+      inline.set(h.inline, h);
+      builtinInlineIds.add(h.inline);
+    } else {
+      codeBlock.set(h.codeBlock, h);
+      builtinCodeBlockIds.add(h.codeBlock);
+    }
+  }
+  for (const h of user) {
+    if ("inline" in h) {
+      if (builtinInlineIds.has(h.inline)) {
+        console.warn(
+          `handlers: user inline handler 'inline: "${h.inline}"' shadows the built-in `
+          + `with the same prefix. Override is intentional? OK; otherwise rename the user handler.`,
+        );
+      }
+      inline.set(h.inline, h);
+    } else {
+      if (builtinCodeBlockIds.has(h.codeBlock)) {
+        console.warn(
+          `handlers: user code-block handler 'codeBlock: "${h.codeBlock}"' shadows the built-in `
+          + `with the same lang tag. Override is intentional? OK; otherwise rename the user handler.`,
+        );
+      }
+      codeBlock.set(h.codeBlock, h);
+    }
   }
   return { inline, codeBlock };
 }
 
-const HTML_ESCAPE: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-export function htmlEscape(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => HTML_ESCAPE[c]!);
-}
+// Re-exported from the canonical location (cli/src/escape.ts) so existing
+// `import { htmlEscape } from ".../handlers/types.js"` callers keep working.
+export { htmlEscape } from "../../escape.js";

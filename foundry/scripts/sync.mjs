@@ -4,12 +4,14 @@
 // reconcile its image cache.
 
 import { fetchManifest, fetchSourceBatch } from "./api.mjs";
-import { upsertFile, deleteFile, buildFolderInfo } from "./importer.mjs";
+import { upsertFile, deleteFile, buildFolderInfo, reconcileEntryPlacement } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
 import { applyInstance, deleteInstance } from "./instance.mjs";
 import { tokenInfo } from "./auth.mjs";
 import { getVault, updateVault } from "./vaults.mjs";
+import { getVaultManifest, setVaultManifest } from "./vault-manifests.mjs";
+import { applyHandlerAssetsWithConfirm } from "./handler-assets.mjs";
 
 export async function sync(vaultId, { forceFull = false } = {}) {
   const vault = getVault(vaultId);
@@ -47,6 +49,21 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     ui.notifications.error(game.i18n.format("VAULTS.Sync.Error", { message: err.message }));
     return;
   }
+  // Manifest schema/version compatibility check. The CLI advertises a
+  // `manifest_version` (currently 1) and a `cli_version`. We support
+  // manifest_version up to OUR_MANIFEST_VERSION; a higher value means the
+  // deploy was built by a newer CLI than our module knows about, which
+  // may have shape changes we'd misinterpret. Warn but continue —
+  // additive changes are forward-safe.
+  const OUR_MANIFEST_VERSION = 1;
+  const remoteManifestVersion = Number(manifest.manifest_version) || 0;
+  if (remoteManifestVersion > OUR_MANIFEST_VERSION) {
+    console.warn(
+      `Vaults | ${vault.label}: deploy manifest_version=${remoteManifestVersion}, `
+      + `our module supports up to ${OUR_MANIFEST_VERSION}. Some new fields may be ignored. `
+      + `cli_version: ${manifest.cli_version || "(unknown)"}`,
+    );
+  }
   // Self-correcting: every manifest fetch refreshes the cached public flag
   // and the role list, so deploy-side changes (single↔multi-role, role
   // added/removed) pick up on the next sync without manual reconfiguration.
@@ -56,6 +73,17 @@ export async function sync(vaultId, { forceFull = false } = {}) {
   const patch = {};
   if (vault.public !== isPublic) patch.public = isPublic;
   if (!arraysEqual(vault.knownRoles, knownRoles)) patch.knownRoles = knownRoles;
+  // Cache the manifest's advertised asset paths so applyHandlerAssets can
+  // fetch them via the canonical URL (instead of guessing /_handlers.foundry.*).
+  // Falls back to the well-known names when the manifest predates the field.
+  const remoteAssets = manifest.assets?.foundry || {};
+  const newAssetPaths = {
+    foundryJs: remoteAssets.js || null,
+    foundryCss: remoteAssets.css || null,
+  };
+  if (JSON.stringify(vault.handlerAssetPaths || {}) !== JSON.stringify(newAssetPaths)) {
+    patch.handlerAssetPaths = newAssetPaths;
+  }
   // If the configured dmRole no longer exists in the deploy (role was
   // removed), drop it; the user can re-set on the next settings open.
   if (vault.dmRole && !knownRoles.includes(vault.dmRole)) patch.dmRole = "";
@@ -65,7 +93,11 @@ export async function sync(vaultId, { forceFull = false } = {}) {
   }
 
   const remote = new Map(manifest.files.map((f) => [f.path, f.hash]));
-  const local = forceFull ? new Map() : new Map(Object.entries(vault.lastManifest || {}));
+  // Per-vault sync state lives in the separate vaultManifests setting
+  // (see vault-manifests.mjs) so per-vault config edits don't round-trip
+  // every other vault's full file list on every save.
+  const lastSync = getVaultManifest(vault.id);
+  const local = forceFull ? new Map() : new Map(Object.entries(lastSync.lastManifest || {}));
 
   const bodyPaths = manifest.files.filter((f) => f.path.endsWith(".body.html")).map((f) => f.path);
   const pathIndex = buildPathIndex(manifest.files);
@@ -75,7 +107,7 @@ export async function sync(vaultId, { forceFull = false } = {}) {
   // single linear pass over the manifest.
   const allMdPaths = bodyPaths.map((p) => p.replace(/\.body\.html$/i, ".md"));
   const folderInfo = buildFolderInfo(allMdPaths);
-  // Per-body reskin metadata (foundry_base UUID, override block, image URL).
+  // Per-body reskin metadata (foundry: { base, data, embed }, image URL).
   // Only present on pages that opted in; the rest skip applyReskin entirely.
   const bodyMetaIndex = new Map();
   for (const f of manifest.files) {
@@ -87,7 +119,7 @@ export async function sync(vaultId, { forceFull = false } = {}) {
 
   // Pull any new/changed images first so the freshly-rendered <img src>
   // URLs in journal HTML resolve immediately.
-  if (forceFull) await updateVault(vault.id, { lastImageManifest: {} });
+  if (forceFull) await setVaultManifest(vault.id, { lastImageManifest: {} });
   let imageStats = { downloaded: 0, removed: 0, errors: 0 };
   try {
     const fresh = getVault(vault.id); // re-read after the forceFull reset
@@ -132,14 +164,15 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     try {
       const result = await upsertFile(vault, logicalPath, html, pathIndex, pageMeta, folderInfo);
       if (result === "added") added++; else modified++;
-      // Clone-from-foundry_base runs after the JournalEntryPage exists so the
-      // @Embed[…] in the doc description resolves on first render.
-      if (pageMeta?.foundry_base) {
+      // Instantiation (clone or blank) runs after the JournalEntryPage
+      // exists so the @Embed[…] in the doc description resolves on first
+      // render. Only fires when the page declared foundry.base.
+      if (pageMeta?.foundry?.base) {
         try {
           await applyInstance(vault, logicalPath, pageMeta);
           instances++;
         } catch (err) {
-          console.warn(`Vaults | foundry_base apply failed for ${logicalPath}:`, err);
+          console.warn(`Vaults | foundry instantiation failed for ${logicalPath}:`, err);
         }
       }
     } catch (err) {
@@ -158,7 +191,20 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     catch (err) { console.warn(`Vaults | delete instance failed for ${logicalPath}:`, err); }
   }
 
-  await updateVault(vault.id, { lastManifest: Object.fromEntries(remote) });
+  await setVaultManifest(vault.id, { lastManifest: Object.fromEntries(remote) });
+
+  // Re-place existing entries whose leaf-collapse status changed since
+  // the last sync (folder gained/lost subfolders). Cheap pass; only hits
+  // the journals belonging to this vault.
+  await reconcileEntryPlacement(vault, folderInfo);
+
+  // Refresh handler-asset injection. No-op when both per-vault toggles are
+  // off (the default); otherwise pulls the opt-in subset bundles and
+  // (re-)injects scoped <style>/<script> tags. The Confirm variant prompts
+  // the GM before injecting JS — once per session, so back-to-back syncs
+  // don't nag, but a vault whose handler bundle changed mid-session is
+  // re-shown the prompt by the natural session-cache reset on world load.
+  await applyHandlerAssetsWithConfirm(getVault(vault.id), { reason: "sync" });
 
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
   ui.notifications.info(game.i18n.format("VAULTS.Sync.Done", { added, modified, removed, seconds }));
@@ -166,7 +212,7 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     console.info(`Vaults | ${vault.label} images: ${imageStats.downloaded} downloaded, ${imageStats.removed} removed`
       + (imageStats.errors ? `, ${imageStats.errors} failed` : ""));
   }
-  if (instances > 0) console.info(`Vaults | ${vault.label} instantiated ${instances} document(s) from foundry_base.`);
+  if (instances > 0) console.info(`Vaults | ${vault.label} instantiated ${instances} document(s) from page foundry.base.`);
 }
 
 function arraysEqual(a, b) {

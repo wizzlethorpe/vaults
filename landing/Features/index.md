@@ -15,7 +15,7 @@ the underlying markdown.
 | [[Handlers]] | Inline `prefix:` and code-block transforms, with `dice:` and `fm:` built in |
 | [[Statblocks]] | D&D 5e creature statblocks, Fantasy-Statblocks-compatible YAML |
 | [[Role gating]] | `public`/`patron`/`dm` tiers, page + callout gating, auth flow |
-| [[Foundry integration]] | Sync to Foundry VTT, `foundry_base` clones, dmRole gating |
+| [[Foundry integration]] | Sync to Foundry VTT, `foundry.base` clones, dmRole gating |
 | [[Passthrough files]] | Audio/video/PDF/EPUB shipping with per-variant role gating |
 | [[Patreon login]] | Optional OAuth overlay: link roles to Patreon tiers so patrons sign in directly |
 

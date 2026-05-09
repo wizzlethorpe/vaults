@@ -1,41 +1,43 @@
 ---
 title: Mossroot
 image: mossroot-portrait.webp
-foundry_base: Actor:npc
 foundry:
-  system:
-    attributes:
-      hp:
-        value: 45
-        max: 45
-      ac:
-        flat: 14
-      movement:
-        walk: 30
-        burrow: 10
-    details:
-      cr: 3
-      type:
-        value: fey
-      alignment: neutral
-    abilities:
-      str: { value: 16 }
-      dex: { value: 13 }
-      con: { value: 14 }
-      int: { value: 7 }
-      wis: { value: 14 }
-      cha: { value: 10 }
-  prototypeToken:
-    name: "Mossroot"
+  base: Actor:npc
+  data:
+    system:
+      attributes:
+        hp:
+          value: 45
+          max: 45
+        ac:
+          flat: 14
+        movement:
+          walk: 30
+          burrow: 10
+      details:
+        cr: 3
+        type:
+          value: fey
+        alignment: neutral
+      abilities:
+        str: { value: 16 }
+        dex: { value: 13 }
+        con: { value: 14 }
+        int: { value: 7 }
+        wis: { value: 14 }
+        cha: { value: 10 }
+    prototypeToken:
+      name: "Mossroot"
 ---
 
 A homebrew fey forest-spirit that tends the deep stands of [[Witchwood Cult|Witchwood]] outside the Mossfoot. Locals describe it as "a stump that walks when no one is watching." It is patient, jealous, and very, very good at hearing footsteps.
 
 > [!info] Live demo of three features chained
-> This page demonstrates all three of: blank-doc ``` `foundry_base` ```, the
-> ``` `statblock` ``` handler, and ``` `fm:` ``` pulling from frontmatter. The block below
-> reads ``` `cr` ```, AC, and HP straight out of the ``` `foundry:` ``` data, so the
-> wiki render and the synced Foundry actor sheet share one source of truth.
+> This page demonstrates all three of: blank-doc `foundry.base`, the
+> ``` `statblock` ``` handler, and ``` `fm:` ``` pulling from frontmatter.
+> The block below reads `cr`, AC, and HP straight out of the `foundry.data`
+> block, so the wiki render and the synced Foundry actor sheet share one
+> source of truth.
 
 ## Statblock
 
@@ -44,10 +46,10 @@ name: Mossroot
 size: Medium
 type: fey
 alignment: neutral
-ac: "`fm: foundry.system.attributes.ac.flat`"
-hp: "`fm: foundry.system.attributes.hp.max`"
+ac: "`fm: foundry.data.system.attributes.ac.flat`"
+hp: "`fm: foundry.data.system.attributes.hp.max`"
 hit_dice: 7d8 + 14
-speed: "`fm: foundry.system.attributes.movement.walk` ft., burrow `fm: foundry.system.attributes.movement.burrow` ft."
+speed: "`fm: foundry.data.system.attributes.movement.walk` ft., burrow `fm: foundry.data.system.attributes.movement.burrow` ft."
 stats: [16, 13, 14, 7, 14, 10]
 saves:
   - constitution: 4
@@ -60,7 +62,7 @@ damage_immunities: poison
 condition_immunities: charmed, exhaustion, poisoned
 senses: darkvision 60 ft., tremorsense 60 ft., passive Perception 14
 languages: Sylvan, understands Common
-cr: "`fm: foundry.system.details.cr`"
+cr: "`fm: foundry.data.system.details.cr`"
 traits:
   - name: False Appearance
     desc: While Mossroot remains motionless, it is indistinguishable from a moss-covered stump.
@@ -80,18 +82,19 @@ actions:
 The frontmatter declares a blank Foundry NPC actor (no compendium template):
 
 ```yaml
-foundry_base: Actor:npc
 foundry:
-  system:
-    attributes:
-      hp: { value: 45, max: 45 }
-      ac: { flat: 14 }
-      movement: { walk: 30, burrow: 10 }
-    details:
-      cr: 3
-      type: { value: fey }
+  base: Actor:npc
+  data:
+    system:
+      attributes:
+        hp: { value: 45, max: 45 }
+        ac: { flat: 14 }
+        movement: { walk: 30, burrow: 10 }
+      details:
+        cr: 3
+        type: { value: fey }
 ```
 
-The statblock above pulls AC, HP, speeds, and CR from that same `foundry:` block via `` `fm: foundry.system.attributes.ac.flat` `` etc. Change the value in one place, both the wiki render and the synced Foundry actor sheet update on the next push. Damage rolls in actions are clickable `dice:` buttons. Everywhere else the inline-handler dispatcher chains naturally because every string field in the statblock YAML is tokenized before render.
+The statblock above pulls AC, HP, speeds, and CR from that same `foundry.data` subtree via `` `fm: foundry.data.system.attributes.ac.flat` `` etc. Change the value in one place; both the wiki render and the synced Foundry actor sheet update on the next push. Damage rolls in actions are clickable `dice:` buttons. Everywhere else the inline-handler dispatcher chains naturally because every string field in the statblock YAML is tokenized before render.
 
 See [[Handlers]], [[Statblocks]], and [[Foundry integration]] for the underlying mechanics.

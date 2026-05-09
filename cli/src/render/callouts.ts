@@ -17,7 +17,11 @@ import { visit, SKIP } from "unist-util-visit";
 // `[ \t]*` (not `\s*`) for the gap between the closing bracket and the
 // title — `\s` includes `\n`, which would let an empty-title callout slurp
 // the next line into the title and leave the body empty.
-const CALLOUT_RE = /^\[!(\w+)\][+-]?[ \t]*(.*?)(?:\n|$)/;
+//
+// The fold marker `+` (default-open) or `-` (default-collapsed) is captured
+// so we can emit a fold-aware <details>; absence means a non-foldable <div>.
+// Type allows hyphens (`[!my-note]`) — Obsidian permits them.
+const CALLOUT_RE = /^\[!([\w-]+)\]([+-]?)[ \t]*(.*?)(?:\n|$)/;
 
 export function calloutPlugin(opts: { redactRoles?: ReadonlySet<string> } = {}): Plugin<[], Root> {
   const redact = opts.redactRoles;
@@ -31,7 +35,7 @@ export function calloutPlugin(opts: { redactRoles?: ReadonlySet<string> } = {}):
       const match = CALLOUT_RE.exec((firstChild as Text).value);
       if (!match) return;
 
-      const [fullMatch, type, rawTitle] = match;
+      const [fullMatch, type, foldMarker, rawTitle] = match;
       const lowerType = type!.toLowerCase();
 
       // Role-gated callout; drop entirely from this tree.
@@ -52,18 +56,33 @@ export function calloutPlugin(opts: { redactRoles?: ReadonlySet<string> } = {}):
 
       // Both className and data-callout are emitted: our default CSS keys off
       // the class, while Obsidian-style snippets target [data-callout="…"].
+      // Fold marker (+/-) switches the wrapper to <details> so the user gets
+      // native disclosure behaviour without extra JS; bare callouts stay as
+      // <div> so non-foldable callouts render exactly as they did before.
       const lower = type!.toLowerCase();
-      node.data = {
-        hName: "div",
-        hProperties: {
-          className: ["callout", `callout-${lower}`],
-          dataCallout: lower,
-        },
-      };
+      const fold = foldMarker as string;
+      const useDetails = fold === "+" || fold === "-";
+      const titleHName = useDetails ? "summary" : "div";
+      node.data = useDetails
+        ? {
+            hName: "details",
+            hProperties: {
+              className: ["callout", `callout-${lower}`],
+              dataCallout: lower,
+              ...(fold === "+" ? { open: true } : {}),
+            },
+          }
+        : {
+            hName: "div",
+            hProperties: {
+              className: ["callout", `callout-${lower}`],
+              dataCallout: lower,
+            },
+          };
 
       node.children.unshift({
         type: "paragraph",
-        data: { hName: "div", hProperties: { className: ["callout-title"] } },
+        data: { hName: titleHName, hProperties: { className: ["callout-title"] } },
         children: [{ type: "text", value: title }],
       } satisfies Paragraph);
     });

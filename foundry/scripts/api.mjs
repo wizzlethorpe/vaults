@@ -6,7 +6,13 @@
 // /_connect don't exist. Falls back to direct CDN GETs in that case;
 // chunked + parallel-bounded to stay polite with rate limits.
 
-function url(vault, path) {
+/**
+ * Build a fully-qualified URL for a vault endpoint, appending the bearer
+ * token as `?_token=` when one is set on the vault entry. Exported so other
+ * modules (media.mjs, etc.) construct vault URLs the same way — keeps the
+ * trailing-slash and token rules in one place.
+ */
+export function url(vault, path) {
   if (!vault?.url) throw new Error("Vault URL is not configured.");
   const u = new URL(path, vault.url.endsWith("/") ? vault.url : vault.url + "/");
   if (vault.token) u.searchParams.set("_token", vault.token);
@@ -21,6 +27,23 @@ async function fetchJson(u) {
 
 export async function fetchManifest(vault) {
   return fetchJson(url(vault, "/_manifest.json"));
+}
+
+/**
+ * Fetch a text file from the vault by absolute path. Returns the body as a
+ * string, or null on any non-OK response (404 included). Used by the
+ * handler-asset import flow to grab `_handlers.foundry.{js,css}` if and
+ * only if the GM has opted in — these files only exist when at least one
+ * handler in the vault opted into Foundry import too.
+ */
+export async function fetchTextOrNull(vault, path) {
+  try {
+    const res = await fetch(url(vault, path));
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  }
 }
 
 const BATCH_SIZE = 100;

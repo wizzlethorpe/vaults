@@ -125,9 +125,10 @@ aliases:                          # extra names that resolve to this page from w
   - Pale Mountains
   - The Pale Mountains
 image: assets/banner.webp         # optional cover image (OG / Twitter / Bases / Foundry)
-foundry_base: Compendium.dnd5e.monsters.Actor.bandit   # optional Foundry doc to clone
-foundry:                                                # optional doc overrides
-  system.attributes.hp.value: 22
+foundry:                          # optional Foundry instantiation
+  base: Compendium.dnd5e.monsters.Actor.bandit   # template UUID, OR Type[:subtype] for blank doc
+  data:                                          # deep-merge overlay
+    system.attributes.hp.value: 22
 ---
 ```
 

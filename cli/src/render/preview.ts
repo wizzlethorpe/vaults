@@ -5,6 +5,7 @@ import remarkRehype from "remark-rehype";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeStringify from "rehype-stringify";
 import { slugify } from "./slug.js";
+import { stripFrontmatter } from "./frontmatter.js";
 
 // Builds compact JSON preview blobs at build time for hover popovers.
 // One file per page, served alongside the rendered .html as `<path>.preview.json`.
@@ -90,9 +91,5 @@ function truncateMarkdown(source: string, maxChars: number): string {
     if (total >= maxChars) break;
   }
   return out.join("\n\n");
-}
-
-function stripFrontmatter(s: string): string {
-  return s.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
 }
 

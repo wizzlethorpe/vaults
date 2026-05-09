@@ -1,9 +1,11 @@
 // Instantiate a world-level Foundry document (Actor / Item) from a vault page.
-// `foundry_base: <UUID>` in page frontmatter names a template — usually an SRD
-// compendium doc, but a world-level doc works too. We clone the template into
-// the world under a deterministic id derived from (vault.id, path), then layer
-// on the page's name + cover image + an `@Embed[…]` of the page's journal so
-// the document description always shows the rendered article.
+// `foundry: { base: <UUID>, data: {...}, embed: false }` in page frontmatter
+// names a template (or a doc type), supplies the deep-merge overlay, and
+// optionally suppresses the auto-embed of the page article into the doc's
+// description field. We clone the template into the world under a
+// deterministic id derived from (vault.id, path), then layer on the page's
+// name + cover image + an `@Embed[…]` of the page's journal so the document
+// description always shows the rendered article.
 //
 // Why clone instead of mutate the template:
 //   - Compendium docs are read-only; you can't mutate them directly.
@@ -32,11 +34,11 @@ const DESCRIPTION_FIELDS = {
   },
 };
 
-// Document types supported by `foundry_base: <UUID>` (clone-from-template).
+// Document types supported by `foundry.base: <UUID>` (clone-from-template).
 // Cloning needs a description-embed path, so this stays the narrow set.
 const CLONE_SUPPORTED_DOCS = new Set(["Actor", "Item"]);
 
-// Document types supported by `foundry_base: <type>[:<subtype>]` (blank doc).
+// Document types supported by `foundry.base: <type>[:<subtype>]` (blank doc).
 // Wider since we don't need a description embed for a blank doc — the user
 // drives the doc entirely via the `foundry:` overlay block.
 const BLANK_DOC_TYPES = new Set([
@@ -59,18 +61,27 @@ const COLLECTION_FOR = {
 
 /**
  * Instantiate (or update) the document a vault page owns. No-op when there's
- * no foundry_base. Idempotent: re-running with unchanged inputs converges.
+ * no `foundry.base`. Idempotent: re-running with unchanged inputs converges.
  *
- * `foundry_base` accepts two forms:
+ * Frontmatter shape:
+ *   foundry:
+ *     base: <UUID> | <Type>[:<subtype>]   # required to instantiate
+ *     embed: true | false                  # optional, default true
+ *     data: { … }                          # optional deep-merge overlay
+ *
+ * `base` accepts two forms:
  *   - **UUID** (`Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa`,
  *     `Actor.abc123`, …): clone the named template into the world.
  *   - **Type[:subtype]** (`Actor:npc`, `Item:weapon`, `Scene`, …): create a
- *     blank document of that type. The `foundry:` frontmatter overlay then
- *     populates fields. Useful when no template exists in any compendium —
- *     pure homebrew or bespoke maps/macros/decks.
+ *     blank document of that type. `data` then populates fields. Useful
+ *     when no template exists in any compendium — pure homebrew or
+ *     bespoke maps/macros/decks.
  */
 export async function applyInstance(vault, vaultPath, meta) {
-  const parsed = parseFoundryBase(meta.foundry_base);
+  const fm = meta?.foundry;
+  // No foundry block at all → nothing to instantiate.
+  if (!fm || typeof fm !== "object") return;
+  const parsed = parseFoundryBase(fm.base);
   if (!parsed) return;
 
   let docName;
@@ -190,20 +201,23 @@ async function buildOverlay(vault, vaultPath, meta, docName) {
   // Embed the page's JournalEntryPage into the document description so the
   // wiki article shows up inline on the doc sheet. Skipped silently when
   // the system isn't in the supported table — clone still happens. Pages
-  // can opt out with `foundry_no_embed: true` (e.g. stats-only pages, or
-  // DM-private pages where embedding would leak content into the actor sheet).
+  // can opt out with `foundry: { embed: false }` (e.g. stats-only pages,
+  // or DM-private pages where embedding would leak content into the
+  // actor sheet). Default is true.
+  const fm = meta?.foundry;
   const descPath = DESCRIPTION_FIELDS[game.system.id]?.[docName];
-  if (descPath && !meta.foundry_no_embed) {
+  const embedAuto = fm?.embed !== false;
+  if (descPath && embedAuto) {
     const eId = await entryId(vault.id, vaultPath);
     const pId = await pageId(vault.id, vaultPath);
     setPath(overlay, descPath, `<p>@Embed[JournalEntry.${eId}.JournalEntryPage.${pId} inline]</p>`);
   }
 
-  // User overrides win. Deep-merge so e.g. `foundry: { system: { attributes:
-  // { hp: { value: 45 } } } }` patches just that leaf without clobbering
-  // sibling keys we set above.
-  if (meta.foundry && typeof meta.foundry === "object") {
-    deepMerge(overlay, meta.foundry);
+  // User overrides win. Deep-merge so e.g. `foundry: { data: { system: {
+  // attributes: { hp: { value: 45 } } } } }` patches just that leaf
+  // without clobbering sibling keys we set above.
+  if (fm?.data && typeof fm.data === "object") {
+    deepMerge(overlay, fm.data);
   }
   return overlay;
 }

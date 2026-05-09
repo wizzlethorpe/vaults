@@ -14,9 +14,9 @@ dir.
 > **Wizzlethorpe Vaults**, and click Install. Source on
 > [GitHub](https://github.com/wizzlethorpe/vaults).
 
-Pages can additionally **clone a compendium document** into the world by
-setting `foundry_base: <UUID>` in frontmatter. This is useful for NPCs and
-items that need real Foundry mechanics, not just journal text.
+Pages can additionally **instantiate a Foundry document** (Actor, Item,
+Scene, etc.) by adding a `foundry:` block to frontmatter. Useful for NPCs
+and items that need real mechanics, not just journal text.
 
 ## What gets synced
 
@@ -26,75 +26,78 @@ items that need real Foundry mechanics, not just journal text.
 | `image:` (or auto-discovered cover) | Image cached under `worlds/<id>/vaults-cache/<vault-id>/...` |
 | `[[Other Page]]` wikilinks | Rewritten to `@UUID[JournalEntry.<id>]{label}` enrichers |
 | Audio / PDFs / other files | Downloaded alongside images |
-| `foundry_base: <UUID>` | New `Actor` or `Item` cloned from the template (see below) |
-| `foundry_base: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
-| `foundry_no_embed: true` | Skip auto-embedding the page article into the doc's description field |
+| `foundry.base: <UUID>` | New `Actor` or `Item` cloned from the template (see below) |
+| `foundry.base: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
+| `foundry.embed: false` | Skip auto-embedding the page article into the doc's description field |
+| `foundry.data` | Deep-merge overlay applied to the resulting document |
 
-## Actor / Item cloning via `foundry_base`
+## Actor / Item cloning via `foundry.base`
 
-Set `foundry_base` to any document UUID, usually a compendium document
+Set `foundry.base` to any document UUID, usually a compendium document
 like an SRD monster or magic item:
 
 ```yaml
 ---
 title: Aelar Galanodel
 image: aelar-portrait.webp
-foundry_base: Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa
 foundry:
-  system:
-    attributes:
-      hp: { value: 22, max: 30 }
-  prototypeToken:
-    name: "Aelar (wounded)"
+  base: Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa
+  data:
+    system:
+      attributes:
+        hp: { value: 22, max: 30 }
+    prototypeToken:
+      name: "Aelar (wounded)"
 ---
 ```
 
 On sync, the Foundry module:
 
-1. Calls `fromUuid(foundry_base)` to load the template.
+1. Calls `fromUuid(foundry.base)` to load the template.
 2. Clones it into the world under a **deterministic id** derived from
    `(vault.id, page.path)` and re-syncs update the same doc rather than
    creating duplicates.
 3. Layers on the page-driven defaults: `name` ← page title, `img` ← cover
    image, description ← `@Embed[…]` of the page's JournalEntryPage.
-4. Deep-merges the `foundry:` override block on top, so HP/CR/etc. land
-   exactly where they are supposed to.
+4. Deep-merges `foundry.data` on top, so HP/CR/etc. land exactly where
+   they are supposed to.
 
-The result is an Actor (or Item) whose description embeds the wiki article. Edit the actor's HP in Foundry → the next sync preserves it (we only overwrite the canonical fields + your `foundry:` overrides).
+The result is an Actor (or Item) whose description embeds the wiki article. Edit the actor's HP in Foundry, the next sync preserves it (we only overwrite the canonical fields + your `foundry.data` overrides).
 
-For pages that *shouldn't* leak their article into the actor sheet — DM-private notes, or stats-only pages where the embed adds nothing — set `foundry_no_embed: true` in the frontmatter. The clone / blank doc still gets created with the right name, image, and `foundry:` overlay; only the description field is left at whatever the template (or blank) had.
+For pages that *shouldn't* leak their article into the actor sheet, DM-private notes, or stats-only pages where the embed adds nothing, set `foundry.embed: false`. The clone / blank doc still gets created with the right name, image, and `foundry.data` overlay; only the description field is left at whatever the template (or blank) had.
 
 ### Blank documents
 
 When no template exists in any compendium (pure homebrew, bespoke maps,
-custom roll tables), use the type-form of `foundry_base`:
+custom roll tables), use the type-form of `foundry.base`:
 
 ```yaml
 ---
 title: Joywraith
-foundry_base: Actor:npc
 foundry:
-  system:
-    attributes:
-      hp: { value: 67, max: 67 }
-      ac: { value: 13 }
-    details:
-      cr: 4
+  base: Actor:npc
+  data:
+    system:
+      attributes:
+        hp: { value: 67, max: 67 }
+        ac: { value: 13 }
+      details:
+        cr: 4
 ---
 ```
 
-`foundry_base: Scene` makes a blank scene, `foundry_base: RollTable` a blank
-table, `foundry_base: Item:weapon` a blank weapon, and so on. The same
-deterministic-id and `foundry:` overlay rules apply — the doc lives at a
-known id, sync re-applies your overrides, and a deleted page deletes
-the doc. Supported types: Actor, Item, Scene, JournalEntry, RollTable,
-Macro, Cards, Playlist. Subtypes are system-specific (dnd5e Actor: npc,
-character, vehicle, group; dnd5e Item: weapon, equipment, consumable, …).
-The bare-type form (`foundry_base: Actor`) skips subtype and lets the
-active system pick its default, which keeps the syntax portable across
-systems.
+`foundry.base: Scene` makes a blank scene, `foundry.base: RollTable` a
+blank table, `foundry.base: Item:weapon` a blank weapon, and so on. The
+same deterministic-id and `foundry.data` overlay rules apply: the doc
+lives at a known id, sync re-applies your overrides, and a deleted page
+deletes the doc. Supported types: Actor, Item, Scene, JournalEntry,
+RollTable, Macro, Cards, Playlist. Subtypes are system-specific (dnd5e
+Actor: npc, character, vehicle, group; dnd5e Item: weapon, equipment,
+consumable, …). The bare-type form (`foundry.base: Actor`) skips subtype
+and lets the active system pick its default, which keeps the syntax
+portable across systems.
 
-[[Mossroot]] is a worked example: blank `Actor:npc`, full `foundry:` data
+[[Mossroot]] is a worked example: blank `Actor:npc`, full `foundry.data`
 block, statblock pulling AC/HP/CR/speed via `fm:` from that same block, so
 one frontmatter source drives both the wiki render and the synced Foundry
 actor sheet.

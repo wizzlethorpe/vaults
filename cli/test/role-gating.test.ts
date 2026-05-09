@@ -71,7 +71,7 @@ async function readJson(path: string): Promise<unknown> {
 interface ManifestEntry {
   path: string;
   hash: string;
-  meta?: { role: string; foundry_base?: string };
+  meta?: { role: string; foundry?: { base?: string } };
 }
 interface Manifest { auth: { required: boolean; roles: string[] }; files: ManifestEntry[]; }
 

@@ -33,22 +33,23 @@ export interface VaultConfig {
 
   /** Access tiers, lowest → highest. First is the default for untagged content. */
   roles: string[];
-  /** "password" today; future: "cloudflare-access", "oauth-jwt". */
-  authType: string;
   /** role name → "iter:saltHex:hashHex" produced by `vaults role add` / `vaults password`. */
   rolePasswords: Record<string, string>;
 
   /**
-   * Patreon OAuth overlay (optional, additive). Roles always have a password
-   * gate; if a role's name appears in `patreon.tiers`, patrons whose pledge
-   * grants that tier can ALSO authenticate via Patreon's OAuth flow.
+   * OAuth provider overlays (optional, additive). Roles always have a password
+   * gate; if a role's name appears in any provider's `tiers`, members whose
+   * pledge / membership grants that tier can ALSO authenticate via the
+   * provider's OAuth flow. New providers (Discord, GitHub Sponsors, …) plug
+   * in here without growing the top-level VaultConfig surface.
    *
-   * `clientId` / `campaignId` / `tiers` ride to the deploy as middleware
-   * constants and live in `.vaultrc.json`. `clientSecret` is a real secret
-   * (lives in `.env` as PATREON_CLIENT_SECRET); we surface it here so
-   * `vaults push` can re-upload it as a Wrangler secret.
+   * Provider config (clientId / campaignId / tiers) rides to the deploy as
+   * middleware constants and lives in `.vaultrc.json`. Secrets (clientSecret)
+   * stay in `.env` and are mirrored to Wrangler secrets on push.
    */
-  patreon?: PatreonConfig;
+  oauth?: {
+    patreon?: PatreonConfig;
+  };
 }
 
 export interface PatreonConfig {
@@ -63,7 +64,6 @@ const DEFAULT_CONFIG: VaultConfig = {
   imageQuality: 85,
   maxFileBytes: 25 * 1024 * 1024,
   roles: ["public"],
-  authType: "password",
   rolePasswords: {},
 };
 
@@ -102,10 +102,13 @@ export async function loadConfig(vaultPath: string, overrides: Partial<VaultConf
   const sessionFromEnv = process.env[ENV_SESSION_SECRET] || dotEnv[ENV_SESSION_SECRET];
   if (sessionFromEnv) merged.sessionSecret = sessionFromEnv;
 
-  if (merged.patreon) {
+  if (merged.oauth?.patreon) {
     const patreonSecretFromEnv = process.env[ENV_PATREON_CLIENT_SECRET] || dotEnv[ENV_PATREON_CLIENT_SECRET];
     if (patreonSecretFromEnv) {
-      merged.patreon = { ...merged.patreon, clientSecret: patreonSecretFromEnv };
+      merged.oauth = {
+        ...merged.oauth,
+        patreon: { ...merged.oauth.patreon, clientSecret: patreonSecretFromEnv },
+      };
     }
   }
 
@@ -115,8 +118,12 @@ export async function loadConfig(vaultPath: string, overrides: Partial<VaultConf
     ...merged,
     roles: [...merged.roles],
     rolePasswords: { ...merged.rolePasswords },
-    ...(merged.patreon ? {
-      patreon: { ...merged.patreon, tiers: { ...(merged.patreon.tiers ?? {}) } },
+    ...(merged.oauth ? {
+      oauth: {
+        ...(merged.oauth.patreon ? {
+          patreon: { ...merged.oauth.patreon, tiers: { ...(merged.oauth.patreon.tiers ?? {}) } },
+        } : {}),
+      },
     } : {}),
   };
 }
@@ -138,9 +145,14 @@ export async function saveConfig(vaultPath: string, cfg: VaultConfig): Promise<v
   for (const k of Object.keys(cfg) as (keyof VaultConfig)[]) {
     if (k === "sessionSecret") continue; // → .env
     const v = cfg[k];
-    if (k === "patreon" && v) {
-      const { clientSecret: _drop, ...rest } = v as PatreonConfig;
-      out.patreon = rest as PatreonConfig;
+    if (k === "oauth" && v) {
+      const oauth = v as VaultConfig["oauth"];
+      const persistedOauth: NonNullable<VaultConfig["oauth"]> = {};
+      if (oauth?.patreon) {
+        const { clientSecret: _drop, ...rest } = oauth.patreon;
+        persistedOauth.patreon = rest as PatreonConfig;
+      }
+      out.oauth = persistedOauth;
       continue;
     }
     if (deepEqual(v, DEFAULT_CONFIG[k as keyof VaultConfig] as unknown)) continue;
@@ -154,7 +166,7 @@ export async function saveConfig(vaultPath: string, cfg: VaultConfig): Promise<v
   // so a user clearing Patreon doesn't leave a stray client secret behind.
   const envUpdates: Record<string, string | null> = {
     [ENV_SESSION_SECRET]: cfg.sessionSecret || null,
-    [ENV_PATREON_CLIENT_SECRET]: cfg.patreon?.clientSecret || null,
+    [ENV_PATREON_CLIENT_SECRET]: cfg.oauth?.patreon?.clientSecret || null,
   };
   // Only touch .env if there's something to set/clear; avoids creating an
   // empty .env in vaults that don't have any secrets.
@@ -175,7 +187,7 @@ export async function saveConfig(vaultPath: string, cfg: VaultConfig): Promise<v
 function describeSecrets(cfg: VaultConfig): string | null {
   const parts: string[] = [];
   if (cfg.sessionSecret) parts.push("the session-signing key");
-  if (cfg.patreon?.clientSecret) parts.push("a Patreon client secret");
+  if (cfg.oauth?.patreon?.clientSecret) parts.push("a Patreon client secret");
   if (parts.length === 0) return null;
   return parts.length === 1
     ? parts[0]!

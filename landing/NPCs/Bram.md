@@ -3,13 +3,14 @@ title: Bram Mossfoot
 role-class: Commoner
 location: Mossfoot Inn
 cr: 0
-foundry_base: Compendium.dnd5e.monsters.Actor.SqZRuJ8lt2KGJBbq
 foundry:
-  system:
-    details:
-      type:
-        value: humanoid
-        subtype: human
+  base: Compendium.dnd5e.monsters.Actor.SqZRuJ8lt2KGJBbq
+  data:
+    system:
+      details:
+        type:
+          value: humanoid
+          subtype: human
 ---
 
 The innkeeper's son. Eleven, all elbows, asks too many questions.

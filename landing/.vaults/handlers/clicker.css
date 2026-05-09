@@ -1,0 +1,29 @@
+/* Clicker widget. Visible-everywhere thanks to assets.foundry.styles
+   opt-in: same look in the wiki and inside a Foundry journal page. */
+button.vaults-clicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.7rem;
+  margin: 0;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  background: #f4ecd8;
+  color: #7a200d;
+  border: 1px solid #7a200d;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+button.vaults-clicker:hover { background: #efe2c0; }
+button.vaults-clicker:active { background: #e8d49d; }
+button.vaults-clicker .vaults-clicker-count {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0 0.4em;
+  background: #7a200d;
+  color: #f4ecd8;
+  border-radius: 999px;
+  font-weight: bold;
+  text-align: center;
+}

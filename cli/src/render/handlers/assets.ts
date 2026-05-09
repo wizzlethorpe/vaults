@@ -6,7 +6,13 @@
 // — those get read here, validated to live under the vault's
 // .vaults/handlers/ tree (no `../../etc/passwd`), and included verbatim.
 //
-// Output is two strings: a concatenated _handlers.js and _handlers.css.
+// Output:
+//   - js, css                   _handlers.js + _handlers.css for the wiki
+//   - targets[name]: { js, css }  per-target subset bundles. Currently the
+//                                 only target is "foundry"; the bundle
+//                                 names map to _handlers.<target>.{js,css}.
+//                                 Each contains only assets whose handler
+//                                 opted in via assets.targets[name].
 // Each unique source is included exactly once even if multiple handlers
 // reference it, so shared utility files don't duplicate.
 
@@ -29,6 +35,14 @@ export interface BuiltinAsset {
 export interface BuiltinAssetMap {
   scripts?: BuiltinAsset[];
   styles?: BuiltinAsset[];
+  /**
+   * Per-target opt-in for built-in handlers, mirroring the `targets` field
+   * on user-side `HandlerAssets`. Used by `statblock` to opt its CSS into
+   * the Foundry-import bundle (visual parity in synced journal pages).
+   * Default `{}` for handlers whose dynamic behaviour is replicated
+   * server-side (e.g. dice's runtime → Foundry's [[/r]] enricher).
+   */
+  targets?: { [target: string]: { scripts?: boolean; styles?: boolean } };
 }
 
 /**
@@ -41,13 +55,23 @@ export function registerBuiltinAssets(handler: Handler, assets: BuiltinAssetMap)
   BUILTIN_ASSETS.set(handler, assets);
 }
 
-export interface BundledAssets {
+export interface TargetBundle {
   js: string;
   css: string;
 }
 
+export interface BundledAssets {
+  js: string;
+  css: string;
+  /** Per-target opt-in subset bundles, keyed by target name (e.g. "foundry"). */
+  targets: { [target: string]: TargetBundle };
+}
+
 /**
- * Build the concatenated _handlers.js and _handlers.css for a deploy.
+ * Build the concatenated _handlers.js and _handlers.css for a deploy, plus
+ * a parallel `_handlers.<target>.{js,css}` per registered target containing
+ * only the subset of assets whose handler opted in via
+ * `assets.targets[<target>].{scripts,styles} = true`.
  *
  * @param userHandlers handlers loaded from `.vaults/handlers/`
  * @param builtinHandlers handlers shipped by vaults-cli core
@@ -62,20 +86,49 @@ export async function bundleHandlerAssets(
   const seenCss = new Set<string>();
   const jsParts: string[] = [];
   const cssParts: string[] = [];
+  const targetParts: Record<string, { js: string[]; css: string[]; seenJs: Set<string>; seenCss: Set<string> }> = {};
   const handlersRoot = resolve(vaultPath, ".vaults/handlers");
+
+  const ensureTarget = (name: string) => {
+    if (!targetParts[name]) {
+      targetParts[name] = { js: [], css: [], seenJs: new Set(), seenCss: new Set() };
+    }
+    return targetParts[name];
+  };
+
+  const addToTargets = (
+    targets: Record<string, { scripts?: boolean; styles?: boolean }> | undefined,
+    kind: "scripts" | "styles",
+    source: string,
+    body: string,
+  ) => {
+    if (!targets) return;
+    for (const [name, opt] of Object.entries(targets)) {
+      if (!opt?.[kind]) continue;
+      const t = ensureTarget(name);
+      const seen = kind === "scripts" ? t.seenJs : t.seenCss;
+      if (seen.has(source)) continue;
+      seen.add(source);
+      (kind === "scripts" ? t.js : t.css).push(`/* ${source} */\n${body}`);
+    }
+  };
 
   for (const h of builtinHandlers) {
     const inline = BUILTIN_ASSETS.get(h);
     if (!inline) continue;
     for (const a of inline.scripts ?? []) {
-      if (seenJs.has(a.source)) continue;
-      seenJs.add(a.source);
-      jsParts.push(`/* ${a.source} */\n${a.content}`);
+      if (!seenJs.has(a.source)) {
+        seenJs.add(a.source);
+        jsParts.push(`/* ${a.source} */\n${a.content}`);
+      }
+      addToTargets(inline.targets, "scripts", a.source, a.content);
     }
     for (const a of inline.styles ?? []) {
-      if (seenCss.has(a.source)) continue;
-      seenCss.add(a.source);
-      cssParts.push(`/* ${a.source} */\n${a.content}`);
+      if (!seenCss.has(a.source)) {
+        seenCss.add(a.source);
+        cssParts.push(`/* ${a.source} */\n${a.content}`);
+      }
+      addToTargets(inline.targets, "styles", a.source, a.content);
     }
   }
 
@@ -85,17 +138,32 @@ export async function bundleHandlerAssets(
       const abs = resolveAssetPath(handlersRoot, baseDir, rel);
       if (seenJs.has(abs)) continue;
       seenJs.add(abs);
-      jsParts.push(`/* ${rel} (${abs}) */\n${await readFile(abs, "utf8")}`);
+      const body = await readFile(abs, "utf8");
+      const labeled = `/* ${rel} (${abs}) */\n${body}`;
+      jsParts.push(labeled);
+      addToTargets(handler.assets?.targets, "scripts", abs, labeled);
     }
     for (const rel of handler.assets?.styles ?? []) {
       const abs = resolveAssetPath(handlersRoot, baseDir, rel);
       if (seenCss.has(abs)) continue;
       seenCss.add(abs);
-      cssParts.push(`/* ${rel} (${abs}) */\n${await readFile(abs, "utf8")}`);
+      const body = await readFile(abs, "utf8");
+      const labeled = `/* ${rel} (${abs}) */\n${body}`;
+      cssParts.push(labeled);
+      addToTargets(handler.assets?.targets, "styles", abs, labeled);
     }
   }
 
-  return { js: jsParts.join("\n\n"), css: cssParts.join("\n\n") };
+  const targets: { [name: string]: TargetBundle } = {};
+  for (const [name, parts] of Object.entries(targetParts)) {
+    targets[name] = { js: parts.js.join("\n\n"), css: parts.css.join("\n\n") };
+  }
+
+  return {
+    js: jsParts.join("\n\n"),
+    css: cssParts.join("\n\n"),
+    targets,
+  };
 }
 
 /**

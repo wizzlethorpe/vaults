@@ -11,6 +11,7 @@
 // history if you need them.
 
 import { updateVault } from "./vaults.mjs";
+import { setVaultManifest } from "./vault-manifests.mjs";
 
 /** Decode a token's role + expiry without verifying; purely for UI. */
 export function tokenInfo(token) {
@@ -24,7 +25,10 @@ export function tokenInfo(token) {
   };
 }
 
-/** Clear a vault's token + role (does not delete the vault entry). */
+/** Clear a vault's token + role (does not delete the vault entry). The
+ *  separate per-vault sync state is also cleared so the next sync starts
+ *  fresh under the (now-cleared) auth. */
 export async function disconnect(vaultId) {
-  await updateVault(vaultId, { token: "", role: "", lastManifest: {}, lastImageManifest: {} });
+  await updateVault(vaultId, { token: "", role: "" });
+  await setVaultManifest(vaultId, { lastManifest: {}, lastImageManifest: {} });
 }
