@@ -17,7 +17,7 @@ Anything else is treated as **unknown** (see the bottom of this page).
 ## How references are detected
 
 Three patterns count as a reference. As long as a visible page in the
-target variant matches one, the file ships to that variant:
+target variant matches one, the file includes to that variant:
 
 ```markdown
 ![[file.ogg]]                  # Obsidian embed (audio plays inline)
@@ -30,7 +30,7 @@ DM-only page (or a DM-only callout). The build does the rest.
 
 ## Example
 
-This page links to [tavern-jingle.ogg](../Audio/tavern-jingle.ogg), a short 17 KB OGG. Because this page is `public` (no `role:` frontmatter override), the file ships to all three deploy variants.
+This page links to [tavern-jingle.ogg](../Audio/tavern-jingle.ogg), a short 17 KB OGG. Because this page is `public` (no `role:` frontmatter override), the file includes to all three deploy variants.
 
 ## Unknown extensions
 
@@ -40,7 +40,7 @@ with a warning at build time:
 ```
   skipping 1 file(s) with unrecognized extensions:
     handouts/data.bin
-    Set 'include_unknown_files: true' in settings.md to ship them.
+    Set 'include_unknown_files: true' in settings.md to include them.
 ```
 
 This is a safety default: a stray file in your vault can't accidentally
@@ -61,4 +61,4 @@ When enabled, unknown-extension files join the passthrough pool. They still need
 <a href="/Audio/foo.ogg">play me</a>
 ```
 
-The HTML comment ensures the file is shipped without affecting the rendered output.
+The HTML comment ensures the file is included without affecting the rendered output.

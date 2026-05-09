@@ -50,7 +50,7 @@ from the body. Toggle this off with `auto_image: false` in `settings.md`.
 
 PNG/JPEG/AVIF/TIFF/GIF inputs all get re-encoded to WebP at build time
 (quality controlled by `image_quality` in `settings.md`, default 85). The
-resulting file ships under `attachments/` (or wherever your source put
+resulting file includes under `attachments/` (or wherever your source put
 it). The original file stays put in your vault, only the deploy gets
 the recoded version.
 

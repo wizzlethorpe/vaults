@@ -102,7 +102,7 @@ Handler API surface:
 
 ### Browser-side assets
 
-Handlers can ship JS and CSS to the deploy:
+Handlers can include JS and CSS to the deploy:
 
 ```javascript
 export const handler = {
@@ -140,5 +140,5 @@ Two layers of consent gate this:
 1. **Handler-side opt-in** (above) — only handlers that set `targets.foundry.scripts` / `targets.foundry.styles` get bundled into the deploy's `_handlers.foundry.{js,css}`. Everything else stays wiki-only.
 2. **GM-side opt-in** in the Foundry module's per-vault settings dialog ("Import handler stylesheets" / "Import handler scripts" checkboxes, both default off, with a confirmation warning when flipping on).
 
-Live demo: this vault ships a `clicker:` inline handler with both opted in. `clicker: try me` renders as `clicker: try me` (click it!). On the wiki it works because the handler's CSS + JS shipped at `_handlers.{css,js}`. In Foundry it works only if the GM checked both import boxes for this vault — otherwise the journal page shows an unstyled, inert button (since the wiki HTML containing `<button class="vaults-clicker">` survives the sync, but the styling/behaviour does not).
+Live demo: this vault includes a ``` `clicker:` ``` inline handler with both opted in. ``` `clicker: try me` ``` renders as `clicker: try me` (click it!). On the wiki it works because the handler's CSS + JS included at `_handlers.{css,js}`. In Foundry it works only if the GM checked both import boxes for this vault — otherwise the journal page shows an unstyled, inert button (since the wiki HTML containing `<button class="vaults-clicker">` survives the sync, but the styling/behaviour does not).
 

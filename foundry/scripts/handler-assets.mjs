@@ -18,10 +18,16 @@
 // (event handlers, hooks) keeps running until reload. The settings-dialog
 // hint flags this; we don't try to be clever about JS un-injection.
 //
-// Per-session JS confirmation: even when the persistent toggle is on, the
-// applyHandlerAssetsWithConfirm wrapper prompts the GM once per session
-// before injecting JS — so a vault that ships new code between sessions
-// can't run silently. CSS skips the prompt (low-risk).
+// Two-tier consent UX:
+//   - Silent applyHandlerAssets() injects whatever the persistent toggles
+//     say. Used from world ready and from settings-save (the GM's already
+//     consented persistently; reload doesn't need to re-prompt).
+//   - applyHandlerAssetsWithConfirm() pops a per-session prompt before
+//     injecting JS. Used only from sync, so a vault that ships new code
+//     between syncs gets fresh acknowledgement before it runs. The
+//     per-session approval cache means back-to-back syncs in the same
+//     session don't nag.
+// CSS injection skips the prompt in both paths (low risk).
 
 import { fetchTextOrNull } from "./api.mjs";
 
@@ -30,33 +36,56 @@ const SCRIPT_ATTR = "data-vault-handler-scripts";
 
 /**
  * Per-session approval cache for handler-script injection. Keyed by vault
- * id; cleared on world reload. The persistent setting records GM intent;
- * this set records that they've also accepted *this session's* fetched JS.
+ * id; cleared on world reload.
  */
 const sessionApprovedScripts = new Set();
 
 /**
- * Apply or refresh handler-asset injection for a single vault. Pops a
- * per-session confirmation dialog before injecting JS so a vault that
- * ships new code between sessions can't run silently — the persistent
- * setting records GM intent, this prompt records that they've also
- * accepted *this session's* fetched JS. CSS skips the prompt (low risk).
- *
- * Used from world-ready, post-sync, and
- * settings-save callsites so the consent UI is consistent.
- *
- * @param vault   the vault to apply assets for
- * @param opts.reason  short identifier for the prompt context ("ready",
- *                    "sync", "settings"). Surfaced in the dialog title so
- *                    the GM knows why they're being asked.
+ * Inject handler assets for a vault without prompting. The persistent
+ * `importHandlerStyles` / `importHandlerScripts` toggles are the only
+ * gates; if they're on, the asset is fetched and injected. Used from
+ * world ready (the GM consented before the reload) and from settings
+ * save (the GM is actively in the dialog and has just acknowledged the
+ * one-time warning when flipping a toggle on).
  */
-export async function applyHandlerAssetsWithConfirm(vault, opts = {}) {
+export async function applyHandlerAssets(vault) {
   if (!vault?.id || !vault?.url) return;
-
   const cssPath = vault.handlerAssetPaths?.foundryCss || "/_handlers.foundry.css";
   const jsPath = vault.handlerAssetPaths?.foundryJs || "/_handlers.foundry.js";
 
-  // CSS injection: no prompt, low-risk.
+  if (vault.importHandlerStyles) {
+    const css = await fetchTextOrNull(vault, cssPath);
+    injectStyle(vault.id, css);
+  } else {
+    removeStyle(vault.id);
+  }
+  if (vault.importHandlerScripts) {
+    const js = await fetchTextOrNull(vault, jsPath);
+    injectScript(vault.id, js);
+    // A silent inject still primes the per-session cache — if a sync
+    // re-fires shortly after with the same content, no need to prompt.
+    if (js) sessionApprovedScripts.add(vault.id);
+  } else {
+    removeScript(vault.id);
+  }
+}
+
+/**
+ * Sync-time variant: same as applyHandlerAssets, but pops a per-session
+ * confirmation dialog before injecting JS the first time per session.
+ * The persistent toggle stays "yes, I want this enabled"; this dialog
+ * adds "and yes, run this specific bundle of code right now."
+ *
+ * @param vault   the vault to apply assets for
+ * @param opts.reason  short identifier for the prompt context, surfaced
+ *                     in the dialog so the GM knows why they're being asked.
+ */
+export async function applyHandlerAssetsWithConfirm(vault, opts = {}) {
+  if (!vault?.id || !vault?.url) return;
+  const cssPath = vault.handlerAssetPaths?.foundryCss || "/_handlers.foundry.css";
+  const jsPath = vault.handlerAssetPaths?.foundryJs || "/_handlers.foundry.js";
+
+  // CSS: no prompt.
   if (vault.importHandlerStyles) {
     const css = await fetchTextOrNull(vault, cssPath);
     injectStyle(vault.id, css);
@@ -64,9 +93,7 @@ export async function applyHandlerAssetsWithConfirm(vault, opts = {}) {
     removeStyle(vault.id);
   }
 
-  // JS injection: gated by per-session prompt unless already approved this
-  // session. The persistent setting opts the vault in to ASKING; the
-  // session set records that the GM said yes for THIS run's fetched JS.
+  // JS: prompt unless already approved this session.
   if (vault.importHandlerScripts) {
     const js = await fetchTextOrNull(vault, jsPath);
     if (!js) {

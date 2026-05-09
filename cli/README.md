@@ -42,7 +42,7 @@ Cloudflare Pages           ← per-user, your account
    └── functions/_middleware.js   ← auth gate (cookie/bearer based)
 ```
 
-- **Per-tier deploys.** A page tagged `role: dm` in its frontmatter only ships to the dm variant. Public visitors *cannot* fetch it; the file structurally doesn't exist in their variant.
+- **Per-tier deploys.** A page tagged `role: dm` in its frontmatter only includes to the dm variant. Public visitors *cannot* fetch it; the file structurally doesn't exist in their variant.
 - **Inline gating with callouts.** Drop a `> [!dm]` callout in an otherwise public page; the entire block is stripped from the public deploy. Same for any other configured role.
 - **Images and media are gated too.** Only images, audio, video, PDFs, and EPUBs embedded by visible pages are copied into a given variant. Unknown extensions are skipped by default (toggle `include_unknown_files`).
 - **Incremental sync.** External clients (the [Foundry VTT module](https://github.com/wizzlethorpe/vaults)) probe `/_manifest.json` to discover the deploy's name, auth requirements, and role order, then pull `/_batch` (text) and `/_batch-images` (binary) for changed content. Manifest hashes fold in per-page frontmatter, so a role flip or title rename triggers a sync without a body diff.
@@ -159,7 +159,7 @@ export const handler = {
 
 ### Browser-side assets
 
-If your handler needs to ship browser-side JavaScript or CSS, declare them with the `assets` field. Paths are relative to the handler file. Every declared asset across all handlers is concatenated into one `_handlers.js` and one `_handlers.css` at the deploy root, deduped by absolute path so a shared utility file is only included once.
+If your handler needs to include browser-side JavaScript or CSS, declare them with the `assets` field. Paths are relative to the handler file. Every declared asset across all handlers is concatenated into one `_handlers.js` and one `_handlers.css` at the deploy root, deduped by absolute path so a shared utility file is only included once.
 
 ```js
 // .vaults/handlers/widget.mjs
@@ -196,7 +196,7 @@ User handlers can override built-ins of the same name. Trust model: handlers run
 
 ## Auth
 
-Multi-role deploys ship with a small Cloudflare Pages Function (`_middleware.js`) that:
+Multi-role deploys include with a small Cloudflare Pages Function (`_middleware.js`) that:
 
 - **Gates per-role variants** via a signed cookie (`SameSite=None; Secure; Partitioned`).
 - **Issues bearer tokens** through an OAuth-style `/connect` flow used by the [Foundry module](https://github.com/wizzlethorpe/vaults).

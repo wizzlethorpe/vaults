@@ -4,7 +4,7 @@ Self-host an Obsidian vault as a static, role-gated wiki on your own Cloudflare 
 
 This is the monorepo for three intertwined pieces. They release in lockstep so a "vaults vX.Y.Z" tag pins the exact behavior across all three:
 
-- **[`cli/`](cli/)** — `@wizzlethorpe/vaults` (npm). The renderer + deploy CLI. Reads your vault, renders to HTML, ships to a Cloudflare Pages project on your own account.
+- **[`cli/`](cli/)** — `@wizzlethorpe/vaults` (npm). The renderer + deploy CLI. Reads your vault, renders to HTML, includes to a Cloudflare Pages project on your own account.
 - **[`foundry/`](foundry/)** — Wizzlethorpe Vaults Foundry VTT module. Pulls a deployed vault into a Foundry world as journal entries, with optional Actor / Item / Scene / RollTable / etc. creation from a per-page `foundry:` block.
 - **[`landing/`](landing/)** — A vault that doubles as the project's landing page (deployed at vaults.wizzlethorpe.com) and a working demo of every CLI feature.
 

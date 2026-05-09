@@ -183,7 +183,7 @@ These are all reasonable adds — they just weren't in the v1 cut.
 
 ## Theming
 
-The CSS uses tokens lifted from Fantasy Statblocks so you can override the look from your own `.obsidian/snippets/<name>.css` (which ships as `user.css`):
+The CSS uses tokens lifted from Fantasy Statblocks so you can override the look from your own `.obsidian/snippets/<name>.css` (which includes as `user.css`):
 
 ```css
 .statblock {

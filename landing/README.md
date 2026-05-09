@@ -103,7 +103,7 @@ patterns at a glance:
 
 ## ⚠️ A note on the test passwords
 
-`.vaults/config.json` ships with throwaway passwords (`patron-pass`, `dm-pass`)
+`.vaults/config.json` includes with throwaway passwords (`patron-pass`, `dm-pass`)
 because this is a **public demo + landing page**. Do not reuse these on
 any vault that hosts real content.
 

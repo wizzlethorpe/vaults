@@ -77,7 +77,7 @@ Single-role builds collapse `_variants/public/...` straight to the deploy root, 
 - **Pure ESM TypeScript** (`strict: true`, `noUncheckedIndexedAccess: true`).
 - **Web Crypto API** for password hashing (PBKDF2-SHA256 @ 100k — Workers caps higher), HMAC cookie/bearer signing. Same code runs in Node and the Workers runtime.
 - **picomatch** for ignore-pattern globs. **sharp** for image compression. **gray-matter** for frontmatter. **unified/remark/rehype** for markdown.
-- **No MCP server today.** Earlier prototype shipped a `/mcp` Function; removed to keep deploys under Pages's 20k-file limit.
+- **No MCP server today.** Earlier prototype included a `/mcp` Function; removed to keep deploys under Pages's 20k-file limit.
 - **No platform code in this repo.** The future managed platform is a separate concern.
 - **Single shared version across cli + foundry.** Both bump together via root `release.sh <X.Y.Z>`. Landing has no version (deploys whenever).
 
@@ -103,7 +103,7 @@ Plugins live in `cli/src/render/` and consume a `RenderContext`. New rendering f
 
 - **Dead code.** Remove the callee when you remove the caller.
 - **Speculative abstraction.** Extract a helper at the third caller, not the second.
-- **Backwards-compat shims** for code that has never shipped.
+- **Backwards-compat shims** for code that has never included.
 - **Defensive programming against your own code.** Validate at system boundaries only.
 - **Comments that repeat the code.** Comments explain *why* something non-obvious exists.
 - **Scope creep.** Fix the bug, add the feature — nothing adjacent. Flag anything you noticed but did not do.

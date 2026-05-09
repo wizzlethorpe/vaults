@@ -2,7 +2,7 @@
 title: Features
 ---
 
-This folder is a working tour of every feature this CLI ships. Each page
+This folder is a working tour of every feature this CLI includes. Each page
 is both documentation and a live demo — view source on any of them to see
 the underlying markdown.
 
@@ -16,7 +16,7 @@ the underlying markdown.
 | [[Statblocks]] | D&D 5e creature statblocks, Fantasy-Statblocks-compatible YAML |
 | [[Role gating]] | `public`/`patron`/`dm` tiers, page + callout gating, auth flow |
 | [[Foundry integration]] | Sync to Foundry VTT, `foundry.base` clones, dmRole gating |
-| [[Passthrough files]] | Audio/video/PDF/EPUB shipping with per-variant role gating |
+| [[Passthrough files]] | Audio/video/PDF/EPUB including with per-variant role gating |
 | [[Patreon login]] | Optional OAuth overlay: link roles to Patreon tiers so patrons sign in directly |
 
 Other features that don't need a dedicated page:
@@ -30,7 +30,7 @@ Other features that don't need a dedicated page:
   generated if it didn't already exist).
 - **OG / Twitter social meta** — every page emits `og:image`, `og:title`,
   `og:type`, `twitter:card`. Resolved cover image rides through.
-- **Search** — every variant ships its own `_search-index.json`; the
+- **Search** — every variant includes its own `_search-index.json`; the
   client-side search box in the sidebar uses it for fuzzy matching.
 - **Hover previews** — desktop browsers preview a page when you hover its
   link, fetching the per-page `<path>.preview.json` lazily.
@@ -38,5 +38,5 @@ Other features that don't need a dedicated page:
   sidebar, computed at build time.
 - **Custom theme colors** — `accent_color` and `bg_color` in `settings.md`
   override the default scarlet-on-parchment palette.
-- **Obsidian snippets** — `.obsidian/snippets/*.css` files ship to the
+- **Obsidian snippets** — `.obsidian/snippets/*.css` files include to the
   deploy as `user.css`, loaded after the default theme.

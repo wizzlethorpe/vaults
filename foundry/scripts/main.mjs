@@ -3,7 +3,7 @@
 
 import { registerSettings } from "./settings.mjs";
 import { listVaults, getVault, addVault, updateVault, removeVault, migrateLegacyIfNeeded } from "./vaults.mjs";
-import { applyHandlerAssetsWithConfirm, removeHandlerAssets } from "./handler-assets.mjs";
+import { applyHandlerAssets, removeHandlerAssets } from "./handler-assets.mjs";
 import { sync } from "./sync.mjs";
 import { fetchManifest } from "./api.mjs";
 import { disconnect, tokenInfo } from "./auth.mjs";
@@ -21,14 +21,12 @@ Hooks.once("ready", async () => {
   // Handler-asset re-application is deferred past `ready` and run
   // fire-and-forget so a slow / offline vault doesn't stall world boot.
   // The setTimeout(0) yields to the event loop so the world's render hooks
-  // finish first; CSS injection then takes effect immediately. JS imports
-  // additionally surface a per-session confirmation dialog (see
-  // applyHandlerAssetsWithConfirm) so the GM re-acknowledges any new code
-  // on every reload — the persistent toggle records intent, but a vault
-  // updating its handler bundle between sessions still gets fresh consent.
+  // finish first. Silent (no prompt): the persistent toggles already
+  // record the GM's consent, and re-prompting on every reload turned out
+  // to be annoying. The next sync re-prompts if the bundle has changed.
   setTimeout(() => {
     listVaults().forEach((v) => {
-      applyHandlerAssetsWithConfirm(v, { reason: "ready" }).catch((err) =>
+      applyHandlerAssets(v).catch((err) =>
         console.warn(`Vaults | handler-asset import failed for ${v.label}:`, err));
     });
   }, 0);
@@ -402,9 +400,12 @@ async function openSettingsDialog(vaultId) {
           // Reflect handler-asset toggle changes immediately. A turn-on
           // fetches + injects; a turn-off removes the previously-injected
           // <style>/<script>; an idempotent re-save just refreshes content.
+          // Silent: the GM is actively in this dialog and (for OFF→ON
+          // transitions) just acknowledged the warning above. The
+          // per-sync prompt covers the "vault shipped new code" case.
           if (patch.importHandlerStyles !== v.importHandlerStyles
               || patch.importHandlerScripts !== v.importHandlerScripts) {
-            await applyHandlerAssetsWithConfirm(getVault(vaultId), { reason: "settings" })
+            await applyHandlerAssets(getVault(vaultId))
               .catch((err) => console.warn(`Vaults | handler-asset refresh failed:`, err));
           }
           return true;

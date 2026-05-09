@@ -15,8 +15,7 @@ dir.
 > [GitHub](https://github.com/wizzlethorpe/vaults).
 
 Pages can additionally **instantiate a Foundry document** (Actor, Item,
-Scene, etc.) by adding a `foundry:` block to frontmatter. Useful for NPCs
-and items that need real mechanics, not just journal text.
+Scene, etc.) by adding a `foundry:` block to frontmatter.
 
 ## What gets synced
 

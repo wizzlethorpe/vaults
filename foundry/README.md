@@ -44,7 +44,7 @@ Each vault has a `dmRole` setting that controls journal ownership on import:
 - Pages whose role rank is **below** `dmRole` import as **Observer** ownership (visible to all players).
 - Pages at-or-above `dmRole` stay **GM-only**.
 
-Combined with the `<section class="secret">` wrapping, this lets you ship a public-facing journal with DM secrets inline; players see the article, GMs see everything.
+Combined with the `<section class="secret">` wrapping, this lets you include a public-facing journal with DM secrets inline; players see the article, GMs see everything.
 
 Default is empty (everything imports GM-only).
 
@@ -73,7 +73,7 @@ Instantiated docs land in a per-doctype folder named after the vault (Actors →
 
 ## Handler-asset import (CSS / JS from the vault into Foundry)
 
-If a vault ships custom handlers with browser-side assets that opt into Foundry import (`assets.targets.foundry.{styles,scripts}` on the handler), GMs can pull those assets into the world via the per-vault settings dialog ("Import handler stylesheets" / "Import handler scripts"). Both default off. Enabling JS import shows a confirmation dialog explaining that the script will run with full access to game state; turning either on persists the consent, but JS import additionally re-prompts once per session before running freshly-fetched code.
+If a vault includes custom handlers with browser-side assets that opt into Foundry import (`assets.targets.foundry.{styles,scripts}` on the handler), GMs can pull those assets into the world via the per-vault settings dialog ("Import handler stylesheets" / "Import handler scripts"). Both default off. Enabling JS import shows a confirmation dialog explaining that the script will run with full access to game state; turning either on persists the consent, but JS import additionally re-prompts once per session before running freshly-fetched code.
 
 The import bundles are fetched per-variant (the auth middleware role-gates them), so a `dm`-tier handler isn't accessible to a public visitor.
 
@@ -97,7 +97,7 @@ globalThis.Vaults = {
 ## Limitations
 
 - Page transclusion (`![[Page]]`) is dropped.
-- Backlinks are not rendered (vaults-cli ships them as a sidebar; Foundry import currently ignores).
+- Backlinks are not rendered (vaults-cli includes them as a sidebar; Foundry import currently ignores).
 - One image cache per vault; large vaults can take a minute on first sync.
 - **Secret blocks leak through `@Embed` on derived Items / Actors.** When a page has a `foundry.base`, the cloned Item / Actor's description embeds the page via `@Embed[JournalEntry.…]`. Foundry's text enricher decides whether to hide `<section class="secret">` content based on the *parent* document's permissions, not the embedded page's, so a player who owns the Item sheet sees secret blocks even when the underlying journal page would have hidden them. The journal page itself still hides them correctly. This is a Foundry-side limitation of the `@Embed` enricher; keep DM-only material on dedicated dm-role pages, or set `foundry.embed: false` on the public page.
 
