@@ -113,6 +113,8 @@ In this vault:
 - [[Mossfoot ambience]] is a blank `Playlist` pointing at the deployed
   `tavern-jingle.ogg` (audio isn't mirrored into Foundry, so the sound's
   `path` is the wiki's deploy URL)
+- [[Mossfoot Great Hall]] is a blank `Scene` (background + walls only;
+  same deploy-URL workaround as the playlist for the texture path)
 
 
 ![[screenshot-fvtt-actor-aelar-galanodel.webp|500]]
