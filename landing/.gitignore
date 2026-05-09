@@ -1,0 +1,8 @@
+.vault-cache/
+.wrangler/
+
+# Holds the session-signing key and (when configured) the Patreon client secret.
+# .vaultrc.json itself is config-only (project name, role list, password
+# hashes, Patreon client/campaign IDs) and is intentionally tracked so
+# setup follows the repo across machines.
+.env
