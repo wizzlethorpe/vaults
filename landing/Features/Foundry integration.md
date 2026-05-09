@@ -106,6 +106,8 @@ In this vault:
 - [[Aelar]] clones SRD Scout
 - [[Bram]] clones SRD Commoner
 - [[Healing Potion]] clones SRD Potion of Healing
+- [[Witchwood encounters]] is a blank `RollTable` whose results live in
+  `foundry.data.results[]` and re-render in the page body via `fm:`
 
 
 ![[screenshot-fvtt-actor-aelar-galanodel.webp|500]]
