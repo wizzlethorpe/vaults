@@ -1,5 +1,6 @@
 ---
 title: Mossroot
+image: mossroot-portrait.webp
 foundry_base: Actor:npc
 foundry:
   system:
