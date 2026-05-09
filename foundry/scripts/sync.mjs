@@ -4,7 +4,7 @@
 // reconcile its image cache.
 
 import { fetchManifest, fetchSourceBatch } from "./api.mjs";
-import { upsertFile, deleteFile } from "./importer.mjs";
+import { upsertFile, deleteFile, buildFolderInfo } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
 import { applyInstance, deleteInstance } from "./instance.mjs";
@@ -69,6 +69,12 @@ export async function sync(vaultId, { forceFull = false } = {}) {
 
   const bodyPaths = manifest.files.filter((f) => f.path.endsWith(".body.html")).map((f) => f.path);
   const pathIndex = buildPathIndex(manifest.files);
+  // Folder info is built from the *full* manifest, not just the changed
+  // subset — trivial-collapse depends on counting every sibling, not only
+  // the ones we're about to upsert. Rebuilding each sync is fine; this is a
+  // single linear pass over the manifest.
+  const allMdPaths = bodyPaths.map((p) => p.replace(/\.body\.html$/i, ".md"));
+  const folderInfo = buildFolderInfo(allMdPaths);
   // Per-body reskin metadata (foundry_base UUID, override block, image URL).
   // Only present on pages that opted in; the rest skip applyReskin entirely.
   const bodyMetaIndex = new Map();
@@ -124,7 +130,7 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
     const pageMeta = bodyMetaIndex.get(bodyPath);
     try {
-      const result = await upsertFile(vault, logicalPath, html, pathIndex, pageMeta);
+      const result = await upsertFile(vault, logicalPath, html, pathIndex, pageMeta, folderInfo);
       if (result === "added") added++; else modified++;
       // Clone-from-foundry_base runs after the JournalEntryPage exists so the
       // @Embed[…] in the doc description resolves on first render.

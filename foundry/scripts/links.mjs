@@ -10,7 +10,7 @@
 // Unresolved wikilinks (rendered with `is-unresolved`) keep their markup
 //. Foundry shows them as broken-styled text.
 
-import { entryId } from "./ids.mjs";
+import { entryId, pageId } from "./ids.mjs";
 import { localImageUrl } from "./media.mjs";
 import { IMAGE_EXT_RE } from "./parser.mjs";
 
@@ -93,8 +93,32 @@ async function applyDomTransforms(html, vault, index) {
   touched = flattenBasesTabs(doc) || touched;
   touched = neutralizeEnrichersInCode(doc) || touched;
   touched = (await rewriteBasesCardLinks(doc, vault.id, index)) || touched;
+  touched = rewriteDiceButtons(doc) || touched;
   touched = wrapRestrictedCalloutsAsSecret(doc, vault) || touched;
   return touched ? doc.body.innerHTML : html;
+}
+
+/**
+ * Rewrite `dice:` handler output into Foundry's native inline-roll
+ * enricher syntax. The CLI ships dice as `<button class="dice-roll"
+ * data-formula="X">X</button>`, with its own click-to-roll JS runtime
+ * for the static wiki. In Foundry that runtime isn't loaded; instead,
+ * Foundry's text enricher converts `[[/r X]]` into a real, clickable
+ * roll with chat output, dice-so-nice integration, and modifier menus.
+ *
+ * The invalid-formula fallback (`<code class="dice-roll-invalid">`) is
+ * left alone — the formula is malformed and we don't want Foundry's
+ * enricher to throw on it either.
+ */
+function rewriteDiceButtons(doc) {
+  const buttons = doc.querySelectorAll("button.dice-roll[data-formula]");
+  if (buttons.length === 0) return false;
+  for (const btn of buttons) {
+    const formula = btn.getAttribute("data-formula");
+    if (!formula) continue;
+    btn.replaceWith(doc.createTextNode(`[[/r ${formula}]]`));
+  }
+  return true;
 }
 
 /**
@@ -164,9 +188,10 @@ async function rewriteBasesCardLinks(doc, vaultId, index) {
     if (!href.startsWith("/")) continue;
     const path = logicalPathFromHref(href);
     if (!index.paths.has(path)) continue;
-    const id = await entryId(vaultId, path);
+    const eId = await entryId(vaultId, path);
+    const pId = await pageId(vaultId, path);
     a.classList.add("content-link");
-    a.setAttribute("data-uuid", `JournalEntry.${id}`);
+    a.setAttribute("data-uuid", `JournalEntry.${eId}.JournalEntryPage.${pId}`);
     a.removeAttribute("href"); // Foundry triggers off the data-uuid; an href would re-navigate the page.
     touched = true;
   }
@@ -231,16 +256,21 @@ async function rewriteWikilinks(vaultId, html, index) {
     matches.push({ idx: m.index, length: full.length, kind: "uuid", label, path });
   }
 
-  // Resolve journal IDs in parallel for the resolvable matches only.
+  // Resolve entry + page IDs in parallel for the resolvable matches. Pages
+  // are addressed as `JournalEntry.<eId>.JournalEntryPage.<pId>` so a click
+  // opens the specific page rather than the entry's first page.
   const uuidMatches = matches.filter((r) => r.kind === "uuid");
-  const ids = await Promise.all(uuidMatches.map((r) => entryId(vaultId, r.path)));
-  uuidMatches.forEach((r, i) => { r.id = ids[i]; });
+  const resolved = await Promise.all(uuidMatches.map(async (r) => ({
+    eId: await entryId(vaultId, r.path),
+    pId: await pageId(vaultId, r.path),
+  })));
+  uuidMatches.forEach((r, i) => { r.eId = resolved[i].eId; r.pId = resolved[i].pId; });
 
   // Splice from the end so earlier indices stay valid.
   matches.sort((a, b) => b.idx - a.idx);
   for (const r of matches) {
     const replacement = r.kind === "uuid"
-      ? `@UUID[JournalEntry.${r.id}]{${escapeBraces(r.label)}}`
+      ? `@UUID[JournalEntry.${r.eId}.JournalEntryPage.${r.pId}]{${escapeBraces(r.label)}}`
       : `<span class="vaults-broken">${escapeHtml(r.label)}</span>`;
     html = html.slice(0, r.idx) + replacement + html.slice(r.idx + r.length);
   }

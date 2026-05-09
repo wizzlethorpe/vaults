@@ -32,31 +32,81 @@ const DESCRIPTION_FIELDS = {
   },
 };
 
-const SUPPORTED_DOCS = new Set(["Actor", "Item"]);
+// Document types supported by `foundry_base: <UUID>` (clone-from-template).
+// Cloning needs a description-embed path, so this stays the narrow set.
+const CLONE_SUPPORTED_DOCS = new Set(["Actor", "Item"]);
+
+// Document types supported by `foundry_base: <type>[:<subtype>]` (blank doc).
+// Wider since we don't need a description embed for a blank doc — the user
+// drives the doc entirely via the `foundry:` overlay block.
+const BLANK_DOC_TYPES = new Set([
+  "Actor", "Item", "Scene", "JournalEntry",
+  "RollTable", "Macro", "Cards", "Playlist",
+]);
+
+// Where each blank-supported doc lives in the world. Looked up lazily so a
+// system that swaps out a collection at startup is honoured.
+const COLLECTION_FOR = {
+  Actor: () => game.actors,
+  Item: () => game.items,
+  Scene: () => game.scenes,
+  JournalEntry: () => game.journal,
+  RollTable: () => game.tables,
+  Macro: () => game.macros,
+  Cards: () => game.cards,
+  Playlist: () => game.playlists,
+};
 
 /**
  * Instantiate (or update) the document a vault page owns. No-op when there's
  * no foundry_base. Idempotent: re-running with unchanged inputs converges.
+ *
+ * `foundry_base` accepts two forms:
+ *   - **UUID** (`Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa`,
+ *     `Actor.abc123`, …): clone the named template into the world.
+ *   - **Type[:subtype]** (`Actor:npc`, `Item:weapon`, `Scene`, …): create a
+ *     blank document of that type. The `foundry:` frontmatter overlay then
+ *     populates fields. Useful when no template exists in any compendium —
+ *     pure homebrew or bespoke maps/macros/decks.
  */
 export async function applyInstance(vault, vaultPath, meta) {
-  const uuid = meta.foundry_base;
-  if (!uuid) return;
+  const parsed = parseFoundryBase(meta.foundry_base);
+  if (!parsed) return;
 
-  const template = await safeFromUuid(uuid);
-  if (!template) {
-    console.warn(`Vaults | foundry_base: ${vaultPath} → ${uuid} did not resolve; skipping.`);
+  let docName;
+  let baseData;
+  if (parsed.kind === "uuid") {
+    const template = await safeFromUuid(parsed.uuid);
+    if (!template) {
+      console.warn(`Vaults | foundry_base: ${vaultPath} → ${parsed.uuid} did not resolve; skipping.`);
+      return;
+    }
+    docName = template.documentName;
+    if (!CLONE_SUPPORTED_DOCS.has(docName)) {
+      console.warn(
+        `Vaults | foundry_base: ${vaultPath} → ${parsed.uuid} is a ${docName}; `
+        + `clone-from-UUID only supports ${[...CLONE_SUPPORTED_DOCS].join(", ")}.`,
+      );
+      return;
+    }
+    // toObject() works on both compendium-loaded and world docs; pack-locking
+    // doesn't apply because we're creating a brand-new world document.
+    try { baseData = template.toObject(); }
+    catch (err) {
+      console.warn(`Vaults | foundry_base: could not read template ${parsed.uuid}:`, err);
+      return;
+    }
+    delete baseData._id;
+  } else {
+    docName = parsed.docName;
+    baseData = parsed.subtype ? { type: parsed.subtype } : {};
+  }
+
+  const collection = COLLECTION_FOR[docName]?.();
+  if (!collection) {
+    console.warn(`Vaults | foundry_base: no world collection for ${docName}; skipping ${vaultPath}.`);
     return;
   }
-  const docName = template.documentName;
-  if (!SUPPORTED_DOCS.has(docName)) {
-    console.warn(
-      `Vaults | foundry_base: ${vaultPath} → ${uuid} is a ${docName}; `
-      + `only Actor and Item are supported.`,
-    );
-    return;
-  }
-
-  const collection = docName === "Actor" ? game.actors : game.items;
   const docClass = CONFIG[docName].documentClass;
   const id = await instanceId(vault.id, vaultPath);
 
@@ -72,25 +122,31 @@ export async function applyInstance(vault, vaultPath, meta) {
     return;
   }
 
-  // Fresh clone: copy the template's source data, swap in our deterministic id,
-  // then deep-merge the overlay so the new doc is born already customised.
-  // toObject() works on both compendium-loaded and world docs; pack-locking
-  // doesn't apply because we're creating a brand-new world document.
-  let data;
-  try { data = template.toObject(); }
-  catch (err) {
-    console.warn(`Vaults | foundry_base: could not read template ${uuid}:`, err);
-    return;
-  }
-  delete data._id;
-  data._id = id;
-  deepMerge(data, overlay);
+  baseData._id = id;
+  deepMerge(baseData, overlay);
 
   try {
-    await docClass.create(data, { keepId: true });
+    await docClass.create(baseData, { keepId: true });
   } catch (err) {
     console.warn(`Vaults | foundry_base create failed for ${vaultPath}:`, err);
   }
+}
+
+/**
+ * Parse the `foundry_base` value into either a UUID-clone form or a
+ * blank-doc form. UUIDs always contain a `.` (`Type.id` at minimum); a
+ * bare type name like "Actor" or "Item:weapon" never does. Case-insensitive
+ * for the type so `actor:npc` reads naturally in YAML.
+ *
+ * Returns null for unrecognised inputs so the caller can no-op silently.
+ */
+function parseFoundryBase(spec) {
+  if (typeof spec !== "string" || !spec) return null;
+  if (spec.includes(".")) return { kind: "uuid", uuid: spec };
+  const [typeRaw, subtype] = spec.split(":");
+  const docName = [...BLANK_DOC_TYPES].find(t => t.toLowerCase() === typeRaw.toLowerCase());
+  if (!docName) return null;
+  return { kind: "blank", docName, subtype: subtype || undefined };
 }
 
 /**
@@ -100,8 +156,9 @@ export async function applyInstance(vault, vaultPath, meta) {
  */
 export async function deleteInstance(vault, vaultPath) {
   const id = await instanceId(vault.id, vaultPath);
-  for (const collection of [game.actors, game.items]) {
-    const doc = collection.get(id);
+  for (const getCollection of Object.values(COLLECTION_FOR)) {
+    const collection = getCollection();
+    const doc = collection?.get(id);
     if (!doc) continue;
     if (doc.getFlag(MODULE_ID, "vaultId") !== vault.id) continue;
     try { await doc.delete(); }
@@ -132,9 +189,11 @@ async function buildOverlay(vault, vaultPath, meta, docName) {
 
   // Embed the page's JournalEntryPage into the document description so the
   // wiki article shows up inline on the doc sheet. Skipped silently when
-  // the system isn't in the supported table — clone still happens.
+  // the system isn't in the supported table — clone still happens. Pages
+  // can opt out with `foundry_no_embed: true` (e.g. stats-only pages, or
+  // DM-private pages where embedding would leak content into the actor sheet).
   const descPath = DESCRIPTION_FIELDS[game.system.id]?.[docName];
-  if (descPath) {
+  if (descPath && !meta.foundry_no_embed) {
     const eId = await entryId(vault.id, vaultPath);
     const pId = await pageId(vault.id, vaultPath);
     setPath(overlay, descPath, `<p>@Embed[JournalEntry.${eId}.JournalEntryPage.${pId} inline]</p>`);

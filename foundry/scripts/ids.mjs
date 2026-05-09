@@ -15,7 +15,17 @@ async function det(kind, key) {
   return hex.slice(0, 16);
 }
 
-export const entryId = (vaultId, path) => det("entry", `${vaultId}:${path}`);
+/** Strip the file basename from a vault path. Root-level files return "". */
+export function folderOfPath(path) {
+  const i = path.lastIndexOf("/");
+  return i < 0 ? "" : path.slice(0, i);
+}
+
+// JournalEntry ids are now folder-keyed: every page in the same directory
+// shares one entry, so the entry id is derived from `folderOfPath(path)`.
+// Page ids stay file-keyed (one page per file). Folder ids are file/dir keys
+// for the Foundry Folder hierarchy and are unrelated to JournalEntry ids.
+export const entryId = (vaultId, path) => det("entry", `${vaultId}:${folderOfPath(path)}`);
 export const pageId = (vaultId, path) => det("page", `${vaultId}:${path}`);
 export const folderId = (vaultId, path) => det("folder", `${vaultId}:${path}`);
 // Deterministic id for the world-level Actor/Item that a page with foundry_base
