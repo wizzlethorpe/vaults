@@ -62,12 +62,17 @@ foundry:
       - { c: [4480, 1470, 4480,  840] }
       - { c: [4480,  840, 1120,  840] }
     tiles:
-      # Feast overlay. Hidden by default; the [[Toggle feast]] macro flips
-      # `hidden` to drape the tables across the empty hall. Pinned _id lets
-      # the macro reach the tile by known id rather than walking by name.
+      # Feast overlay. Positioned to fully cover the background image: with
+      # padding 0.25 on a 3780x2800 scene, the image area starts at canvas
+      # offset (3780*0.25, 2800*0.25) = (945, 700). Hidden by default; the
+      # [[Toggle feast]] macro flips `hidden` to drape the tables across the
+      # empty hall. Pinned _id lets the macro reach the tile by known id
+      # rather than walking by name. (The original Levels-module export used
+      # center-anchored coords offset for that module's positioning math —
+      # we use top-left here so the alignment is obvious without Levels.)
       - _id: mossfootDinner01
-        x: 2870
-        y: 2100
+        x: 945
+        y: 700
         width: 3780
         height: 2800
         elevation: 1
@@ -75,8 +80,6 @@ foundry:
         hidden: true
         texture:
           src: "@vault/attachments/mossfoot-great-hall-feast.webp"
-          anchorX: 0.5
-          anchorY: 0.5
           fit: fill
           tint: "#ffffff"
     sounds:
