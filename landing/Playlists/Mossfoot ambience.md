@@ -7,7 +7,12 @@ foundry:
     description: Tavern background loop for sessions set at the Mossfoot Inn.
     mode: 0     # 0 = sequential, 1 = shuffle, 2 = simultaneous
     sounds:
-      - name: Mossfoot common room
+      # Pinned _id so re-syncs update this sound in place. Foundry's
+      # EmbeddedCollectionField._updateDiff matches incoming items by _id;
+      # without one, every sync allocates a fresh randomID() and the
+      # playlist accrues a duplicate sound each time.
+      - _id: mossfootSnd00001
+        name: Mossfoot common room
         path: "@vault/Audio/mossfoot-tavern.ogg"
         volume: 0.6
         repeat: true

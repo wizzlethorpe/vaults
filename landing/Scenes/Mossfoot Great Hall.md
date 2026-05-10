@@ -63,15 +63,18 @@ foundry:
         shadows: 0
         darkness: { min: 0, max: 0 }
       cycle: false
+    # Pinned _ids on every wall: V14 EmbeddedCollectionField updates by _id;
+    # without one, every re-sync would assign a fresh randomID() and the
+    # scene would accrue a duplicate set of walls each time.
     walls:
-      - { c: [1120,  840, 1120, 3360] }
-      - { c: [1120, 3360, 4480, 3360] }
-      - { c: [4480, 3360, 4480, 2730] }
-      - { c: [4480, 2730, 4620, 2590] }
-      - { c: [4620, 2590, 4620, 1610] }
-      - { c: [4620, 1610, 4480, 1470] }
-      - { c: [4480, 1470, 4480,  840] }
-      - { c: [4480,  840, 1120,  840] }
+      - { _id: mossfootHallW001, c: [1120,  840, 1120, 3360] }
+      - { _id: mossfootHallW002, c: [1120, 3360, 4480, 3360] }
+      - { _id: mossfootHallW003, c: [4480, 3360, 4480, 2730] }
+      - { _id: mossfootHallW004, c: [4480, 2730, 4620, 2590] }
+      - { _id: mossfootHallW005, c: [4620, 2590, 4620, 1610] }
+      - { _id: mossfootHallW006, c: [4620, 1610, 4480, 1470] }
+      - { _id: mossfootHallW007, c: [4480, 1470, 4480,  840] }
+      - { _id: mossfootHallW008, c: [4480,  840, 1120,  840] }
     tiles:
       # Feast overlay. Hidden by default; the [[Toggle feast]] macro flips
       # `hidden` to drape the tables across the empty hall.
