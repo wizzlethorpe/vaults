@@ -25,6 +25,22 @@ export const CACHE_DIR = "vaults-cache";
 const BATCH_SIZE = 25;
 const BATCH_CONCURRENCY = 4;
 
+/** Should this manifest path be pulled into the per-vault cache? Filters out
+ *  build-internal artifacts that match the cached-extension regex but aren't
+ *  user assets:
+ *    - paths starting with `_` (`_search-index.json`, future `_…`); the
+ *      auth middleware also rejects these as unsafe and would 400 the whole
+ *      batch if we sent them
+ *    - per-page hover-preview JSON (`.preview.json`); the wiki uses these,
+ *      but Foundry never references them, so caching them is wasted bytes
+ */
+function isCacheable(path) {
+  if (!CACHED_EXT_RE.test(path)) return false;
+  if (path.startsWith("_") || path.includes("/_")) return false;
+  if (/\.preview\.json$/i.test(path)) return false;
+  return true;
+}
+
 /** Local URL Foundry can serve for a file cached from the given vault. */
 export function localFileUrl(vaultId, vaultPath) {
   const worldId = game.world?.id;
@@ -54,7 +70,7 @@ export function vaultCacheDir(vaultId) {
 export async function syncImages(vault, manifestFiles) {
   const remoteImages = new Map();
   for (const f of manifestFiles) {
-    if (CACHED_EXT_RE.test(f.path)) remoteImages.set(f.path, f.hash);
+    if (isCacheable(f.path)) remoteImages.set(f.path, f.hash);
   }
 
   const lastImageManifest = getVaultManifest(vault.id).lastImageManifest;
