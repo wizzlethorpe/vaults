@@ -11,11 +11,31 @@
 // wrap a single entry with no other entries to group with.
 
 import { MODULE_ID } from "./settings.mjs";
-import { entryId, pageId, folderId, folderOfPath } from "./ids.mjs";
+import { entryId, pageId, folderId, folderOfPath, instanceId } from "./ids.mjs";
 import { transformHtmlForFoundry } from "./links.mjs";
 
 const INDEX_BASENAME = "index";
 const NON_INDEX_SORT_BASE = 100000;
+
+// Doc types instance.mjs's blank-doc form supports. Mirrored here (rather
+// than imported from instance.mjs to avoid the circular dependency that
+// would force) so we can derive a UUID-class hint from `foundry.base` for
+// the in-page "Open in Foundry" link.
+const KNOWN_INSTANCE_DOC_TYPES = ["Actor", "Item", "Scene", "JournalEntry",
+  "RollTable", "Macro", "Cards", "Playlist"];
+
+/** Pull the document class name out of a `foundry.base` spec. UUID form
+ *  ("Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa", or just
+ *  "Actor.<id>") returns the second-to-last segment; blank form
+ *  ("Actor:npc") returns the bare type. Returns null when the spec
+ *  doesn't name a type vaults knows how to instantiate. */
+function inferInstanceDocName(base) {
+  if (typeof base !== "string" || !base) return null;
+  const raw = base.includes(".")
+    ? base.split(".").at(-2)
+    : base.split(":")[0];
+  return KNOWN_INSTANCE_DOC_TYPES.find((t) => t.toLowerCase() === raw?.toLowerCase()) ?? null;
+}
 
 /**
  * Ensure a chain of nested Foundry folders exists matching the vault's
@@ -103,7 +123,8 @@ function isIndexFile(filename) {
  * entry with the file's page; subsequent calls embed additional pages.
  */
 export async function upsertFile(vault, path, body, index, meta, folderInfo) {
-  const html = await transformHtmlForFoundry(vault, body, index);
+  let html = await transformHtmlForFoundry(vault, body, index);
+  html = await appendInstanceDocLink(html, vault, path, meta);
 
   const segs = path.split("/");
   const filename = segs.pop();
@@ -275,3 +296,27 @@ export async function deleteVaultJournals(vaultId) {
     }
   }
 }
+
+/**
+ * Append a small "Open in Foundry" link to the end of a page's article
+ * HTML when the page declared a `foundry.base` (i.e., a derived doc was
+ * instantiated for it). The link uses Foundry's `@UUID[…]{…}` enricher
+ * syntax so it renders with the doc-type icon and clicks through to the
+ * sheet. No-op for pages without an instance doc.
+ *
+ * Doc id derivation matches instance.mjs's resolution: an explicit
+ * `foundry.id` overrides the SHA1-derived `instanceId`.
+ */
+async function appendInstanceDocLink(html, vault, path, meta) {
+  const base = meta?.foundry?.base;
+  const docName = inferInstanceDocName(base);
+  if (!docName) return html;
+  const idOverride = meta?.foundry?.id;
+  const docId = typeof idOverride === "string" && idOverride
+    ? idOverride
+    : await instanceId(vault.id, path);
+  const label = meta?.title || path.split("/").pop().replace(/\.md$/i, "");
+  return html + `\n<p class="vaults-instance-link"><em>Foundry document:</em> @UUID[${docName}.${docId}]{${escapeBraces(label)}}</p>`;
+}
+
+function escapeBraces(s) { return String(s).replace(/[{}]/g, ""); }
