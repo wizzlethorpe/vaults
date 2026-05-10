@@ -1,22 +1,25 @@
 // Post-processing for vault-rendered article HTML before it lands in a
-// Foundry journal. Two rewrites happen here:
+// Foundry journal. Three rewrites happen here:
 //   - <a class="internal-link" href="/Characters/Foo">label</a>
 //       → @UUID[JournalEntry.<id>]{label}    so cross-page links route
 //                                            to the matching journal.
-//   - <img src="/Characters/Portraits/foo.webp">
-//       → <img src="<localImageUrl>">         so images load from the
-//                                            world's data dir.
+//   - <img|audio|video src="/path/to/file.ext">
+//       → src="<localFileUrl>"               so media loads from the
+//                                            world's per-vault cache.
+//   - <a class="passthrough-link" href="/path/to/file.ext">
+//       → href="<localFileUrl>"              so PDF/epub/JSON links work
+//                                            inside Foundry too.
 //
 // Unresolved wikilinks (rendered with `is-unresolved`) keep their markup
 //. Foundry shows them as broken-styled text.
 
 import { entryId, pageId } from "./ids.mjs";
-import { localImageUrl } from "./media.mjs";
-import { IMAGE_EXT_RE } from "./parser.mjs";
+import { localFileUrl } from "./media.mjs";
+import { CACHED_EXT_RE } from "./parser.mjs";
 import { escapeAttr, escapeHtml } from "./util.mjs";
 
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
-const IMG_RE = /<img\b([^>]*?)src="([^"]+)"([^>]*)>/gi;
+const MEDIA_SRC_RE = /<(img|audio|video)\b([^>]*?)src="([^"]+)"([^>]*)>/gi;
 const ATTR_HREF_RE = /\bhref="([^"]+)"/i;
 const ATTR_CLASS_RE = /\bclass="([^"]+)"/i;
 const TAG_RE = /<[^>]+>/g;
@@ -84,7 +87,8 @@ function decodeHtmlEntities(s) {
  */
 export async function transformHtmlForFoundry(vault, html, index) {
   html = await rewriteWikilinks(vault.id, html, index);
-  html = rewriteImages(vault.id, html);
+  html = rewriteMediaSrcs(vault.id, html);
+  html = rewritePassthroughLinks(vault.id, html);
   html = await applyDomTransforms(html, vault, index);
   return html;
 }
@@ -286,12 +290,33 @@ async function rewriteWikilinks(vaultId, html, index) {
   return html;
 }
 
-function rewriteImages(vaultId, html) {
-  return html.replace(IMG_RE, (full, before, src, after) => {
+/** Rewrite local /path src attrs on <img>, <audio>, <video> to the local
+ *  per-vault cache URL. Anything pointing at an external URL or a path
+ *  with an extension we don't cache is left alone — Foundry will treat
+ *  those as external (which they are). */
+function rewriteMediaSrcs(vaultId, html) {
+  return html.replace(MEDIA_SRC_RE, (full, tag, before, src, after) => {
     if (!src.startsWith("/")) return full;
     const path = decodeURIComponent(src.replace(/^\//, ""));
-    if (!IMAGE_EXT_RE.test(path)) return full;
-    return `<img${before}src="${escapeAttr(localImageUrl(vaultId, path))}"${after}>`;
+    if (!CACHED_EXT_RE.test(path)) return full;
+    return `<${tag}${before}src="${escapeAttr(localFileUrl(vaultId, path))}"${after}>`;
+  });
+}
+
+/** Rewrite the href on `<a class="passthrough-link" href="/...">` (the
+ *  emitter for `![[doc.pdf]]`-style passthrough embeds) to point at the
+ *  local cache. Class-gated so we don't accidentally rewrite genuine
+ *  external links the author intended to be external. */
+function rewritePassthroughLinks(vaultId, html) {
+  return html.replace(ANCHOR_RE, (full, attrs, inner) => {
+    const cls = ATTR_CLASS_RE.exec(attrs)?.[1] || "";
+    if (!/\bpassthrough-link\b/.test(cls)) return full;
+    const href = ATTR_HREF_RE.exec(attrs)?.[1] || "";
+    if (!href.startsWith("/")) return full;
+    const path = decodeURIComponent(href.replace(/^\//, ""));
+    if (!CACHED_EXT_RE.test(path)) return full;
+    const newAttrs = attrs.replace(ATTR_HREF_RE, `href="${escapeAttr(localFileUrl(vaultId, path))}"`);
+    return `<a${newAttrs}>${inner}</a>`;
   });
 }
 
