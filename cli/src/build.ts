@@ -765,6 +765,21 @@ async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<BodyMeta
     if (typeof embed === "boolean") block.embed = embed;
     const data = (fo as Record<string, unknown>)["data"];
     if (data && typeof data === "object" && !Array.isArray(data)) block.data = data;
+    // foundry.id: an explicit Foundry document id for this page. When set,
+    // overrides the SHA1-derived id used for both the JournalEntryPage and
+    // (if foundry.base is present) the instantiated derived doc. Lets users
+    // hardcode UUIDs that other Foundry-side code (macros, scene flags,
+    // module integrations) needs to reference. Foundry ids are 16 chars from
+    // [A-Za-z0-9]; a malformed value is dropped with a warning rather than
+    // failing the build.
+    const idVal = (fo as Record<string, unknown>)["id"];
+    if (typeof idVal === "string") {
+      const trimmed = idVal.trim();
+      if (FOUNDRY_ID_RE.test(trimmed)) block.id = trimmed;
+      else if (trimmed.length > 0) {
+        console.warn(`  ${p.path}: foundry.id "${trimmed}" is not a valid Foundry id (16 chars [A-Za-z0-9]); ignoring`);
+      }
+    }
     // foundry.data_json: vault-relative path to a JSON file. Read + parse
     // at build time and inline into the meta as `data_json`. The Foundry
     // module deep-merges it onto the base doc BEFORE foundry.data, so a
@@ -806,6 +821,10 @@ async function loadDataJson(
     return null;
   }
 }
+
+/** Foundry document ids: exactly 16 chars from [A-Za-z0-9]. Validated when
+ *  authors set `foundry.id` to override the SHA1-derived default. */
+const FOUNDRY_ID_RE = /^[A-Za-z0-9]{16}$/;
 
 const EMBED_RE = /!\[\[([^\[\]|#\n]+?)(?:\|[^\[\]#\n]*)?\]\]/g;
 
@@ -1244,8 +1263,11 @@ export interface BodyMeta {
    * (compendium UUID or `Type[:subtype]`); `foundry.data` is the
    * deep-merge overlay applied to the resulting doc; `foundry.embed`
    * (default true) controls whether the page's article auto-embeds
-   * into the doc's description field. Forwarded verbatim to clients
-   * — the CLI doesn't interpret it beyond shape validation.
+   * into the doc's description field; `foundry.id` (16 chars [A-Za-z0-9])
+   * pins both the JournalEntryPage id and the instantiated doc id to
+   * an explicit value instead of the SHA1-derived default. Forwarded
+   * verbatim to clients — the CLI validates shape but doesn't interpret
+   * the values themselves.
    */
   foundry?: Record<string, unknown>;
   /** Resolved cover image (served URL). Used as the reskinned actor/item img. */

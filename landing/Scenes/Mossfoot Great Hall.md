@@ -2,6 +2,11 @@
 title: Mossfoot Great Hall
 image: mossfoot-great-hall.webp
 foundry:
+  # Pinning an explicit Foundry id means a macro on another page can
+  # reference this Scene as `Scene.mossfootHall0001` directly, without
+  # computing the SHA1 we'd otherwise derive from the page path. Stable
+  # across renames and across vault redeploys.
+  id: mossfootHall0001
   base: Scene
   # The Foundry module rewrites cover-image (`image:`) URLs for Actor
   # portraits but doesn't touch scene-texture paths, so background.src

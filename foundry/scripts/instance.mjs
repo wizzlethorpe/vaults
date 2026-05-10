@@ -119,7 +119,11 @@ export async function applyInstance(vault, vaultPath, meta) {
     return;
   }
   const docClass = CONFIG[docName].documentClass;
-  const id = await instanceId(vault.id, vaultPath);
+  // foundry.id pins this page's instance doc to an explicit Foundry id
+  // (16 chars [A-Za-z0-9], validated CLI-side). Enables stable references
+  // from external Foundry code (macros, scene flags) without depending on
+  // path-derived SHA1s. Falls back to the deterministic id otherwise.
+  const id = typeof fm.id === "string" && fm.id ? fm.id : await instanceId(vault.id, vaultPath);
 
   // Layer order, low → high precedence:
   //   1. baseData    (template clone OR { type } for blank doc)

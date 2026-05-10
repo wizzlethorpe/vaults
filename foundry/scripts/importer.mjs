@@ -128,7 +128,15 @@ export async function upsertFile(vault, path, body, index, meta, folderInfo) {
   const pageName = meta?.title || filename.replace(/\.md$/i, "");
 
   const eId = await entryId(vault.id, path);
-  const pId = await pageId(vault.id, path);
+  // foundry.id pins this page's JournalEntryPage to an explicit Foundry id
+  // (16 chars [A-Za-z0-9], validated CLI-side). Lets external Foundry code
+  // reference the page by a stable known id rather than the SHA1 we'd
+  // otherwise compute. The parent JournalEntry id is folder-shared and
+  // intentionally not overridable per page.
+  const idOverride = meta?.foundry?.id;
+  const pId = typeof idOverride === "string" && idOverride
+    ? idOverride
+    : await pageId(vault.id, path);
 
   const flags = { [MODULE_ID]: { vaultId: vault.id, path } };
   const pageData = {

@@ -71,6 +71,8 @@ Instantiated docs land in a per-doctype folder named after the vault (Actors →
 
 `foundry.embed: false` skips the auto-embed of the page article into the doc's description field — useful for stats-only pages or DM-private notes where embedding would leak content into the actor sheet.
 
+`foundry.id` (16 chars `[A-Za-z0-9]`) pins both the page's `JournalEntryPage` and its instantiated doc (when `foundry.base` is set) to an explicit Foundry id instead of the SHA1-derived default. Lets external Foundry code (hotbar macros, scene flags, other modules) reference the doc by a known id without hardcoding the SHA1. Cross-page wikilinks `[[Other Page]]` resolve through the override automatically. The folder-shared parent `JournalEntry` id is *not* overridable (siblings would conflict). Changing `foundry.id` between syncs leaves the previously-created doc orphaned in the world; the module won't auto-delete it, on the same "manually-edited docs are safe" principle that protects user edits.
+
 ## Handler-asset import (CSS / JS from the vault into Foundry)
 
 If a vault includes custom handlers with browser-side assets that opt into Foundry import (`assets.targets.foundry.{styles,scripts}` on the handler), GMs can pull those assets into the world via the per-vault settings dialog ("Import handler stylesheets" / "Import handler scripts"). Both default off. Enabling JS import shows a confirmation dialog explaining that the script will run with full access to game state; turning either on persists the consent, but JS import additionally re-prompts once per session before running freshly-fetched code.

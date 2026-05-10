@@ -30,6 +30,7 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 | `foundry.embed: false` | Skip auto-embedding the page article into the doc's description field |
 | `foundry.data` | Deep-merge overlay applied to the resulting document |
 | `foundry.data_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.data` (use for exported sheets / community-shared dumps) |
+| `foundry.id` | 16-char `[A-Za-z0-9]` Foundry id pinned for this page's `JournalEntryPage` and (if `foundry.base` is set) its instantiated doc |
 
 ## Actor / Item cloning via `foundry.base`
 
@@ -162,6 +163,54 @@ manifest entry — change the JSON, re-sync triggers an update.
 biography, languages, skills, and pocket change, then layers the wound
 penalty (HP 22/30), a CR bump, and the "(wounded)" token name from his
 page's `foundry.data` block on top.
+
+---
+
+### Pinning an explicit Foundry id with `foundry.id`
+
+By default the module derives each page's `JournalEntryPage` id (and, if
+`foundry.base` is set, the instantiated doc's id) from a SHA1 of
+`vaultId + path`. That's stable but opaque, which is awkward when you
+want to reference the page or doc from somewhere outside the vault: a
+hotbar macro, a scene flag, another module's data, a hardcoded
+`@UUID[...]` enricher.
+
+Set `foundry.id` to a 16-char `[A-Za-z0-9]` string and the module pins
+that id instead:
+
+```yaml
+---
+title: Mossfoot Great Hall
+foundry:
+  id: mossfootHall0001
+  base: Scene
+  data:
+    name: Mossfoot Great Hall
+---
+```
+
+The same id is used for the JournalEntryPage and the Scene, since
+Foundry namespaces ids per collection (no collision risk).
+Cross-page wikilinks `[[Mossfoot Great Hall]]` re-resolve through the
+override automatically — they'll point at `mossfootHall0001` rather
+than the SHA1.
+
+[[Mossfoot Great Hall]] is the live demo. The user can drop a macro
+on their hotbar that runs:
+
+```javascript
+game.scenes.get("mossfootHall0001").view();
+```
+
+…and it works regardless of vault id, page rename, or repo redeploy.
+
+The parent `JournalEntry` id (folder-shared, since one entry covers
+every page in a directory) is intentionally *not* overridable per page:
+two siblings can't both claim it. If you change a page's `foundry.id`
+between syncs, the previously-created doc with the old id becomes
+orphaned in the world; the module won't auto-delete it (same
+"manually-edited docs are safe" rule that protects user-touched
+content). Drop it by hand from the sidebar if you need to.
 
 ---
 

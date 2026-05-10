@@ -28,11 +28,19 @@ const TAG_RE = /<[^>]+>/g;
  */
 export function buildPathIndex(manifestFiles) {
   const paths = new Set();
+  // Per-page id overrides from `foundry.id` frontmatter. Used so wikilinks
+  // resolve to the user-pinned id rather than the path-derived SHA1 — without
+  // this, a `[[Other Page]]` link would compute the default id and miss the
+  // page Foundry actually created.
+  const idOverrides = new Map();
   for (const f of manifestFiles) {
     if (!f.path.endsWith(".body.html")) continue;
-    paths.add(f.path.replace(/\.body\.html$/i, "") + ".md");
+    const mdPath = f.path.replace(/\.body\.html$/i, "") + ".md";
+    paths.add(mdPath);
+    const override = f.meta?.foundry?.id;
+    if (typeof override === "string" && override) idOverrides.set(mdPath, override);
   }
-  return { paths };
+  return { paths, idOverrides };
 }
 
 /**
@@ -190,7 +198,7 @@ async function rewriteBasesCardLinks(doc, vaultId, index) {
     const path = logicalPathFromHref(href);
     if (!index.paths.has(path)) continue;
     const eId = await entryId(vaultId, path);
-    const pId = await pageId(vaultId, path);
+    const pId = index.idOverrides?.get(path) ?? await pageId(vaultId, path);
     a.classList.add("content-link");
     a.setAttribute("data-uuid", `JournalEntry.${eId}.JournalEntryPage.${pId}`);
     a.removeAttribute("href"); // Foundry triggers off the data-uuid; an href would re-navigate the page.
@@ -263,7 +271,7 @@ async function rewriteWikilinks(vaultId, html, index) {
   const uuidMatches = matches.filter((r) => r.kind === "uuid");
   const resolved = await Promise.all(uuidMatches.map(async (r) => ({
     eId: await entryId(vaultId, r.path),
-    pId: await pageId(vaultId, r.path),
+    pId: index.idOverrides?.get(r.path) ?? await pageId(vaultId, r.path),
   })));
   uuidMatches.forEach((r, i) => { r.eId = resolved[i].eId; r.pId = resolved[i].pId; });
 
