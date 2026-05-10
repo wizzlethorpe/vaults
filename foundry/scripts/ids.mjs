@@ -33,3 +33,11 @@ export const folderId = (vaultId, path) => det("folder", `${vaultId}:${path}`);
 // each document type's collection separately, so an Actor and an Item could
 // even share an id without colliding).
 export const instanceId = (vaultId, path) => det("instance", `${vaultId}:${path}`);
+
+// Deterministic id for an embedded sub-document (a wall, a tile, a sound,
+// a card, …) under a parent doc instantiated by the vaults importer. The
+// pointer is a JSON-pointer-shaped string into foundry.data identifying the
+// item's position (e.g. "/walls/3" or "/cards/0/faces/1"). Stable across
+// re-syncs as long as the array order stays the same — reordering shifts
+// ids, which is acceptable since reordering is an authorial action.
+export const subdocId = (vaultId, path, pointer) => det("subdoc", `${vaultId}:${path}:${pointer}`);

@@ -19,7 +19,7 @@
 // overwrite the canonical "page-driven" fields plus anything in the page's
 // `foundry:` override block.
 
-import { entryId, pageId, instanceId, folderId } from "./ids.mjs";
+import { entryId, pageId, instanceId, folderId, subdocId } from "./ids.mjs";
 import { localFileUrl, localImageUrl } from "./media.mjs";
 import { MODULE_ID } from "./settings.mjs";
 
@@ -134,6 +134,7 @@ export async function applyInstance(vault, vaultPath, meta) {
   const dataJson = fm.data_json && typeof fm.data_json === "object" && !Array.isArray(fm.data_json)
     ? rewriteVaultPaths(structuredClone(fm.data_json), vault.id)
     : null;
+  if (dataJson) await ensureEmbeddedIds(dataJson, vault.id, vaultPath);
   const overlay = await buildOverlay(vault, vaultPath, meta, docName);
 
   const existing = collection.get(id);
@@ -295,14 +296,55 @@ async function buildOverlay(vault, vaultPath, meta, docName) {
 
   // User overrides win. Deep-merge so e.g. `foundry: { data: { system: {
   // attributes: { hp: { value: 45 } } } } }` patches just that leaf
-  // without clobbering sibling keys we set above. The clone-and-rewrite
-  // step expands `@vault/PATH` references in any string field down to the
-  // local cache URL so authors can point Scene textures / Playlist sounds
-  // at vault-shipped media without hand-writing the deploy URL.
+  // without clobbering sibling keys we set above. Two passes happen on the
+  // cloned data:
+  //   - `rewriteVaultPaths` expands `@vault/PATH` strings to local cache
+  //     URLs so authors can point Scene textures / Playlist sounds at
+  //     vault-shipped media without hand-writing the deploy URL.
+  //   - `ensureEmbeddedIds` assigns deterministic _ids to any object
+  //     inside an array under foundry.data that doesn't have one. Without
+  //     this, V14's EmbeddedCollectionField allocates a fresh randomID()
+  //     on every update and the parent doc accrues duplicate sub-docs
+  //     (walls, sounds, cards, …) on every re-sync.
   if (fm?.data && typeof fm.data === "object") {
-    deepMerge(overlay, rewriteVaultPaths(structuredClone(fm.data), vault.id));
+    const cloned = rewriteVaultPaths(structuredClone(fm.data), vault.id);
+    await ensureEmbeddedIds(cloned, vault.id, vaultPath);
+    deepMerge(overlay, cloned);
   }
   return overlay;
+}
+
+/**
+ * Walk an arbitrary value and assign deterministic _ids to objects that
+ * sit inside arrays and don't already have one. The id is derived from
+ * the JSON pointer to the item, hashed with vault id + page path so
+ * collisions across vaults / pages are impossible.
+ *
+ * Reordering an array shifts every item's _id one slot, so existing
+ * Foundry-side sub-docs match by NEW position, not by their previous
+ * identity. That's acceptable: reorder is a deliberate authorial action
+ * and the alternative (content-hashed ids) would break in-place edits.
+ *
+ * Authors who want a sub-doc identity that survives reordering can pin
+ * `_id` manually in the YAML; this walker leaves existing _ids alone.
+ */
+async function ensureEmbeddedIds(value, vaultId, pagePath, ptr = "") {
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const childPtr = `${ptr}/${i}`;
+      const item = value[i];
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        if (typeof item._id !== "string" || !item._id) {
+          item._id = await subdocId(vaultId, pagePath, childPtr);
+        }
+      }
+      await ensureEmbeddedIds(item, vaultId, pagePath, childPtr);
+    }
+  } else if (value && typeof value === "object") {
+    for (const k of Object.keys(value)) {
+      await ensureEmbeddedIds(value[k], vaultId, pagePath, `${ptr}/${k}`);
+    }
+  }
 }
 
 /**
