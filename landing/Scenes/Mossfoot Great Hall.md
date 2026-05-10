@@ -104,12 +104,20 @@ and served locally, no deploy URL involved.
 
 ![[mossfoot-great-hall.webp|600]]
 
-[great-hall.ogg](../Audio/great-hall.ogg) is the ambient track and
-[mossfoot-great-hall-feast.webp](../attachments/mossfoot-great-hall-feast.webp)
-is the feast overlay. The download links in this paragraph just gate
-their per-variant inclusion (passthrough copying scans markdown body
-references); the Foundry sync pulls them into the local cache via the
-`@vault/...` paths in the scene's `sounds[]` and `tiles[]`.
+The empty hall above is the background. With the [[Toggle feast]] macro
+flipped on, the dinner overlay drapes across the room:
+
+![[mossfoot-great-hall-feast.webp|600]]
+
+And the ambient track that plays while you're in the scene:
+
+![[great-hall.ogg]]
+
+Embedding both files via `![[...]]` here is what gates them into the
+deploy (the image scanner only picks up wikilink embeds, not plain
+markdown links). The Foundry sync then pulls them into the per-vault
+cache via the `@vault/...` paths in the scene's `tiles[]` and
+`sounds[]`.
 
 > [!tip] Try the macros
 > Four pinned-id macros target this scene:
