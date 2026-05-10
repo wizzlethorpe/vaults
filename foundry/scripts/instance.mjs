@@ -20,7 +20,7 @@
 // `foundry:` override block.
 
 import { entryId, pageId, instanceId, folderId } from "./ids.mjs";
-import { localImageUrl } from "./media.mjs";
+import { localFileUrl, localImageUrl } from "./media.mjs";
 import { MODULE_ID } from "./settings.mjs";
 
 // Where the rendered article HTML lands inside each system's document, keyed
@@ -132,7 +132,7 @@ export async function applyInstance(vault, vaultPath, meta) {
   // data_json sits below `foundry.data` so a user can use a hand-shared
   // JSON as the base and patch its fields via the data block on top.
   const dataJson = fm.data_json && typeof fm.data_json === "object" && !Array.isArray(fm.data_json)
-    ? fm.data_json
+    ? rewriteVaultPaths(structuredClone(fm.data_json), vault.id)
     : null;
   const overlay = await buildOverlay(vault, vaultPath, meta, docName);
 
@@ -295,11 +295,46 @@ async function buildOverlay(vault, vaultPath, meta, docName) {
 
   // User overrides win. Deep-merge so e.g. `foundry: { data: { system: {
   // attributes: { hp: { value: 45 } } } } }` patches just that leaf
-  // without clobbering sibling keys we set above.
+  // without clobbering sibling keys we set above. The clone-and-rewrite
+  // step expands `@vault/PATH` references in any string field down to the
+  // local cache URL so authors can point Scene textures / Playlist sounds
+  // at vault-shipped media without hand-writing the deploy URL.
   if (fm?.data && typeof fm.data === "object") {
-    deepMerge(overlay, fm.data);
+    deepMerge(overlay, rewriteVaultPaths(structuredClone(fm.data), vault.id));
   }
   return overlay;
+}
+
+/**
+ * Walk an arbitrary value (object / array / string) and rewrite every string
+ * starting with the `@vault/` sentinel to a local cache URL. Mutates and
+ * returns the same value. Caller is expected to clone if it needs the input
+ * preserved (we do, in buildOverlay / applyInstance).
+ *
+ * The sentinel was chosen to be opt-in and grep-friendly; arbitrary strings
+ * in `foundry.data` (an actor's biography, a card's description) are left
+ * untouched. Unmatched references (path missing from the cache) still get
+ * rewritten — Foundry will 404 the asset, which is the same outcome you'd
+ * get from a typo'd URL today.
+ */
+function rewriteVaultPaths(value, vaultId) {
+  if (typeof value === "string") return rewriteVaultString(value, vaultId);
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) value[i] = rewriteVaultPaths(value[i], vaultId);
+    return value;
+  }
+  if (value && typeof value === "object") {
+    for (const k of Object.keys(value)) value[k] = rewriteVaultPaths(value[k], vaultId);
+    return value;
+  }
+  return value;
+}
+
+function rewriteVaultString(s, vaultId) {
+  if (!s.startsWith("@vault/")) return s;
+  const vaultPath = s.slice("@vault/".length);
+  if (!vaultPath) return s;
+  return localFileUrl(vaultId, vaultPath);
 }
 
 async function safeFromUuid(uuid) {

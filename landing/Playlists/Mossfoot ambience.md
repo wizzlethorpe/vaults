@@ -8,18 +8,18 @@ foundry:
     mode: 0     # 0 = sequential, 1 = shuffle, 2 = simultaneous
     sounds:
       - name: Tavern jingle
-        path: https://test.vaults.wizzlethorpe.com/Audio/tavern-jingle.ogg
+        path: "@vault/Audio/tavern-jingle.ogg"
         volume: 0.6
         repeat: true
         description: A 17 KB OGG looped behind tavern scenes.
 ---
 
 A one-track Playlist that points at the same [tavern-jingle.ogg](../Audio/tavern-jingle.ogg)
-referenced from [[Features/Passthrough files]]. The Foundry module currently
-syncs images into a per-vault local cache but does **not** mirror audio,
-so the playlist sound's `path` has to be a URL Foundry can reach. The
-demo uses this vault's deploy URL directly; if you fork the landing and
-deploy it elsewhere, swap the URL.
+referenced from [[Features/Passthrough files]]. The `@vault/PATH` prefix
+in the sound's `path` tells the Foundry sync to rewrite to a local cache
+URL — the audio file is downloaded into the per-vault asset cache the
+same way images are, so playback works offline and survives moving the
+vault between deploys.
 
 | Field | Value |
 |---|---|

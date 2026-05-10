@@ -31,6 +31,7 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 | `foundry.data` | Deep-merge overlay applied to the resulting document |
 | `foundry.data_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.data` (use for exported sheets / community-shared dumps) |
 | `foundry.id` | 16-char `[A-Za-z0-9]` Foundry id pinned for this page's `JournalEntryPage` and (if `foundry.base` is set) its instantiated doc |
+| `"@vault/PATH"` strings inside `foundry.data` | Rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); the referenced asset is pulled into the cache so Scene textures / Playlist sounds work offline |
 
 ## Actor / Item cloning via `foundry.base`
 
@@ -111,11 +112,15 @@ In this vault:
   `foundry.data.results[]` and re-render in the page body via `fm:`
 - [[Mossfoot Tarot]] is a blank `Cards` deck (six `base` cards, no images)
 - [[Welcome guests]] is a blank `Macro` of type `chat` (no script execution)
-- [[Mossfoot ambience]] is a blank `Playlist` pointing at the deployed
-  `tavern-jingle.ogg` (audio isn't mirrored into Foundry, so the sound's
-  `path` is the wiki's deploy URL)
-- [[Mossfoot Great Hall]] is a blank `Scene` (background + walls only;
-  same deploy-URL workaround as the playlist for the texture path)
+- [[Mossfoot ambience]] is a blank `Playlist` whose sound `path` uses
+  the `@vault/...` prefix (rewritten to a local cache URL on sync, so
+  audio plays from the per-vault cache rather than the deploy)
+- [[Mossfoot Great Hall]] is a blank `Scene` with background + walls +
+  one ambient sound, both assets pulled into the vault cache via `@vault/`
+- [[Visit Mossfoot Hall]] is a `script`-type `Macro` that calls
+  `game.scenes.get("mossfootHall0001").view()` — exercises the pinned
+  `foundry.id`, custom-UUID resolution, and cross-page doc references
+  in one click
 
 
 ![[screenshot-fvtt-actor-aelar-galanodel.webp|500]]

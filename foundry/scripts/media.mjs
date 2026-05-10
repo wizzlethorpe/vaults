@@ -1,10 +1,15 @@
-// Pull vault images into Foundry's user-data directory so journal pages can
+// Pull vault assets into Foundry's user-data directory so journal pages can
 // reference them via plain local paths (worlds/<id>/...). The DM's bearer
 // token is used to authenticate the GETs against the vault, but the token
 // never ends up in journal HTML; once the file is local, Foundry serves
 // it like any other module asset.
+//
+// "Image" naming is historical: this cache now also holds passthrough media
+// (audio / video / PDFs / JSON) so Scene textures and Playlist sounds can
+// reference vault-local URLs. Names kept stable to avoid migrating
+// vaultManifests state; the predicate is the only thing that changed.
 
-import { IMAGE_EXT_RE } from "./parser.mjs";
+import { CACHED_EXT_RE } from "./parser.mjs";
 import { updateVault } from "./vaults.mjs";
 import { getVaultManifest, setVaultManifest } from "./vault-manifests.mjs";
 import { url as vaultUrl } from "./api.mjs";
@@ -20,14 +25,18 @@ export const CACHE_DIR = "vaults-cache";
 const BATCH_SIZE = 25;
 const BATCH_CONCURRENCY = 4;
 
-/** Local URL Foundry can serve for an image cached from the given vault. */
-export function localImageUrl(vaultId, vaultPath) {
+/** Local URL Foundry can serve for a file cached from the given vault. */
+export function localFileUrl(vaultId, vaultPath) {
   const worldId = game.world?.id;
-  if (!worldId) throw new Error("No active world; image cache path unavailable.");
+  if (!worldId) throw new Error("No active world; cache path unavailable.");
   const segs = vaultPath.split("/").map(encodeURIComponent).join("/");
   const relative = `worlds/${worldId}/${CACHE_DIR}/${vaultId}/${segs}`;
   return foundry.utils?.getRoute?.(relative) ?? `/${relative}`;
 }
+
+/** Back-compat alias. New callers prefer localFileUrl since the cache now
+ *  holds non-image media too. */
+export const localImageUrl = localFileUrl;
 
 /** Where this vault's image cache lives on disk (relative to the data dir). */
 export function vaultCacheDir(vaultId) {
@@ -45,7 +54,7 @@ export function vaultCacheDir(vaultId) {
 export async function syncImages(vault, manifestFiles) {
   const remoteImages = new Map();
   for (const f of manifestFiles) {
-    if (IMAGE_EXT_RE.test(f.path)) remoteImages.set(f.path, f.hash);
+    if (CACHED_EXT_RE.test(f.path)) remoteImages.set(f.path, f.hash);
   }
 
   const lastImageManifest = getVaultManifest(vault.id).lastImageManifest;
@@ -268,5 +277,10 @@ function guessMime(filename) {
   return ({
     webp: "image/webp", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
     gif: "image/gif", svg: "image/svg+xml", avif: "image/avif", tiff: "image/tiff",
+    bmp: "image/bmp", heic: "image/heic", apng: "image/apng",
+    ogg: "audio/ogg", mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav",
+    flac: "audio/flac", opus: "audio/ogg", aac: "audio/aac",
+    mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", ogv: "video/ogg",
+    pdf: "application/pdf", epub: "application/epub+zip", json: "application/json",
   })[ext] || "application/octet-stream";
 }

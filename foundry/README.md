@@ -29,7 +29,7 @@ Compatible with V13. Verified on V14.
 
 - **Journals.** Each vault page becomes a `JournalEntry` under the vault's root folder. Folder structure mirrors the vault.
 - **Wikilinks.** `[[Page]]` rewrites to `@UUID[JournalEntry.<id>]{label}` so cross-references stay clickable inside Foundry, including across multiple connected vaults.
-- **Images.** Embedded images are downloaded to a per-vault local cache; rewritten `<img src>` points at the cached file so journals work offline.
+- **Media.** Embedded images, plus passthrough audio / video / PDFs / JSON, are downloaded to a per-vault local cache; rewritten `<img src>` points at the cached file so journals work offline. Inside `foundry.data`, the `@vault/PATH` prefix on any string field gets rewritten to the cached URL so Scene textures / Playlist sounds reference vault-shipped media without hardcoding the deploy URL.
 - **Bases.** Cards, table, and list views render natively. Card hrefs become `data-uuid` content-links, so clicking a card navigates to the linked journal.
 - **Callouts.** Standard callouts render with the vault's CSS. Role-gated callouts inside player-visible pages are wrapped in `<section class="secret">`, so non-GM viewers don't see them even when they can see the surrounding article.
 

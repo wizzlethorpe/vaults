@@ -8,11 +8,12 @@ foundry:
   # across renames and across vault redeploys.
   id: mossfootHall0001
   base: Scene
-  # The Foundry module rewrites cover-image (`image:`) URLs for Actor
-  # portraits but doesn't touch scene-texture paths, so background.src
-  # points at the wiki's deploy URL the same way the playlist does.
-  # Walls trace the room outline; lights / sounds / tiles / Levels-module
-  # references from the original were stripped to keep the demo legible.
+  # `@vault/PATH` strings inside foundry.data are rewritten at sync time
+  # to local Foundry cache URLs (worlds/<id>/vaults-cache/<vault-id>/PATH).
+  # Lets the scene reference vault-shipped assets without hardcoding the
+  # deploy URL. Walls trace the outer room; one ambient sound plays at
+  # the centre. Lights / overlay tiles / Levels-module metadata from the
+  # original export were stripped to keep the demo legible.
   data:
     name: Mossfoot Great Hall
     navigation: true
@@ -21,7 +22,7 @@ foundry:
     padding: 0.25
     tokenVision: true
     background:
-      src: https://test.vaults.wizzlethorpe.com/attachments/mossfoot-great-hall.webp
+      src: "@vault/attachments/mossfoot-great-hall.webp"
       tint: "#ffffff"
     grid:
       type: 1            # square
@@ -60,15 +61,41 @@ foundry:
       - { c: [4620, 1610, 4480, 1470] }
       - { c: [4480, 1470, 4480,  840] }
       - { c: [4480,  840, 1120,  840] }
+    sounds:
+      # Pinned _id so a macro can flip the sound on/off by known id without
+      # walking the scene's ambient-sound collection. The radius covers the
+      # whole hall at the 140 ppi grid scale.
+      - _id: mossfootHallAmb1
+        path: "@vault/Audio/great-hall.ogg"
+        x: 2870
+        y: 2100
+        radius: 30
+        volume: 0.5
+        easing: true
+        walls: true
+        repeat: true
     ownership: { default: 0 }
 ---
 
 The grand hall of the Mossfoot Inn (well, that's what we're calling it
 for this demo). A 27 × 20 grid map at 140 ppi, walls tracing the outer
-room, no lights, no tokens, no ambient sound. On Foundry sync this
-becomes a real `Scene` you can navigate to from the scene sidebar.
+room, one ambient sound covering the centre. On Foundry sync this
+becomes a real `Scene` you can navigate to from the scene sidebar; both
+the background image and the audio are pulled into the per-vault cache
+and served locally, no deploy URL involved.
 
 ![[mossfoot-great-hall.webp|600]]
+
+[great-hall.ogg](../Audio/great-hall.ogg) is the ambient track. The
+download link in this paragraph is just to gate the file's per-variant
+inclusion (passthrough copying scans markdown body references); the
+Foundry sync pulls it into the local cache via the `@vault/...` path in
+the scene's `sounds[]`.
+
+> [!tip] Try the macro
+> [[Visit Mossfoot Hall]] navigates Foundry to this scene by its pinned
+> `foundry.id`, demonstrating end-to-end UUID stability: a macro on one
+> vault page references a scene from another, without any SHA1 lookups.
 
 ## What got stripped from the original
 
@@ -76,23 +103,16 @@ The source export was a fully-dressed scene with:
 
 - 119 light placements (torches, hearth, chandeliers)
 - 3 overlay tiles (a dinner-table layer, candle flames, floating candles)
-- 1 ambient `great-hall.ogg` sound
 - 1 map note pointing at a compendium journal entry
 - Levels-module `levels[]` metadata on every placeable
 - A `_stats.compendiumSource` reference
 
 The simplified frontmatter above keeps just the background, walls, grid,
-and a globally-lit environment. Everything else was removed because:
+a globally-lit environment, and the one ambient sound. Everything else
+was removed because:
 
 - references to other documents (the note's `entryId`, the compendium
-  source) wouldn't resolve in another world,
-- the audio asset would 404 since the Foundry module doesn't sync audio
-  into its per-vault cache (same constraint that pushes [[Mossfoot ambience]]
-  to use the deploy URL for its sound),
+  source) wouldn't resolve in another world
 - the Levels module isn't a hard dependency of `vaults`, and the
   `levels: [...]` arrays on every wall / light / tile would just be
-  ignored if the module isn't installed.
-
-The cover image (`image: mossfoot-great-hall.webp`) ships with the page
-the normal way and renders inline above; the scene background points at
-the same file via the deployed URL.
+  ignored if the module isn't installed
