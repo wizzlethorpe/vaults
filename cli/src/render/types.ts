@@ -35,6 +35,11 @@ export interface RenderContext {
   pages: Map<string, PageMeta>;
   /** slugified filename → image metadata. Used to resolve ![[image]] embeds. */
   images: Map<string, ImageEntry>;
+  /** slugified filename → passthrough metadata. Used to resolve ![[file.ogg]]
+   *  / ![[clip.mp4]] / ![[doc.pdf]] embeds for non-image media. Same shape
+   *  as `images` (the passthrough pipeline staged its files via the same
+   *  ImageEntry record). */
+  passthroughs?: Map<string, ImageEntry>;
   /** slug → raw markdown source. Used for ![[Page]] transclusion. */
   markdownContent: Map<string, string>;
   /** Slugified basename → raw YAML for standalone `.base` files. ![[Foo]] resolves a base if Foo.base exists. */

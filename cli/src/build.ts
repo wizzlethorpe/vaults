@@ -601,6 +601,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   const context: RenderContext = {
     pages: pageIndex,
     images: a.imageIndex,
+    passthroughs: a.passthroughIndex,
     markdownContent,
     bases: a.baseSources,
     defaultImageWidth: a.settings.default_image_width,

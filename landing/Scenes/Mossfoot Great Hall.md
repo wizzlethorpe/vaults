@@ -131,22 +131,6 @@ cache via the `@vault/...` paths in the scene's `tiles[]` and
 > (`mossfootHall0001`) and the placeable by its pinned `_id` — no SHA1
 > lookups, no name-search.
 
-## What got stripped from the original
+> [!info] 
+> This map is a simplified version of the Great Hall map from the Wizzlethorpe [World of Wizards](https://wizzlethorpe.com/modules/world-of-wizards/) map pack. The original map has floatin candles and more fun macros. You should check it out!
 
-The source export was a fully-dressed scene with:
-
-- 119 light placements (torches, hearth, chandeliers)
-- 3 overlay tiles (a dinner-table layer, candle flames, floating candles)
-- 1 map note pointing at a compendium journal entry
-- Levels-module `levels[]` metadata on every placeable
-- A `_stats.compendiumSource` reference
-
-The simplified frontmatter above keeps just the background, walls, grid,
-a globally-lit environment, and the one ambient sound. Everything else
-was removed because:
-
-- references to other documents (the note's `entryId`, the compendium
-  source) wouldn't resolve in another world
-- the Levels module isn't a hard dependency of `vaults`, and the
-  `levels: [...]` arrays on every wall / light / tile would just be
-  ignored if the module isn't installed

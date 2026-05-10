@@ -8,7 +8,14 @@ import type { RenderContext, RenderWarning } from "./types.js";
 import { slugify } from "./slug.js";
 import { renderBase } from "./bases.js";
 
-const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?|bmp|heic|apng)$/i;
+import { AUDIO_EXT_RE, IMAGE_EXT_RE, PASSTHROUGH_EXT_RE, VIDEO_EXT_RE } from "./extensions.js";
+
+// Anything we know how to render inline from a `![[file.ext]]` embed: images
+// become <img>, audio <audio controls>, video <video controls>, and any other
+// passthrough (PDF, epub, JSON, …) collapses to a plain link to the file.
+// Used to short-circuit the page-transclusion path for media so a stray
+// audio embed doesn't get treated as a missing-page transclusion.
+const MEDIA_EMBED_EXT_RE = PASSTHROUGH_EXT_RE;
 const EMBED_INLINE_RE = /!\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]*))?\]\]/g;
 // A line that is *only* an embed; used for page transclusion.
 const EMBED_PARAGRAPH_RE = /^!\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]*))?\]\]$/;
@@ -38,7 +45,11 @@ export function embedPlugin(opts: {
       if (!m) continue;
       const [, rawName, rawAnchor] = m;
       const name = rawName!.trim();
-      if (IMAGE_EXT_RE.test(name)) continue;
+      // Media embeds (image / audio / video / other passthroughs) are handled
+      // by the inline pass below as `<img>` / `<audio>` / `<video>` / `<a>`.
+      // Skipping them here prevents the page-transclusion branch from
+      // treating a stray `![[file.ogg]]` paragraph as a missing page.
+      if (MEDIA_EMBED_EXT_RE.test(name)) continue;
 
       // ![[Foo]] or ![[Foo#ViewName]] — if Foo.base exists, render that
       // base inline instead of looking up a page transclusion.
@@ -57,32 +68,74 @@ export function embedPlugin(opts: {
       tree.children.splice(r.index, 1, r.node);
     }
 
-    // 2. Inline image embeds.
+    // 2. Inline media embeds. Each branch picks the right HTML based on
+    //    extension class:
+    //      - image  → <img>
+    //      - audio  → <audio controls>
+    //      - video  → <video controls>
+    //      - other passthrough (PDF, epub, JSON) → <a> link to the file
+    //    Anything else falls through to the wikilink resolver later in
+    //    the pipeline (which will treat it as a page reference).
     findAndReplace(tree, [
       [
         EMBED_INLINE_RE,
         (_match: string, rawName: string, _rawAnchor?: string, rawAlias?: string) => {
           const name = rawName.trim();
-          if (!IMAGE_EXT_RE.test(name)) return false;
-          const slug = slugify(name);
-          const image = context.images.get(slug);
-          if (!image && warnings) warnings.push({ kind: "missing-image", target: name });
-          const path = image?.outputPath ?? name;
-          const src = "/" + path.split("/").map(encodeURIComponent).join("/");
-          const explicit = parseSizeHint(rawAlias?.trim());
-          // When no explicit |N hint, fall through to a class; the actual
-          // width is set via a CSS variable on <body> so it stays configurable
-          // and sanitize-safe (no inline styles on user-controlled HTML).
-          const extra = explicit
-            || (context.defaultImageWidth ? ` class="default-width"` : "");
-          return {
-            type: "html",
-            value: `<img src="${escAttr(src)}" alt="${escAttr(name)}" loading="lazy"${extra}>`,
-          } satisfies Html;
+          if (IMAGE_EXT_RE.test(name)) return imageEmbed(name, rawAlias?.trim(), context, warnings);
+          if (AUDIO_EXT_RE.test(name)) return mediaEmbed(name, "audio", context);
+          if (VIDEO_EXT_RE.test(name)) return mediaEmbed(name, "video", context);
+          if (PASSTHROUGH_EXT_RE.test(name)) return passthroughLink(name, context);
+          return false;
         },
       ],
     ]);
   };
+}
+
+function imageEmbed(name: string, alias: string | undefined, context: RenderContext, warnings?: RenderWarning[]): Html {
+  const slug = slugify(name);
+  const image = context.images.get(slug);
+  if (!image && warnings) warnings.push({ kind: "missing-image", target: name });
+  const path = image?.outputPath ?? name;
+  const src = "/" + path.split("/").map(encodeURIComponent).join("/");
+  const explicit = parseSizeHint(alias);
+  // When no explicit |N hint, fall through to a class; the actual width
+  // is set via a CSS variable on <body> so it stays configurable and
+  // sanitize-safe (no inline styles on user-controlled HTML).
+  const extra = explicit || (context.defaultImageWidth ? ` class="default-width"` : "");
+  return {
+    type: "html",
+    value: `<img src="${escAttr(src)}" alt="${escAttr(name)}" loading="lazy"${extra}>`,
+  };
+}
+
+/** Render a passthrough media embed as an inline player (audio / video). */
+function mediaEmbed(name: string, kind: "audio" | "video", context: RenderContext): Html {
+  const src = passthroughUrl(name, context);
+  const tag = kind;
+  return {
+    type: "html",
+    value: `<${tag} controls preload="metadata" src="${escAttr(src)}"></${tag}>`,
+  };
+}
+
+/** Render a non-media passthrough embed (PDF / epub / JSON) as a plain link. */
+function passthroughLink(name: string, context: RenderContext): Html {
+  const src = passthroughUrl(name, context);
+  return {
+    type: "html",
+    value: `<a class="passthrough-link" href="${escAttr(src)}">${escAttr(name)}</a>`,
+  };
+}
+
+/** Resolve a passthrough filename to its served URL via the build's index.
+ *  Falls back to the bare name as a last resort so the rendered link still
+ *  points somewhere even if the build never picked the file up. */
+function passthroughUrl(name: string, context: RenderContext): string {
+  const slug = slugify(name);
+  const entry = context.passthroughs?.get(slug);
+  const path = entry?.outputPath ?? name;
+  return "/" + path.split("/").map(encodeURIComponent).join("/");
 }
 
 function transcludePage(
@@ -153,7 +206,9 @@ function expandNestedEmbeds(
   if (depth >= MAX_DEPTH) return source;
   return source.replace(EMBED_LINE_RE_G, (line, rawName: string, rawAnchor?: string) => {
     const name = rawName.trim();
-    if (IMAGE_EXT_RE.test(name)) return line; // images stay as embeds for the inline pass
+    // Media embeds are handled by the inline pass downstream; leave them
+    // as-is here so this string-level expansion only chases page transclusions.
+    if (MEDIA_EMBED_EXT_RE.test(name)) return line;
     const slug = slugify(name);
     if (ancestors.has(slug)) return `> [!warning] Circular embed of ${name}\n`;
     const target = context.markdownContent.get(slug);

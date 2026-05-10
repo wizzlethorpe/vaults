@@ -21,7 +21,7 @@ const sanitizeSchema = {
   // Bases emit interactive HTML beyond what the default schema allows:
   // <input> (filter), <button> (tab buttons + dialog actions). Add them
   // and the attributes they need to function.
-  tagNames: [...(defaultSchema.tagNames ?? []), "input", "button"],
+  tagNames: [...(defaultSchema.tagNames ?? []), "input", "button", "audio", "video", "source"],
   attributes: {
     ...defaultSchema.attributes,
     // role + aria-selected/haspopup/label ride on tabs, dialogs, etc.
@@ -30,6 +30,9 @@ const sanitizeSchema = {
     // initial render shows everything because the sanitizer strips it.
     "*": [...(defaultSchema.attributes?.["*"] ?? []), "className", "role", "ariaSelected", "ariaLabel", "ariaHaspopup", "tabindex", "hidden"],
     img: ["src", "alt", "width", "height", "loading"],
+    audio: ["src", "controls", "preload", "loop", "muted"],
+    video: ["src", "controls", "preload", "loop", "muted", "width", "height", "poster"],
+    source: ["src", "type"],
     a: ["href", "title", "className", "id"],
     div: ["className", "data*", "role"],
     span: ["className", "data*"],

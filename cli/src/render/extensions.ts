@@ -30,6 +30,13 @@ export const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif|tiff?|bmp|heic|apng)
 
 export const PASSTHROUGH_EXT_RE = /\.(ogg|mp3|m4a|wav|flac|opus|aac|mp4|webm|mov|ogv|pdf|epub|json)$/i;
 
+// Audio / video subsets used by the renderer's `![[file.ogg]]` /
+// `![[clip.mp4]]` embed handling. Both are subsets of PASSTHROUGH_EXT_RE,
+// kept separate so the embed plugin can emit the right HTML tag without
+// also accepting PDFs or JSON as media embeds.
+export const AUDIO_EXT_RE = /\.(ogg|mp3|m4a|wav|flac|opus|aac)$/i;
+export const VIDEO_EXT_RE = /\.(mp4|webm|mov|ogv)$/i;
+
 const CONTENT_TYPES: Record<string, string> = {
   // Text / markup
   html: "text/html; charset=utf-8",
