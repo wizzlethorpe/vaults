@@ -21,9 +21,20 @@ foundry:
     height: 2800
     padding: 0.25
     tokenVision: true
-    background:
-      src: "@vault/attachments/mossfoot-great-hall.webp"
-      tint: "#ffffff"
+    # V14 stores the actual background on levels[0].background.src — the
+    # top-level Scene.background.src is a virtual alias that only auto-
+    # promotes onto the default level via Scene._preCreate (so it works on
+    # initial create but is silently lost on subsequent updates). Writing
+    # the level explicitly makes the storage location predictable across
+    # both creates and updates. We pin the level _id so re-syncs target the
+    # same level instead of duplicating it.
+    levels:
+      - _id: defaultLevel0000
+        name: Level
+        elevation: { bottom: 0, top: 20 }
+        background:
+          src: "@vault/attachments/mossfoot-great-hall.webp"
+          tint: "#ffffff"
     grid:
       type: 1            # square
       size: 140          # pixels per square
@@ -65,13 +76,20 @@ foundry:
       # Feast overlay. Hidden by default; the [[Toggle feast]] macro flips
       # `hidden` to drape the tables across the empty hall.
       #
-      # Coordinate math: Foundry V13+ Tile uses `texture.anchorX/Y` as the
-      # sprite's anchor point within `(tile.x, tile.y)`. Both default to 0.5
-      # if omitted, so we set them explicitly and supply `(x, y)` as the
-      # tile's CENTER. With padding 0.25 on a 3780x2800 scene, the image
-      # area centre sits at (padding*w + w/2, padding*h + h/2) = (2835, 2100).
+      # Coordinate math: V14 Tile uses `texture.anchorX/Y` as the sprite
+      # anchor within `(tile.x, tile.y)` (both default to 0.5 — set
+      # explicitly here for clarity). `(x, y)` is therefore the tile's
+      # CENTRE.
+      #
+      # The image-area centre isn't naively `(padding*w + w/2, padding*h + h/2)`
+      # because V14 grid-aligns the image origin: padding offset is rounded
+      # UP to a grid step. With grid.size=140 and padding=0.25 on a 3780x2800
+      # scene:
+      #   x_offset = ceil(0.25 * 3780 / 140) * 140 = ceil(6.75) * 140 = 980
+      #   y_offset = ceil(0.25 * 2800 / 140) * 140 = 5 * 140 = 700
+      # Image-area centre = (980 + 1890, 700 + 1400) = (2870, 2100).
       - _id: mossfootDinner01
-        x: 2835
+        x: 2870
         y: 2100
         width: 3780
         height: 2800
