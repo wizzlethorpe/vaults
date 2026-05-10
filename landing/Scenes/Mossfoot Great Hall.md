@@ -62,17 +62,17 @@ foundry:
       - { c: [4480, 1470, 4480,  840] }
       - { c: [4480,  840, 1120,  840] }
     tiles:
-      # Feast overlay. Positioned to fully cover the background image: with
-      # padding 0.25 on a 3780x2800 scene, the image area starts at canvas
-      # offset (3780*0.25, 2800*0.25) = (945, 700). Hidden by default; the
-      # [[Toggle feast]] macro flips `hidden` to drape the tables across the
-      # empty hall. Pinned _id lets the macro reach the tile by known id
-      # rather than walking by name. (The original Levels-module export used
-      # center-anchored coords offset for that module's positioning math —
-      # we use top-left here so the alignment is obvious without Levels.)
+      # Feast overlay. Hidden by default; the [[Toggle feast]] macro flips
+      # `hidden` to drape the tables across the empty hall.
+      #
+      # Coordinate math: Foundry V13+ Tile uses `texture.anchorX/Y` as the
+      # sprite's anchor point within `(tile.x, tile.y)`. Both default to 0.5
+      # if omitted, so we set them explicitly and supply `(x, y)` as the
+      # tile's CENTER. With padding 0.25 on a 3780x2800 scene, the image
+      # area centre sits at (padding*w + w/2, padding*h + h/2) = (2835, 2100).
       - _id: mossfootDinner01
-        x: 945
-        y: 700
+        x: 2835
+        y: 2100
         width: 3780
         height: 2800
         elevation: 1
@@ -80,6 +80,8 @@ foundry:
         hidden: true
         texture:
           src: "@vault/attachments/mossfoot-great-hall-feast.webp"
+          anchorX: 0.5
+          anchorY: 0.5
           fit: fill
           tint: "#ffffff"
     sounds:
