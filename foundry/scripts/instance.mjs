@@ -166,6 +166,24 @@ export async function applyInstance(vault, vaultPath, meta) {
     await docClass.create(baseData, { keepId: true, keepEmbeddedIds: true });
   } catch (err) {
     console.warn(`Vaults | foundry.base create failed for ${vaultPath}:`, err);
+    return;
+  }
+
+  // Scene thumbnails: V14's Scene._preCreate already attempts this, but it
+  // only fires when `canvas.ready && initialLevel.background.src` — neither
+  // is reliably true mid-sync (no scene is being viewed; the cache file
+  // might still be settling). An explicit post-create pass is idempotent
+  // and means the scene's sidebar tile actually shows the map.
+  if (docName === "Scene") {
+    const created = collection.get(id);
+    if (created && !created.thumb) {
+      try {
+        const { thumb } = await created.createThumbnail();
+        if (thumb) await created.update({ thumb });
+      } catch (err) {
+        console.warn(`Vaults | scene thumbnail generation failed for ${vaultPath}:`, err);
+      }
+    }
   }
 }
 
@@ -318,7 +336,56 @@ async function buildOverlay(vault, vaultPath, meta, docName) {
     await ensureEmbeddedIds(cloned, vault.id, vaultPath);
     deepMerge(overlay, cloned);
   }
+
+  // Auto-add a Map Note that links the scene back to its source journal
+  // page. Placed in the right padding area (just outside the image's
+  // top-right corner) so it's discoverable but doesn't collide with map
+  // content. User-supplied notes in foundry.data.notes survive — we
+  // append, not replace.
+  if (docName === "Scene") {
+    const note = await buildJournalNote(vault, vaultPath, meta, overlay);
+    if (note) overlay.notes = [...(overlay.notes ?? []), note];
+  }
   return overlay;
+}
+
+/**
+ * Build a Map Note pinned just outside the scene's image area, linking
+ * back to the source page's JournalEntryPage. Position is grid-aligned
+ * (same math V14 uses to grid-align the image origin) so the icon sits
+ * cleanly in the padding stripe to the right of the map. Reads scene
+ * dims from the merged overlay (which already has fm.data layered in)
+ * so author-overridden width/height/padding/grid all flow through.
+ */
+async function buildJournalNote(vault, vaultPath, meta, overlay) {
+  const width = Number(overlay.width) || 4000;
+  const height = Number(overlay.height) || 3000;
+  const padding = Number(overlay.padding ?? 0.25);
+  const gridSize = Number(overlay.grid?.size) || 100;
+  const iconSize = 200;
+  const imageOriginX = Math.ceil((padding * width) / gridSize) * gridSize;
+  const imageOriginY = Math.ceil((padding * height) / gridSize) * gridSize;
+  const eId = await entryId(vault.id, vaultPath);
+  const idOverride = meta?.foundry?.id;
+  const pId = typeof idOverride === "string" && idOverride
+    ? idOverride
+    : await pageId(vault.id, vaultPath);
+  return {
+    _id: await subdocId(vault.id, vaultPath, "/notes/__journalLink__"),
+    entryId: eId,
+    pageId: pId,
+    x: imageOriginX + width + iconSize,
+    y: imageOriginY + iconSize / 2,
+    iconSize,
+    texture: {
+      src: "icons/svg/book.svg",
+      anchorX: 0.5,
+      anchorY: 0.5,
+      fit: "contain",
+      tint: "#ffffff",
+    },
+    text: "",
+  };
 }
 
 /**
