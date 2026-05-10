@@ -46,7 +46,7 @@ See more about support for Obsidian bases functionality in [[Features/Bases]].
 
 ## Audio + passthrough files
 
-This vault includes [tavern-jingle.ogg](Audio/tavern-jingle.ogg) to demonstrate how files that are not (currently) rendered into the wiki are handled. These include audio, video, PDFs, and EPUBs files. These files are included in the deploy **only into variants whose visible pages reference them**, just like images. See [[Features/Passthrough files]] for more details.
+This vault includes [mossfoot-tavern.ogg](Audio/mossfoot-tavern.ogg) to demonstrate how files that are not (currently) rendered into the wiki are handled. These include audio, video, PDFs, and EPUBs files. These files are included in the deploy **only into variants whose visible pages reference them**, just like images. See [[Features/Passthrough files]] for more details.
 
 ## Try it in Foundry VTT
 

@@ -7,19 +7,26 @@ foundry:
     description: Tavern background loop for sessions set at the Mossfoot Inn.
     mode: 0     # 0 = sequential, 1 = shuffle, 2 = simultaneous
     sounds:
-      - name: Tavern jingle
-        path: "@vault/Audio/tavern-jingle.ogg"
+      - name: Mossfoot common room
+        path: "@vault/Audio/mossfoot-tavern.ogg"
         volume: 0.6
         repeat: true
-        description: A 17 KB OGG looped behind tavern scenes.
+        description: 120s seamless tavern loop — bar crowd, distant patrons, hearth fire.
 ---
 
-A one-track Playlist that points at the same [tavern-jingle.ogg](../Audio/tavern-jingle.ogg)
-referenced from [[Features/Passthrough files]]. The `@vault/PATH` prefix
-in the sound's `path` tells the Foundry sync to rewrite to a local cache
-URL — the audio file is downloaded into the per-vault asset cache the
-same way images are, so playback works offline and survives moving the
-vault between deploys.
+A one-track Playlist that points at [mossfoot-tavern.ogg](../Audio/mossfoot-tavern.ogg),
+a layered tavern ambience mixed from the Sonniss GDC library via the
+workspace's audio-mixer tool (bar-perspective crowd chatter at full
+volume, distant beer-garden voices highpassed to sit behind, and a
+hearth-fire crackle for the inn's fireplace; loudness-normalised to
+-28 LUFS with a 6-second crossfade so the loop seam is inaudible).
+
+The `@vault/PATH` prefix in the sound's `path` tells the Foundry sync to
+rewrite to a local cache URL, so the audio file is downloaded into the
+per-vault asset cache the same way images are; playback works offline
+and survives moving the vault between deploys.
+
+![[mossfoot-tavern.ogg]]
 
 | Field | Value |
 |---|---|
