@@ -599,6 +599,115 @@ describe("role gating: passthrough files", () => {
       assert.equal(await exists(join(v.out, VARIANT("dm", "Audio/secret-cue.ogg"))), true);
     } finally { await cleanup(v); }
   });
+
+  // [!patron] is a different role tier than [!dm] — make sure the
+  // strip is keyed off the actual role set in settings, not a hardcoded
+  // "dm" check.
+  it("asset inside [!patron] callout on a public page ships to patron+ but not public", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "patron-bonus.pdf": "PATRON HANDOUT",
+      "Open.md": [
+        "# Open",
+        "",
+        "> [!patron] For supporters",
+        "> [patron-bonus.pdf](patron-bonus.pdf)",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      assert.equal(await exists(join(v.out, VARIANT("public", "patron-bonus.pdf"))), false);
+      assert.equal(await exists(join(v.out, VARIANT("patron", "patron-bonus.pdf"))), true);
+      assert.equal(await exists(join(v.out, VARIANT("dm", "patron-bonus.pdf"))), true);
+    } finally { await cleanup(v); }
+  });
+
+  // Over-strip guard: callouts whose type isn't a role name (info, note,
+  // warning, custom) are not redacted. Their inline assets must still
+  // ship to every variant the page is visible in.
+  it("asset inside a non-role callout ([!info]) is not stripped — ships everywhere", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "diagram.pdf": "PUBLIC DIAGRAM",
+      "Open.md": [
+        "# Open",
+        "",
+        "> [!info] FYI",
+        "> See [diagram.pdf](diagram.pdf) for the layout.",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      assert.equal(await exists(join(v.out, VARIANT("public", "diagram.pdf"))), true);
+      assert.equal(await exists(join(v.out, VARIANT("patron", "diagram.pdf"))), true);
+      assert.equal(await exists(join(v.out, VARIANT("dm", "diagram.pdf"))), true);
+    } finally { await cleanup(v); }
+  });
+
+  // Cover-image auto-discovery happens upstream of variants and used to
+  // walk the unstripped source — picking up an image embedded inside a
+  // [!dm] callout as the page's cover would leak it to the public deploy
+  // (since coverImage is the same URL across variants). The fix strips
+  // ALL role-typed callouts before discovery; verifies that here.
+  it("cover-image auto-discovery skips images embedded inside role-gated callouts", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "attachments/secret-only.webp": Buffer.from("placeholder"),
+      "attachments/public-shot.webp": Buffer.from("placeholder"),
+      "Open.md": [
+        "# Open",
+        "",
+        "Body prose.",
+        "",
+        "> [!dm] DM only",
+        "> ![[secret-only.webp]]",
+        "",
+        "![[public-shot.webp]]",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      // The cover should resolve to public-shot.webp (the first image
+      // outside any role-gated callout). secret-only.webp must not ship
+      // to lower tiers either as a body ref or as a cover.
+      assert.equal(await exists(join(v.out, VARIANT("public", "attachments/secret-only.webp"))), false,
+        "an image only ever embedded inside [!dm] must not become the public cover");
+      assert.equal(await exists(join(v.out, VARIANT("public", "attachments/public-shot.webp"))), true,
+        "the body image outside the callout still ships");
+    } finally { await cleanup(v); }
+  });
+
+  // Demos commonly nest @vault/ refs deep in foundry.data (e.g., a
+  // Scene's tiles[0].texture.src or sounds[0].path). The frontmatter
+  // walker has to recurse through arrays + nested objects, not just
+  // top-level keys.
+  it("@vault/PATH nested deep in frontmatter arrays is still picked up", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "attachments/tile.webp": Buffer.from("placeholder"),
+      "Audio/sound.ogg": Buffer.from("placeholder"),
+      "Scene.md": [
+        "---",
+        "title: Nested",
+        "foundry:",
+        "  base: Scene",
+        "  data:",
+        "    tiles:",
+        "      - { texture: { src: \"@vault/attachments/tile.webp\" } }",
+        "    sounds:",
+        "      - { path: \"@vault/Audio/sound.ogg\" }",
+        "---",
+        "# Nested",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      assert.equal(await exists(join(v.out, VARIANT("public", "attachments/tile.webp"))), true,
+        "image referenced via foundry.data.tiles[0].texture.src must ship");
+      assert.equal(await exists(join(v.out, VARIANT("public", "Audio/sound.ogg"))), true,
+        "audio referenced via foundry.data.sounds[0].path must ship");
+    } finally { await cleanup(v); }
+  });
 });
 
 // ── Wikilink behaviour across tiers ───────────────────────────────────────
