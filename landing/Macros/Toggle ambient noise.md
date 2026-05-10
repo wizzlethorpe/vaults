@@ -23,6 +23,6 @@ pulled into the per-vault Foundry cache via the `@vault/Audio/great-hall.ogg`
 reference in the scene's `sounds[]`, so playback works offline.
 
 > [!quote] Macro body
-> ```javascript
-> `fm: foundry.data.command`
+> ```fm javascript
+> foundry.data.command
 > ```

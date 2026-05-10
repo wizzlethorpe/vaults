@@ -39,6 +39,12 @@ export interface HandlerContext {
    * wikilinks) is the caller's responsibility.
    */
   applyInlineHandlers(text: string): Promise<string>;
+  /**
+   * For code-block handlers only: the meta string that follows the language
+   * tag on the fence (e.g. for ```fm javascript``` the meta is "javascript").
+   * Empty string when no meta was given. Inline handlers always see "".
+   */
+  codeBlockMeta: string;
 }
 
 /**

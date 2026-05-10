@@ -20,8 +20,8 @@ lit) and `1` (full dark). Operates on the scene by its pinned
 scene is the active canvas.
 
 > [!quote] Macro body
-> ```javascript
-> `fm: foundry.data.command`
+> ```fm javascript
+> foundry.data.command
 > ```
 
 This is the simplest form of the lighting macro. The original Great

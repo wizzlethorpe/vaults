@@ -27,10 +27,11 @@ import type { HandlerContext, HandlerOutput, HandlerRegistry } from "./types.js"
 
 interface DispatchOpts {
   /**
-   * Context for handlers, *minus* the recursive applyInlineHandlers helper
-   * (which is constructed here so it can close over the registry).
+   * Context for handlers, minus the fields constructed inside this module:
+   * the recursive applyInlineHandlers helper (closes over the registry) and
+   * codeBlockMeta (varies per node, defaulted to "").
    */
-  context: Omit<HandlerContext, "applyInlineHandlers">;
+  context: Omit<HandlerContext, "applyInlineHandlers" | "codeBlockMeta">;
   registry: HandlerRegistry;
 }
 
@@ -189,14 +190,21 @@ async function dispatchOne(
     const handler = registry.inline.get(prefix);
     if (!handler) return null;
     const content = value.slice(colon + 1).trim();
-    return outputToInline(await handler.render(content, context));
+    // Inline handlers never see a code-block meta string. Spread to a fresh
+    // context so a handler that mutates ctx (it shouldn't, but) can't leak
+    // state across dispatches.
+    return outputToInline(await handler.render(content, { ...context, codeBlockMeta: "" }));
   }
   if (node?.type === "code") {
     const lang = ((node as Code).lang ?? "").trim();
     if (!lang) return null;
     const handler = registry.codeBlock.get(lang);
     if (!handler) return null;
-    return outputToBlock(await handler.render((node as Code).value, context));
+    // node.meta is whatever follows the lang on the fence — `lang foo bar`.
+    // Pass it through so handlers like `fm` can use it as a language hint
+    // for the rendered <pre><code class="language-…">.
+    const meta = ((node as Code).meta ?? "").trim();
+    return outputToBlock(await handler.render((node as Code).value, { ...context, codeBlockMeta: meta }));
   }
   return null;
 }
@@ -209,6 +217,7 @@ export function handlersPlugin(opts: DispatchOpts): Plugin<[], Root> {
   const context: HandlerContext = {
     ...baseContext,
     applyInlineHandlers: (text) => applyInlineHandlersImpl(text, registry, context, 0),
+    codeBlockMeta: "",
   };
   return () => async (tree: Root) => {
     await walkAndSubstitute(tree as { children: any[] }, registry, context, 0);

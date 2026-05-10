@@ -170,6 +170,142 @@ describe("built-in fm handler", () => {
   });
 });
 
+// ── Built-in fm code-block handler ────────────────────────────────────────
+//
+// The code-block form (`` ```fm ``) renders a frontmatter value inside a
+// <pre><code>, with the fence's meta string used as the language hint. Used
+// when the value IS code (or otherwise wants a <pre> wrapper) and you don't
+// want to duplicate it between the frontmatter and the body. Verifies the
+// dispatcher correctly threads node.meta through to the handler context, a
+// surface that didn't exist before this handler shipped.
+
+describe("built-in fm code-block handler", () => {
+  it("renders the frontmatter value inside <pre><code> with the language class from the fence meta", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": [
+        "---",
+        "snippet: 'const x = 1;'",
+        "---",
+        "",
+        "```fm javascript",
+        "snippet",
+        "```",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Page.html"), "utf8");
+      assert.match(html, /<pre><code class="language-javascript">const x = 1;<\/code><\/pre>/);
+    } finally { await cleanup(v); }
+  });
+
+  it("omits the language class when no fence meta is given", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": [
+        "---",
+        "note: 'plain text'",
+        "---",
+        "",
+        "```fm",
+        "note",
+        "```",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Page.html"), "utf8");
+      assert.match(html, /<pre><code>plain text<\/code><\/pre>/);
+      assert.doesNotMatch(html, /class="language-/);
+    } finally { await cleanup(v); }
+  });
+
+  it("walks dot-paths into nested objects (matching the inline handler)", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": [
+        "---",
+        "foundry:",
+        "  data:",
+        "    command: |",
+        "      const x = 1; const y = 2;",
+        "---",
+        "",
+        "```fm javascript",
+        "foundry.data.command",
+        "```",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Page.html"), "utf8");
+      assert.match(html, /<pre><code class="language-javascript">const x = 1; const y = 2;/);
+    } finally { await cleanup(v); }
+  });
+
+  it("missing path renders the same fm-missing marker (inside <pre>)", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": [
+        "---",
+        "real: value",
+        "---",
+        "",
+        "```fm",
+        "fake.path",
+        "```",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Page.html"), "utf8");
+      assert.match(html, /<pre><code class="fm-missing"[^>]*>\{\{fake\.path: not a string\}\}<\/code><\/pre>/);
+    } finally { await cleanup(v); }
+  });
+
+  it("non-string values (number, object, array) render the warning marker", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": [
+        "---",
+        "n: 42",
+        "---",
+        "",
+        "```fm",
+        "n",
+        "```",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Page.html"), "utf8");
+      assert.match(html, /\{\{n: not a string\}\}/);
+    } finally { await cleanup(v); }
+  });
+
+  it("HTML-escapes the value so script-tag-shaped strings don't escape the <pre>", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": [
+        "---",
+        "snippet: '<script>alert(1)</script>'",
+        "---",
+        "",
+        "```fm html",
+        "snippet",
+        "```",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Page.html"), "utf8");
+      assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+      assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+    } finally { await cleanup(v); }
+  });
+});
+
 // ── Built-in statblock handler ────────────────────────────────────────────
 
 describe("built-in statblock handler", () => {

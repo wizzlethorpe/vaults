@@ -52,7 +52,10 @@ export const fmHandler: InlineHandler = {
 // the final layout so it doesn't change typography.
 function wrap(inner: string): string { return `<span class="fm-value">${inner}</span>`; }
 
-function lookup(root: Record<string, unknown>, path: string): unknown {
+/** Walk a dot-path into the page's frontmatter; numeric segments index
+ *  arrays. Exported so the sibling fm code-block handler reuses the same
+ *  resolution semantics. */
+export function lookup(root: Record<string, unknown>, path: string): unknown {
   const segments = path.split(".");
   let cursor: unknown = root;
   for (const seg of segments) {

@@ -20,8 +20,8 @@ tile via its pinned `_id` (`mossfootDinner01`). Click once → the tables
 appear; click again → they're cleared.
 
 > [!quote] Macro body
-> ```javascript
-> `fm: foundry.data.command`
+> ```fm javascript
+> foundry.data.command
 > ```
 
 Reaching the placeable by `_id` rather than by name (`scene.tiles.find(t => t.name === "Dinner")`)
