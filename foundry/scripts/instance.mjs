@@ -156,7 +156,14 @@ export async function applyInstance(vault, vaultPath, meta) {
   deepMerge(baseData, overlay);
 
   try {
-    await docClass.create(baseData, { keepId: true });
+    // keepId: keep our pinned/deterministic _id on the parent doc.
+    // keepEmbeddedIds: keep _ids on items inside embedded collections
+    // (cards, walls, sounds, …). Default is true everywhere EXCEPT
+    // Cards.createDocuments, which silently overrides to false and
+    // strips our deterministic ids — so the next sync sees no matching
+    // ids and adds the cards a second time. Always-passing true here
+    // is a no-op for the other doc types and the fix for Cards.
+    await docClass.create(baseData, { keepId: true, keepEmbeddedIds: true });
   } catch (err) {
     console.warn(`Vaults | foundry.base create failed for ${vaultPath}:`, err);
   }
