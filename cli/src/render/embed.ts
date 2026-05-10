@@ -14,8 +14,12 @@ import { AUDIO_EXT_RE, IMAGE_EXT_RE, PASSTHROUGH_EXT_RE, VIDEO_EXT_RE } from "./
 // become <img>, audio <audio controls>, video <video controls>, and any other
 // passthrough (PDF, epub, JSON, …) collapses to a plain link to the file.
 // Used to short-circuit the page-transclusion path for media so a stray
-// audio embed doesn't get treated as a missing-page transclusion.
-const MEDIA_EMBED_EXT_RE = PASSTHROUGH_EXT_RE;
+// audio embed doesn't get treated as a missing-page transclusion. Union of
+// IMAGE_EXT_RE + PASSTHROUGH_EXT_RE — both classes are handled by the inline
+// pass downstream, regardless of which sub-branch they take.
+function isMediaEmbed(name: string): boolean {
+  return IMAGE_EXT_RE.test(name) || PASSTHROUGH_EXT_RE.test(name);
+}
 const EMBED_INLINE_RE = /!\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]*))?\]\]/g;
 // A line that is *only* an embed; used for page transclusion.
 const EMBED_PARAGRAPH_RE = /^!\[\[([^\[\]|#\n]+?)(?:#([^\[\]|#\n]+?))?(?:\|([^\[\]#\n]*))?\]\]$/;
@@ -49,7 +53,7 @@ export function embedPlugin(opts: {
       // by the inline pass below as `<img>` / `<audio>` / `<video>` / `<a>`.
       // Skipping them here prevents the page-transclusion branch from
       // treating a stray `![[file.ogg]]` paragraph as a missing page.
-      if (MEDIA_EMBED_EXT_RE.test(name)) continue;
+      if (isMediaEmbed(name)) continue;
 
       // ![[Foo]] or ![[Foo#ViewName]] — if Foo.base exists, render that
       // base inline instead of looking up a page transclusion.
@@ -208,7 +212,7 @@ function expandNestedEmbeds(
     const name = rawName.trim();
     // Media embeds are handled by the inline pass downstream; leave them
     // as-is here so this string-level expansion only chases page transclusions.
-    if (MEDIA_EMBED_EXT_RE.test(name)) return line;
+    if (isMediaEmbed(name)) return line;
     const slug = slugify(name);
     if (ancestors.has(slug)) return `> [!warning] Circular embed of ${name}\n`;
     const target = context.markdownContent.get(slug);
