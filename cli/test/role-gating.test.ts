@@ -495,6 +495,110 @@ describe("role gating: passthrough files", () => {
       assert.equal(await exists(join(v.out, VARIANT("dm", "data/bundle.xyz"))), true);
     } finally { await cleanup(v); }
   });
+
+  // Locks the leak the user spotted in the role-gated-callout discussion:
+  // before the fix, `copyReferencedPassthroughs` / `copyReferencedImages`
+  // walked the source markdown verbatim, picking up references inside
+  // [!dm] callouts even on `role: public` pages. The renderer hid the
+  // callout from the rendered HTML, but the asset still shipped to the
+  // public deploy and was reachable by direct URL.
+  it("asset embedded inside a role-gated callout on a public page does not ship to lower-tier deploys", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "secret.pdf": "DM HANDOUT",
+      "Open.md": [
+        "# Open",
+        "",
+        "Body content visible to everyone.",
+        "",
+        "> [!dm] DM only",
+        "> Take a look at this handout: [secret.pdf](secret.pdf)",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      assert.equal(await exists(join(v.out, VARIANT("public", "secret.pdf"))), false,
+        "public deploy must not ship a passthrough referenced only inside a [!dm] callout");
+      assert.equal(await exists(join(v.out, VARIANT("patron", "secret.pdf"))), false,
+        "patron deploy must not ship it either (callout type is dm)");
+      assert.equal(await exists(join(v.out, VARIANT("dm", "secret.pdf"))), true,
+        "dm deploy ships it (the callout is visible there)");
+    } finally { await cleanup(v); }
+  });
+
+  // Same leak shape as above but for image embeds via the wikilink form.
+  it("image embedded inside a role-gated callout does not ship to lower-tier deploys", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "attachments/secret-map.webp": Buffer.from("placeholder"),
+      "Open.md": [
+        "# Open",
+        "",
+        "Public content.",
+        "",
+        "> [!dm] DM only",
+        "> ![[secret-map.webp]]",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      assert.equal(await exists(join(v.out, VARIANT("public", "attachments/secret-map.webp"))), false);
+      assert.equal(await exists(join(v.out, VARIANT("dm", "attachments/secret-map.webp"))), true);
+    } finally { await cleanup(v); }
+  });
+
+  // `@vault/PATH` references in frontmatter (e.g., a Scene's
+  // foundry.data.background.src) gate the asset into the variant. Ships per
+  // page-role: a dm-tier page's @vault ref reaches only the dm deploy.
+  it("@vault/PATH in a public page's frontmatter ships the asset to all variants the page is visible in", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "attachments/scene-bg.webp": Buffer.from("placeholder"),
+      "Scene.md": [
+        "---",
+        "title: Test Scene",
+        "foundry:",
+        "  base: Scene",
+        "  data:",
+        "    background:",
+        "      src: \"@vault/attachments/scene-bg.webp\"",
+        "---",
+        "# Test",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      // Page is `role: public` (default), so all three variants get the asset.
+      assert.equal(await exists(join(v.out, VARIANT("public", "attachments/scene-bg.webp"))), true);
+      assert.equal(await exists(join(v.out, VARIANT("patron", "attachments/scene-bg.webp"))), true);
+      assert.equal(await exists(join(v.out, VARIANT("dm", "attachments/scene-bg.webp"))), true);
+    } finally { await cleanup(v); }
+  });
+
+  it("@vault/PATH in a dm-tier page's frontmatter ships only to the dm variant", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "Audio/secret-cue.ogg": Buffer.from("placeholder"),
+      "Secret.md": [
+        "---",
+        "title: Secret Playlist",
+        "role: dm",
+        "foundry:",
+        "  base: Playlist",
+        "  data:",
+        "    sounds:",
+        "      - { name: cue, path: \"@vault/Audio/secret-cue.ogg\" }",
+        "---",
+        "# Secret",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      assert.equal(await exists(join(v.out, VARIANT("public", "Audio/secret-cue.ogg"))), false);
+      assert.equal(await exists(join(v.out, VARIANT("patron", "Audio/secret-cue.ogg"))), false);
+      assert.equal(await exists(join(v.out, VARIANT("dm", "Audio/secret-cue.ogg"))), true);
+    } finally { await cleanup(v); }
+  });
 });
 
 // ── Wikilink behaviour across tiers ───────────────────────────────────────

@@ -361,10 +361,18 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // Computed once against the final imageIndex so OG meta tags, Bases card
   // covers, hover previews, and Foundry actor/item reskin all resolve to the
   // same URL. settings.auto_image flips body-fallback discovery on/off.
+  //
+  // Pre-strip every role-typed callout from the body before discovery: the
+  // cover URL has to be the same across all variants the page is visible
+  // in, so it must not come from inside a `[!dm]` block (which would leak
+  // the image to public deploys). Frontmatter `image:` values are honoured
+  // as-is — those are explicit author intent.
+  const allRoleTypes = new Set(roles);
   for (const meta of allPageMetas) {
     const src = sources.get(meta.path);
     if (!src) continue;
-    const cover = resolvePageImage(src, meta.frontmatter, imageIndex, settings.values.auto_image);
+    const stripped = stripRoleGatedCallouts(src, allRoleTypes);
+    const cover = resolvePageImage(stripped, meta.frontmatter, imageIndex, settings.values.auto_image);
     if (cover) meta.coverImage = cover;
   }
 
@@ -564,7 +572,15 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   for (const m of a.allPageMetas) {
     if (!a.visibleRoles.has(m.role)) continue;
     visibleMetas.push(m);
-    visibleSources.set(m.path, a.sources.get(m.path)!);
+    // Strip role-gated callouts from the source BEFORE it enters any
+    // downstream pass (renderer, transclusion, asset scanner, outlinks).
+    // The renderer's calloutPlugin redacts at render time, but the source
+    // is what the asset scanner walks — without this strip, an
+    // `![[secret.webp]]` inside a `[!dm]` callout on a `role: public`
+    // page would copy the file into the public deploy and be reachable
+    // by URL even though the article hides the callout.
+    const raw = a.sources.get(m.path)!;
+    visibleSources.set(m.path, stripRoleGatedCallouts(raw, a.redactRoles));
   }
 
   // Synthesize folder indexes from the visible set only.
@@ -730,7 +746,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   // contract as images: ship only into variants whose visible pages
   // reference the file. A DM-only audio cue can't ride along into the
   // public deploy because no public-tier source mentions it.
-  await copyReferencedPassthroughs(visibleSources, a.passthroughIndex, a.passthroughStagingDir, a.variantDir);
+  await copyReferencedPassthroughs(visibleSources, visibleMetas, a.passthroughIndex, a.passthroughStagingDir, a.variantDir);
 
   return { pageCount: visibleMetas.length, bodyMeta };
 }
@@ -848,13 +864,24 @@ async function copyReferencedImages(
   // Pages can name their cover via `image:` frontmatter alone (no body embed);
   // pull those in too. coverImage was resolved to the served URL upstream, so
   // strip the leading slash + decode to get back to the staging-relative path.
+  // `@vault/PATH` references inside any frontmatter string field also gate
+  // an asset into this variant — common for Scene background.src / Playlist
+  // sound.path that point at vault-shipped media. Page-role gating still
+  // applies because we only walk visibleMetas (= pages this variant can see).
   for (const p of visibleMetas) {
-    if (!p.coverImage) continue;
-    if (/^https?:\/\//i.test(p.coverImage)) continue;
-    let outputPath;
-    try { outputPath = decodeURIComponent(p.coverImage.replace(/^\//, "")); }
-    catch { continue; }
-    refs.add(outputPath);
+    if (p.coverImage && !/^https?:\/\//i.test(p.coverImage)) {
+      try { refs.add(decodeURIComponent(p.coverImage.replace(/^\//, ""))); }
+      catch { /* malformed coverImage URL — ignore */ }
+    }
+    if (p.frontmatter) {
+      forEachString(p.frontmatter, (s) => {
+        const path = vaultRefPath(s);
+        if (path && IMAGE_EXT_RE.test(path)) {
+          const image = imageIndex.get(slugify(path.split("/").pop()!));
+          if (image) refs.add(image.outputPath);
+        }
+      });
+    }
   }
   for (const outputPath of refs) {
     const src = join(stagingDir, outputPath);
@@ -876,6 +903,68 @@ const MD_LINK_RE = /\[[^\]]*\]\(([^)\s]+\.[a-z0-9]+)(?:\s+["'][^"']*["'])?\)/gi;
 // `[[file.ext]]` and `![[file.ext]]` — Obsidian-flavoured wikilinks/embeds.
 const WIKI_LINK_RE = /!?\[\[([^\[\]|#\n]+\.[a-z0-9]+)(?:\|[^\[\]#\n]*)?(?:#[^\[\]\n]*)?\]\]/gi;
 
+// `> [!type]…` opens a callout; the rest of the contiguous blockquote (lines
+// starting with `>`, blank line ends) is its body. Used to strip role-gated
+// callouts from the source before any downstream pass sees it.
+const CALLOUT_HEAD_RE = /^>\s*\[!(\w+)\]/;
+
+/**
+ * Drop callout blocks whose type is in `redactRoles` from the source. Walks
+ * line-by-line; on a callout-head line whose type is redacted, drops every
+ * subsequent line that is part of the same blockquote (starts with `>`).
+ * A blank line ends the blockquote per CommonMark.
+ *
+ * Approximate by markdown standards (doesn't handle lazy-continuation lines
+ * or nested blockquotes containing role-gated children), but covers every
+ * pattern the asset scanner needs to gate against. The renderer's
+ * calloutPlugin still runs as the source of truth for visual redaction;
+ * this strip is the asset-leak guard.
+ */
+function stripRoleGatedCallouts(source: string, redactRoles: ReadonlySet<string>): string {
+  if (redactRoles.size === 0) return source;
+  const lines = source.split("\n");
+  const out: string[] = [];
+  let dropping = false;
+  for (const line of lines) {
+    if (dropping) {
+      if (line.startsWith(">")) continue;            // still inside the blockquote
+      dropping = false;
+      out.push(line);                                // blank or non-`>` line ends + keeps the line
+      continue;
+    }
+    const head = CALLOUT_HEAD_RE.exec(line);
+    if (head && redactRoles.has(head[1]!.toLowerCase())) {
+      dropping = true;
+      continue;                                      // drop the head line
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+/**
+ * Visit every string value reachable from `value` (object / array / scalar)
+ * and call `fn` once per string. Used to surface `@vault/PATH` references
+ * inside parsed frontmatter (e.g., a Scene's `foundry.data.background.src`
+ * or a Playlist's `foundry.data.sounds[N].path`) so the per-variant asset
+ * scanner can include those files alongside body-referenced ones.
+ */
+function forEachString(value: unknown, fn: (s: string) => void): void {
+  if (typeof value === "string") return fn(value);
+  if (Array.isArray(value)) { for (const v of value) forEachString(v, fn); return; }
+  if (value && typeof value === "object") {
+    for (const v of Object.values(value as Record<string, unknown>)) forEachString(v, fn);
+  }
+}
+
+/** Extract a vault path from a `@vault/PATH` string, or null when the
+ *  string isn't a vault reference. Trailing fragment / query stripped. */
+function vaultRefPath(s: string): string | null {
+  if (!s.startsWith("@vault/")) return null;
+  const rest = s.slice("@vault/".length).split("#")[0]!.split("?")[0]!;
+  return rest.length > 0 ? rest : null;
+}
+
 /**
  * Per-variant reference scan for passthrough files. A file lands in this
  * variant's deploy only if a visible page mentions it — same gating story
@@ -887,6 +976,7 @@ const WIKI_LINK_RE = /!?\[\[([^\[\]|#\n]+\.[a-z0-9]+)(?:\|[^\[\]#\n]*)?(?:#[^\[\
  */
 async function copyReferencedPassthroughs(
   visibleSources: Map<string, string>,
+  visibleMetas: PageMeta[],
   passthroughIndex: Map<string, ImageEntry>,
   stagingDir: string,
   variantDir: string,
@@ -906,6 +996,20 @@ async function copyReferencedPassthroughs(
       const entry = passthroughIndex.get(slugify(name.split("/").pop()!));
       if (entry) refs.add(entry.outputPath);
     }
+  }
+  // `@vault/PATH` references inside any frontmatter string also gate a
+  // passthrough into this variant. Same per-page-role visibility rules
+  // (only walking visibleMetas) — a dm-tier page's @vault/Audio/secret.ogg
+  // ships only to the dm variant.
+  for (const p of visibleMetas) {
+    if (!p.frontmatter) continue;
+    forEachString(p.frontmatter, (s) => {
+      const path = vaultRefPath(s);
+      if (path) {
+        const entry = passthroughIndex.get(slugify(path.split("/").pop()!));
+        if (entry) refs.add(entry.outputPath);
+      }
+    });
   }
   for (const outputPath of refs) {
     const src = join(stagingDir, outputPath);
