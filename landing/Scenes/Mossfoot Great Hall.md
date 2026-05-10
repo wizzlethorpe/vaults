@@ -61,6 +61,24 @@ foundry:
       - { c: [4620, 1610, 4480, 1470] }
       - { c: [4480, 1470, 4480,  840] }
       - { c: [4480,  840, 1120,  840] }
+    tiles:
+      # Feast overlay. Hidden by default; the [[Toggle feast]] macro flips
+      # `hidden` to drape the tables across the empty hall. Pinned _id lets
+      # the macro reach the tile by known id rather than walking by name.
+      - _id: mossfootDinner01
+        x: 2870
+        y: 2100
+        width: 3780
+        height: 2800
+        elevation: 1
+        sort: 1
+        hidden: true
+        texture:
+          src: "@vault/attachments/mossfoot-great-hall-feast.webp"
+          anchorX: 0.5
+          anchorY: 0.5
+          fit: fill
+          tint: "#ffffff"
     sounds:
       # Pinned _id so a macro can flip the sound on/off by known id without
       # walking the scene's ambient-sound collection. The radius covers the
@@ -86,16 +104,24 @@ and served locally, no deploy URL involved.
 
 ![[mossfoot-great-hall.webp|600]]
 
-[great-hall.ogg](../Audio/great-hall.ogg) is the ambient track. The
-download link in this paragraph is just to gate the file's per-variant
-inclusion (passthrough copying scans markdown body references); the
-Foundry sync pulls it into the local cache via the `@vault/...` path in
-the scene's `sounds[]`.
+[great-hall.ogg](../Audio/great-hall.ogg) is the ambient track and
+[mossfoot-great-hall-feast.webp](../attachments/mossfoot-great-hall-feast.webp)
+is the feast overlay. The download links in this paragraph just gate
+their per-variant inclusion (passthrough copying scans markdown body
+references); the Foundry sync pulls them into the local cache via the
+`@vault/...` paths in the scene's `sounds[]` and `tiles[]`.
 
-> [!tip] Try the macro
-> [[Visit Mossfoot Hall]] navigates Foundry to this scene by its pinned
-> `foundry.id`, demonstrating end-to-end UUID stability: a macro on one
-> vault page references a scene from another, without any SHA1 lookups.
+> [!tip] Try the macros
+> Four pinned-id macros target this scene:
+>
+> - [[Visit Mossfoot Hall]] — navigate to the scene
+> - [[Toggle feast]] — show / hide the dinner overlay (`mossfootDinner01`)
+> - [[Toggle lights]] — flip scene darkness 0 ↔ 1
+> - [[Toggle ambient noise]] — mute / unmute the ambient sound (`mossfootHallAmb1`)
+>
+> Each macro reaches the scene by its pinned `foundry.id`
+> (`mossfootHall0001`) and the placeable by its pinned `_id` — no SHA1
+> lookups, no name-search.
 
 ## What got stripped from the original
 

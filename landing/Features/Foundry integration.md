@@ -117,10 +117,12 @@ In this vault:
   audio plays from the per-vault cache rather than the deploy)
 - [[Mossfoot Great Hall]] is a blank `Scene` with background + walls +
   one ambient sound, both assets pulled into the vault cache via `@vault/`
-- [[Visit Mossfoot Hall]] is a `script`-type `Macro` that calls
-  `game.scenes.get("mossfootHall0001").view()` — exercises the pinned
-  `foundry.id`, custom-UUID resolution, and cross-page doc references
-  in one click
+- [[Visit Mossfoot Hall]], [[Toggle feast]], [[Toggle lights]], and
+  [[Toggle ambient noise]] are `script`-type `Macro`s that target the
+  Mossfoot Hall scene by its pinned `foundry.id`, and (for the toggles)
+  reach individual placeables — the dinner tile, the ambient sound — by
+  their pinned `_id`. End-to-end demo of pinned UUIDs, cross-page doc
+  references, and `@vault/`-cached scene assets working together.
 
 
 ![[screenshot-fvtt-actor-aelar-galanodel.webp|500]]
