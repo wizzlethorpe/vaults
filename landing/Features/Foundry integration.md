@@ -111,18 +111,17 @@ In this vault:
 - [[Witchwood encounters]] is a blank `RollTable` whose results live in
   `foundry.data.results[]` and re-render in the page body via `fm:`
 - [[Mossfoot Tarot]] is a blank `Cards` deck (six `base` cards, no images)
-- [[Welcome guests]] is a blank `Macro` of type `chat` (no script execution)
 - [[Mossfoot ambience]] is a blank `Playlist` whose sound `path` uses
   the `@vault/...` prefix (rewritten to a local cache URL on sync, so
   audio plays from the per-vault cache rather than the deploy)
 - [[Mossfoot Great Hall]] is a blank `Scene` with background + walls +
   one ambient sound, both assets pulled into the vault cache via `@vault/`
-- [[Visit Mossfoot Hall]], [[Toggle feast]], [[Toggle lights]], and
-  [[Toggle ambient noise]] are `script`-type `Macro`s that target the
-  Mossfoot Hall scene by its pinned `foundry.id`, and (for the toggles)
-  reach individual placeables — the dinner tile, the ambient sound — by
-  their pinned `_id`. End-to-end demo of pinned UUIDs, cross-page doc
-  references, and `@vault/`-cached scene assets working together.
+- [[Toggle feast]], [[Toggle lights]], and [[Toggle ambient noise]] are
+  `script`-type `Macro`s that target the Mossfoot Hall scene by its
+  pinned `foundry.id`, and reach individual placeables (the dinner tile,
+  the ambient sound) by their pinned `_id`. End-to-end demo of pinned
+  UUIDs, cross-page doc references, and `@vault/`-cached scene assets
+  working together.
 
 
 ![[screenshot-fvtt-actor-aelar-galanodel.webp|500]]

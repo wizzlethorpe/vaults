@@ -120,16 +120,15 @@ cache via the `@vault/...` paths in the scene's `tiles[]` and
 `sounds[]`.
 
 > [!tip] Try the macros
-> Four pinned-id macros target this scene:
+> Three pinned-id macros target this scene:
 >
-> - [[Visit Mossfoot Hall]] — navigate to the scene
 > - [[Toggle feast]] — show / hide the dinner overlay (`mossfootDinner01`)
 > - [[Toggle lights]] — flip scene darkness 0 ↔ 1
 > - [[Toggle ambient noise]] — mute / unmute the ambient sound (`mossfootHallAmb1`)
 >
 > Each macro reaches the scene by its pinned `foundry.id`
-> (`mossfootHall0001`) and the placeable by its pinned `_id` — no SHA1
-> lookups, no name-search.
+> (`mossfootHall0001`) and the placeable by its pinned `_id`, with no
+> SHA1 lookups or name-search.
 
 > [!info] 
 > This map is a simplified version of the Great Hall map from the Wizzlethorpe [World of Wizards](https://wizzlethorpe.com/modules/world-of-wizards/) map pack. The original map has floatin candles and more fun macros. You should check it out!
