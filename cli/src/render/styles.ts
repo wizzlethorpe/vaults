@@ -64,8 +64,18 @@ article a.internal.new, article a.internal.is-unresolved { opacity: 0.7; font-st
 .app-grid {
   display: grid; grid-template-columns: 15rem minmax(0, 56rem) 17rem;
   gap: 2.5rem; max-width: 96rem; margin: 0 auto; padding: 1.5rem;
+  /* Sticky-footer plumbing: the grid fills the viewport so the main
+     column can stretch even when the article is short, and the flex
+     column inside main (below) pushes the footer to its bottom. */
+  min-height: 100vh; box-sizing: border-box;
 }
-main { padding: 2rem 0 4rem; min-width: 0; }
+main {
+  display: flex; flex-direction: column;
+  padding: 2rem 0 4rem; min-width: 0;
+}
+/* Article grows to absorb spare space; the footer falls naturally to
+   the bottom of main whatever the article's intrinsic height. */
+main > article { flex: 1 0 auto; }
 .sidebar { padding: 1.5rem 1.5rem 1.5rem 0; border-right: 1px solid var(--rule); font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.6rem; }
 /* Visual break between the header group (brand/search/auth) and the sitemap. */
 .sidebar > nav:last-child { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid var(--rule); }
