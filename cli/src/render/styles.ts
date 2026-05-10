@@ -71,7 +71,7 @@ article a.internal.new, article a.internal.is-unresolved { opacity: 0.7; font-st
 }
 main {
   display: flex; flex-direction: column;
-  padding: 2rem 0 4rem; min-width: 0;
+  padding: 2rem 0 0; min-width: 0;
 }
 /* Article grows to absorb spare space; the footer falls naturally to
    the bottom of main whatever the article's intrinsic height. */
@@ -89,7 +89,7 @@ main > article { flex: 1 0 auto; }
   .app-grid { grid-template-columns: 1fr; gap: 0; padding: 0.75rem; max-width: 100%; }
   .sidebar { border: none; padding: 0.5rem 0 0; }
   .rightbar { display: none; }
-  main { padding: 0.5rem 0 2.5rem; }
+  main { padding: 0.5rem 0 0; }
   article h1 { font-size: 2rem; }
   article h2 { font-size: 1.4rem; }
 }
