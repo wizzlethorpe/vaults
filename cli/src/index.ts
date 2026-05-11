@@ -162,6 +162,7 @@ program
   .option("-p, --port <n>", "Port for the preview server", (v) => parseInt(v, 10), 4173)
   .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
   .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
+  .option("--no-watch", "Disable auto-rebuild on source changes")
   .action(wrap(preview));
 
 program
