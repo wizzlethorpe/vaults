@@ -4,12 +4,12 @@ Sync an Obsidian vault deployed via [vaults-cli](https://github.com/wizzlethorpe
 
 ## Status
 
-v0.7.0. Public and multi-role vaults sync end to end. Wikilinks, image embeds, callouts, Bases (cards / table / list), and folder hierarchy all import. Page transclusion (`![[Page]]`) is dropped silently for now.
+v0.7.0. Public and multi-role vaults sync end to end. Wikilinks, page transclusions, image embeds, callouts, Bases (cards / table / list), and folder hierarchy all import.
 
 ## How it works
 
 1. Deploy a vault with `vaults push` (Cloudflare Pages).
-2. In Foundry, install this module and open **Manage Vaults** from the Journal sidebar.
+2. In Foundry, install this module and click **Sync Vault** in the Journal sidebar to open the Vaults dialog.
 3. Click **Add Vault**, paste your vault URL. The module probes `/_manifest.json` for `name` and `auth.required`:
    - **Public vault** (single-role, no middleware): jumps straight into the per-vault settings dialog. No sign-in.
    - **Multi-role vault**: same, but you can click **Authenticate** later to elevate above the public tier.
@@ -35,7 +35,7 @@ Compatible with V13. Verified on V14.
 
 ## Multi-vault
 
-You can connect any number of vaults to a single Foundry world. Each vault gets its own row in the **Manage Vaults** dialog, its own root folder, its own image cache, and its own auth state. Removing a vault tears down its journals, derived Actors / Items, and cached images.
+You can connect any number of vaults to a single Foundry world. Each vault gets its own row in the Vaults dialog, its own root folder, its own image cache, and its own auth state. Removing a vault tears down its journals, derived Actors / Items, and cached images.
 
 ## Per-vault permission gate (`dmRole`)
 
@@ -92,13 +92,12 @@ globalThis.Vaults = {
   sync(vaultId, { forceFull = false }),    // run a sync for one vault
   listVaults(),                            // [{ id, label, url, role, public }, …]
   getVault(id),                            // full vault entry
-  openVaultsDialog(),                      // open Manage Vaults UI
+  openVaultsDialog(),                      // open the Vaults dialog
 };
 ```
 
 ## Limitations
 
-- Page transclusion (`![[Page]]`) is dropped.
 - Backlinks are not rendered (vaults-cli includes them as a sidebar; Foundry import currently ignores).
 - One image cache per vault; large vaults can take a minute on first sync.
 - **Secret blocks leak through `@Embed` on derived Items / Actors.** When a page has a `foundry.base`, the cloned Item / Actor's description embeds the page via `@Embed[JournalEntry.…]`. Foundry's text enricher decides whether to hide `<section class="secret">` content based on the *parent* document's permissions, not the embedded page's, so a player who owns the Item sheet sees secret blocks even when the underlying journal page would have hidden them. The journal page itself still hides them correctly. This is a Foundry-side limitation of the `@Embed` enricher; keep DM-only material on dedicated dm-role pages, or set `foundry.embed: false` on the public page.

@@ -16,12 +16,9 @@ Hooks.once("init", () => {
 
 Hooks.once("ready", async () => {
   await migrateLegacyIfNeeded();
-  // Handler-asset re-application is deferred past `ready` and run
-  // fire-and-forget so a slow / offline vault doesn't stall world boot.
-  // The setTimeout(0) yields to the event loop so the world's render hooks
-  // finish first. Silent (no prompt): the persistent toggles already
-  // record the GM's consent, and re-prompting on every reload turned out
-  // to be annoying. The next sync re-prompts if the bundle has changed.
+  // Fire-and-forget so a slow / offline vault doesn't stall world boot.
+  // Silent: persistent toggles already record GM consent; the next sync
+  // re-prompts if the bundle changed.
   setTimeout(() => {
     listVaults().forEach((v) => {
       applyHandlerAssets(v).catch((err) =>
@@ -601,9 +598,7 @@ async function confirmHandlerAssetImport({ vault, styles, scripts }) {
 
 // ── Connect dialog (paste-flow) ───────────────────────────────────────────
 // "Open in browser → sign in → copy → paste here." Same shape as the
-// GitHub CLI device flow. Replaces the previous iframe-based approach
-// because Patreon refuses iframe embedding (X-Frame-Options) and partitioned
-// cookies broke the round-trip in many browsers.
+// GitHub CLI device flow.
 
 async function openConnectDialog(vaultId) {
   const v = getVault(vaultId);
@@ -685,5 +680,16 @@ async function openConnectDialog(vaultId) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-// Expose for macros / debugging.
+// Expose for macros / debugging. `sync` wraps the bundled importer load
+// so console users get the same trust + version check path as the dialog.
+async function sync(vaultId, opts) {
+  const vault = getVault(vaultId);
+  if (!vault) throw new Error(`No vault: ${vaultId}`);
+  const host = createHost();
+  const importer = await loadImporter(host, vault);
+  if (!importer) return null;
+  const result = await importer.runSync(host, vault, opts ?? {});
+  if (result?.refreshHandlerAssets) await applyHandlerAssetsWithConfirm(getVault(vaultId), { reason: "sync" });
+  return result;
+}
 globalThis.Vaults = { sync, listVaults, getVault, openVaultsDialog };

@@ -55,12 +55,9 @@ export async function sync(host, vault, { forceFull = false } = {}) {
     host.notify("error", host.localize("VAULTS.Sync.Error", { message: err.message }));
     return { ok: false, refreshHandlerAssets: false };
   }
-  // Manifest schema/version compatibility check. The CLI advertises a
-  // `manifest_version` (currently 1) and a `cli_version`. We support
-  // manifest_version up to OUR_MANIFEST_VERSION; a higher value means the
-  // deploy was built by a newer CLI than our module knows about, which
-  // may have shape changes we'd misinterpret. Warn but continue —
-  // additive changes are forward-safe.
+  // A higher manifest_version means the deploy was built by a newer CLI
+  // than this module knows about. Warn but continue — additive changes
+  // are forward-safe.
   const OUR_MANIFEST_VERSION = 1;
   const remoteManifestVersion = Number(manifest.manifest_version) || 0;
   if (remoteManifestVersion > OUR_MANIFEST_VERSION) {

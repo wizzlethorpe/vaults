@@ -6,9 +6,6 @@ Obsidian-style callouts are blockquotes that start with `[!type]`. The renderer 
 
 ## Standard types
 
-> [!note] Note
-> Anything informational. The default type if you're unsure.
-
 > [!info] Info
 > Same energy as note, slightly different color palette.
 
@@ -21,10 +18,16 @@ Obsidian-style callouts are blockquotes that start with `[!type]`. The renderer 
 ## Anatomy
 
 ```markdown
-> [!note] Optional title goes here
+> [!info] Optional title goes here
 > Body content. Can span multiple lines.
 > Markdown inside callouts works (links, **bold**, lists).
 ```
+
+The above markdown produces this callout:
+
+> [!info] Optional title goes here
+> Body content. Can span multiple lines.
+> Markdown inside callouts works (links, **bold**, lists).
 
 If you omit the title, the type name is used as a default label.
 

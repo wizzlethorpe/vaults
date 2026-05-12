@@ -1,13 +1,7 @@
-// Pull vault assets into Foundry's user-data directory so journal pages can
-// reference them via plain local paths (worlds/<id>/...). The DM's bearer
-// token is used to authenticate the GETs against the vault, but the token
-// never ends up in journal HTML; once the file is local, Foundry serves
-// it like any other module asset.
-//
-// "Image" naming is historical: this cache now also holds passthrough media
-// (audio / video / PDFs / JSON) so Scene textures and Playlist sounds can
-// reference vault-local URLs. Names kept stable to avoid migrating
-// vaultManifests state; the predicate is the only thing that changed.
+// Pull vault assets (images + passthrough media) into Foundry's user-data
+// directory so journal pages can reference them via plain local paths
+// (worlds/<id>/...). The DM's bearer token authenticates the GETs; once
+// the file is local, Foundry serves it like any other module asset.
 
 import { CACHED_EXT_RE } from "./parser.mjs";
 import { url as vaultUrl } from "./api.mjs";

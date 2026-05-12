@@ -115,17 +115,14 @@ interface Host {
   setVaultState(vaultId: string, patch: Partial<VaultState>): Promise<void>;
   clearVaultState(vaultId: string): Promise<void>;
 
-  // ── Authentication ────────────────────────────────────────────────
+  // ── Vault registry entry ──────────────────────────────────────────
   //
-  // Tokens themselves live in the vault registry (also module-side);
-  // the importer just receives the resolved token via the `vault` arg
-  // to runSync. This method is only called when the importer detects a
-  // mid-sync 401 and wants to re-prompt rather than fail.
+  // The registry itself is module-side. The importer reads to pick up
+  // post-auth changes (token / role) and writes when probing the
+  // manifest reveals new metadata.
 
-  /** Run the host's "you need to (re-)authenticate" flow. Returns the new
-   *  token on success, null on cancel. The host writes the token to the
-   *  vault registry itself; the importer just gets the resolved value. */
-  refreshToken(vault: VaultEntry, reason: "expired" | "rejected" | "manual"): Promise<string | null>;
+  getVaultEntry(vaultId: string): VaultEntry | null;
+  updateVaultEntry(vaultId: string, patch: Partial<VaultEntry>): Promise<void>;
 
   // ── User-facing affordances ───────────────────────────────────────
   //
@@ -165,6 +162,7 @@ layer over them would be performative.
 | `foundry.utils.getRoute(…)` | Same. |
 | `game.settings.get("vaults", …)` | NOT used by the importer — that's host-only. The importer reaches vault state through `getVaultState` / `setVaultState`. |
 
+```ts
 interface ProgressHandle {
   update(done: number, total?: number, label?: string): void;
   done(message?: string): void;
@@ -191,7 +189,8 @@ interface VaultEntry {
   rootFolder: string;     // Foundry-side root folder name
   importHandlerStyles: boolean;
   importHandlerScripts: boolean;
-  handlerAssetPaths: { js: string; css: string };
+  handlerAssetPaths: { foundryJs: string | null; foundryCss: string | null };
+  trustedImporterHash: string;  // SHA-256 of the last GM-approved importer bundle.
 }
 
 interface VaultState {
@@ -203,10 +202,11 @@ interface VaultState {
 
 interface SyncOptions {
   forceFull?: boolean;            // skip the manifest diff, re-import everything
-  signal?: AbortSignal;           // host may cancel mid-sync
 }
 
 interface SyncResult {
+  ok: boolean;
+  refreshHandlerAssets: boolean;  // host re-applies CSS/JS post-sync when true.
   added: number;
   modified: number;
   removed: number;
@@ -259,36 +259,3 @@ Vaults whose CLI hasn't been bumped to ship `_foundry/importer.js` will
 > author end and re-deploy, then try again."
 
 We're still in 0.x; breaking change is fine.
-
-## Migration
-
-Existing module installs have vault config in `game.settings` under the
-module ID, keyed under `vaults` (a JSON array of VaultEntry-shaped
-objects) and `vaultManifests` (per-vault state). Both keep their current
-shape — the migration is renaming the importer-side imports, not
-changing the storage.
-
-The one-time refactor:
-1. Move `importer.mjs`, `sync.mjs`, `instance.mjs`, `links.mjs`,
-   `media.mjs`, `ids.mjs`, `parser.mjs` from `foundry/scripts/` to a
-   new `cli/src/importer/` source tree.
-2. The CLI's build pipeline bundles those into a single ESM file at
-   `_foundry/importer.js` in the deploy.
-3. The Foundry module gains the host implementation + fetch/eval +
-   trust-hash logic. It KEEPS the dialog UI, settings registration,
-   vault registry, handler-asset import, world-ready hooks.
-
-## Open design questions
-
-- **Single ESM blob vs split files?** v1 is single bundle (one fetch,
-  one hash). If the importer grows past ~500KB we can revisit.
-- **Per-vault custom importer URL?** Not exposed in v1. The
-  `${VAULT_URL}/_foundry/importer.js` convention is hardcoded. Easy to
-  expose later as a per-vault setting.
-- **dnd5e-specific `DESCRIPTION_FIELDS` table**: moves to the importer.
-  A pf2e vault can ship a pf2e importer with its own table. The host
-  has no per-system knowledge.
-- **Locking against concurrent syncs**: today's module has no lock;
-  two GMs running Sync on the same vault race on flag writes. The
-  contract doesn't change this; could add a `host.acquireLock(vaultId)`
-  in v2 if it becomes a problem.

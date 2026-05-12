@@ -17,7 +17,7 @@ The innkeeper's son. Eleven, all elbows, asks too many questions.
 
 ![[bram-portrait.webp|180]]
 
-This page intentionally has no `image:` frontmatter — the auto-image setting
+This page intentionally has no `image:` frontmatter. The auto-image setting
 should pick the first body embed (Bram's portrait) for OG tags and the
 Foundry actor's `img`.
 
@@ -28,5 +28,5 @@ Foundry actor's `img`.
 
 > [!dm] DM only
 > Bram has overheard cult members at the inn but doesn't know what they are.
-> If a party gains his trust he'll repeat phrases verbatim — useful breadcrumbs
+> If a party gains his trust he'll repeat phrases verbatim, useful breadcrumbs
 > toward the [[Hidden Caves]].

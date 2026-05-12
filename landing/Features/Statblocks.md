@@ -2,7 +2,7 @@
 title: Statblocks
 ---
 
-A built-in code-block handler renders D&D 5e creature statblocks. The schema matches the [Fantasy Statblocks](https://github.com/javalent/fantasy-statblocks) Obsidian plugin — write the same YAML once, see it render natively in Obsidian (via the plugin) and on your published wiki (via this handler).
+A built-in code-block handler renders D&D 5e creature statblocks. The schema matches the [Fantasy Statblocks](https://github.com/javalent/fantasy-statblocks) Obsidian plugin.
 
 ## A worked example
 
@@ -35,7 +35,7 @@ actions:
     desc: "*Ranged Weapon Attack:* +4 to hit, range 80/320 ft., one target. *Hit:* `dice: 1d6+2` piercing damage."
 ```
 
-The damage rolls in the action descriptions are clickable — handler descriptions chain through the inline-handler dispatcher, so `` `dice: 1d6+2` `` inside an action's `desc` becomes a real roll button at render time.
+The damage rolls in the action descriptions are clickable. Handler descriptions chain through the inline-handler dispatcher, so `` `dice: 1d6+2` `` inside an action's `desc` becomes a real roll button at render time.
 
 ## A larger one
 
@@ -70,7 +70,7 @@ traits:
     desc: If the dragon fails a saving throw, it can choose to succeed instead.
 actions:
   - name: Multiattack
-    desc: The dragon can use its Frightful Presence. It then makes three attacks — one with its bite and two with its claws.
+    desc: The dragon can use its Frightful Presence. It then makes three attacks, one with its bite and two with its claws.
   - name: Bite
     desc: "*Melee Weapon Attack:* +12 to hit, reach 10 ft., one target. *Hit:* `dice: 2d10+7` piercing damage."
   - name: Claw
@@ -91,8 +91,7 @@ legendary_description: The dragon can take 3 legendary actions, choosing from th
 
 The `spells:` field takes a list of strings. The first string is the intro
 prose (it renders as a Spellcasting trait); each following string is one
-spell-level line `"<label>: <comma-separated spells>"`. Spell names get
-italicized automatically — write them in plain lowercase.
+spell-level line `"<label>: <comma-separated spells>"`.
 
 ```statblock
 name: Mage
@@ -134,7 +133,7 @@ actions:
 | `name` | Required for a sensible header. |
 | `size`, `type`, `subtype`, `alignment` | Joined into the subheading line. |
 | `ac`, `ac_class` | If `ac_class` is present it appears parenthesised after `ac`. |
-| `hp`, `hit_dice` | Same — `hit_dice` appears in parens after `hp`. |
+| `hp`, `hit_dice` | Same. `hit_dice` appears in parens after `hp`. |
 | `speed` | Free-form string. |
 | `stats` | Six numbers, STR DEX CON INT WIS CHA. Modifiers computed automatically. |
 | `saves` | List of `{ ability: bonus }`; ability name is lower-cased and abbreviated. |
@@ -145,9 +144,10 @@ actions:
 | `traits`, `actions`, `reactions`, `legendary_actions` | Lists of `{ name, desc }`. `desc` supports inline `**bold**`/`*italic*`/`` `code` `` and chains through inline handlers (so `dice:` works inside descriptions). |
 | `spells` | Basic 5e spellcasting block. List of strings: first is the intro prose (rendered as a Spellcasting trait), the rest are per-level entries `"<label>: <comma-separated spells>"`. Spell names are auto-italicized. |
 | `legendary_description` | Optional intro paragraph for legendary actions. |
+| `image` | Portrait shown in the header. Accepts a wikilink (`![[portrait.png]]`), a bare filename, or an absolute URL. |
 
 Every string field tokenizes inline-handler invocations, so you can pull
-data from elsewhere with `fm:` — for example, derive the statblock's CR from
+data from elsewhere with `fm:`. For example, derive the statblock's CR from
 the same `foundry:` block your Foundry actor uses:
 
 ````markdown
@@ -167,19 +167,16 @@ cr: "`fm: foundry.system.details.cr`"
 ````
 
 One source of truth for both the rendered statblock and the synced Foundry
-actor sheet. See [[Mossroot]] for a fully worked instance — blank Foundry
+actor sheet. See [[Mossroot]] for a fully worked instance: a blank Foundry
 NPC actor (no compendium template), all stat fields pulled via `fm:` from
 the `foundry:` data block, Foundry sync and wiki render share the YAML.
 
 ## What's not (yet) supported
 
-- Innate spellcasting (`innate_spellcasting:`) and PF2e/13th-age spell variants. The basic 5e `spells:` array (intro + per-level lines) is supported — see [Spellcasting](#spellcasting).
+- Innate spellcasting (`innate_spellcasting:`) and PF2e/13th-age spell variants. The basic 5e `spells:` array (intro + per-level lines) is supported (see [Spellcasting](#spellcasting)).
 - Custom layouts (Pathfinder 2e, 13th age, etc.). The current handler always renders the basic 5e layout.
-- Image fields. Use a regular Obsidian image embed `![[portrait.png]]` next to the statblock.
 - Wikilinks inside `desc` fields. They render as literal `[[...]]` text. Cross-references to other pages should live in surrounding prose.
-- JS callbacks. Fantasy Statblocks evaluates arbitrary JS in its layout JSON; we don't.
-
-These are all reasonable adds — they just weren't in the v1 cut.
+- JS callbacks. Fantasy Statblocks evaluates arbitrary JS in its layout JSON. We currently do not.
 
 ## Theming
 
@@ -193,4 +190,3 @@ The CSS uses tokens lifted from Fantasy Statblocks so you can override the look 
 }
 ```
 
-The default palette is the canonical D&D scarlet on parchment. If you've themed the rest of your vault to a different accent, the statblock will look out of place until you override these.

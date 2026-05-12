@@ -36,8 +36,7 @@ Folder-prefixed paths still work for disambiguation:
 | `[[NPCs/Aelar]]` | [[NPCs/Aelar]] |
 | `[[Lore/The Mossfoot Inn]]` | [[Lore/The Mossfoot Inn]] |
 
-In practice you'll rarely need them — bare names resolve as long as the
-basename is unique across the vault.
+In practice you'll rarely need them. Bare names resolve as long as the basename is unique across the vault.
 
 ## Image embeds
 

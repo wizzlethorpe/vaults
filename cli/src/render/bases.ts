@@ -1,40 +1,8 @@
-// Obsidian Bases support.
-//
-// Two entry points:
-//   1. The remark plugin parses ```base / ```bases code fences inline.
-//   2. renderBase() is exported so embed.ts can render ![[Foo]] when
-//      Foo.base exists in the vault.
-//
-// Both paths share the same parser + evaluator + view renderers.
-//
-// Supported (v3):
-//   - filters:   string expression OR { and|or|not: [expr|tree] } tree
-//   - views:     table | cards | list. table is sortable; cards is a
-//                grid of clickable cards with cover images; list is a
-//                compact bulleted list.
-//   - sort:      [{ column, direction }] honored on every view type;
-//                multi-key (later entries break ties from earlier ones).
-//   - formulas:  top-level `formulas: { name: expr }` block. Reference
-//                as `formula.name` from order, filters, and other
-//                formulas. Memoized per row; cycles raise an error.
-//   - properties: { <id>: { displayName? } }; works for note.X,
-//                 file.X, and formula.X column ids.
-//   - identifiers: file.{name,basename,path,folder,ext,mtime,ctime,tags}
-//                  note.X / bare X (frontmatter), formula.X
-//   - operators:  == != < <= > >= && || !  + (string concat / numeric add)
-//   - methods:    file.hasTag("..."), file.inFolder("..."),
-//                 stringValue.contains("..."), .startsWith, .endsWith,
-//                 .lower, .upper
-//   - literals:   strings (double or single quoted), numbers, true/false, null
-//   - cards-only: image: <prop>, imageFit: cover|contain, imageAspectRatio
-//
-// Deferred:
-//   - summaries, groupBy
-//   - map view type
-//   - duration arithmetic (now() - "1 week" etc.)
-//
-// Unknown view types and unknown YAML keys are warned-on, not fatal —
-// real .base files in the wild include undocumented fields.
+// Obsidian Bases support. Entry points: the remark plugin parses
+// ```base / ```bases code fences; renderBase() is also called by embed.ts
+// for ![[Foo]] when Foo.base exists. Both share the same Pratt-parsed
+// expression language (see parseExpr) and view renderers (table / cards /
+// list). Unknown view types and unknown YAML keys warn but don't abort.
 
 import type { Plugin } from "unified";
 import type { Root, Code, Html } from "mdast";

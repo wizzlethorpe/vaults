@@ -42,5 +42,5 @@ border. Speaks softly, listens harder.
 
 > [!dm] DM only
 > Aelar is secretly tracking the cult's recruitment patterns through the
-> Mossfoot region. He'll share what he knows for the right price — or if a
+> Mossfoot region. He'll share what he knows for the right price, or if a
 > party shows up that reminds him of his sister.

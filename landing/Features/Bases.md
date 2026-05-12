@@ -4,10 +4,9 @@ title: Bases
 
 Bases are filtered, sorted, table-or-card views over your vault's pages, following the same syntax as Obsidian's [Bases plugin](https://help.obsidian.md/bases), but rendered statically at build time. They're declared as `.base` files (YAML), embedded into pages via the same `![[Foo]]` syntax as image embeds, and resolved against page frontmatter.
 
-## The example on the homepage
+## A Small Cast
 
-The [[index|homepage]] embeds `NPCs.base` (in the vault root) which queries
-the `NPCs/` folder. Here's the same Base, re-embedded:
+The base below embeds `NPCs.base` (in the vault root) which queries the `NPCs/` folder:
 
 ![[NPCs]]
 

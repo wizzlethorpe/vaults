@@ -1,22 +1,9 @@
 // Unified plugin that runs registered handlers over the markdown AST.
-//
-// For each inline-code node `` `prefix: …` ``, look up an InlineHandler
-// keyed on `prefix`; if found, replace the node with the handler's output.
-//
-// For each fenced ``` ```lang ``` ``` block, look up a CodeBlockHandler
-// keyed on `lang`; if found, replace the node with the handler's output.
-//
-// Output is parsed back into mdast (when markdown) or wrapped as a raw HTML
-// node (when html). Either way, the rest of the pipeline (wikilinks,
-// embeds, sanitization) sees the substituted content normally.
-//
-// Recursion: the walker descends into handler-emitted markdown and runs
-// the registry against it again, so a handler that returns text
-// containing `dice: 1d20` produces a real dice button. Bounded by
-// MAX_DEPTH so a self-referential handler can't loop forever.
-//
-// Runs early in the pipeline so handler-emitted markdown still picks up
-// wikilink / embed processing downstream.
+// Inline-code `prefix: …` and fenced code ```lang … ``` blocks are
+// dispatched to the matching InlineHandler / CodeBlockHandler. Handler
+// output is re-parsed (or wrapped as raw HTML) so downstream wikilink /
+// embed passes still see it. Handler-emitted markdown is recursively
+// dispatched, bounded by MAX_DEPTH.
 
 import type { Plugin } from "unified";
 import type { Root, RootContent, Code, InlineCode, Paragraph, Html as MdHtml, PhrasingContent } from "mdast";

@@ -16,7 +16,7 @@ foundry:
         path: "@vault/Audio/mossfoot-tavern.ogg"
         volume: 0.6
         repeat: true
-        description: 120s seamless tavern loop — bar crowd, distant patrons, hearth fire.
+        description: 120s seamless tavern loop. bar crowd, distant patrons, hearth fire.
 ---
 
 A one-track Playlist that points at [mossfoot-tavern.ogg](../Audio/mossfoot-tavern.ogg),

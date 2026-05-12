@@ -39,7 +39,7 @@ deploy by previewing locally.
 vaults patreon configure
 ```
 
-Interactive prompt for **client ID** and **client secret**. The client secret is written to `.env` (gitignored); the client ID lands in `.vaultrc.json` (trackable). After that the CLI offers to **auto-detect your campaign and tier list** via a one-shot OAuth dance:
+Interactive prompt for **client ID** and **client secret**. The client secret is written to `.vaults/.env` (gitignored); the client ID lands in `.vaults/config.json` (trackable). After that the CLI offers to **auto-detect your campaign and tier list** via a one-shot OAuth dance:
 
 - Opens your browser to Patreon
 - You approve
@@ -57,7 +57,7 @@ and shows a menu of tiers:
     1. Backers ($5/mo, id 5551111)
     2. Producers ($25/mo, id 5552222)
     3. Patrons of Patrons ($100/mo, id 5553333)
-    0. None — keep patron password-only
+    0. None. keep patron password-only
   Pick [0-3]: 1
 ```
 
@@ -77,8 +77,7 @@ To check the current state:
 vaults patreon status
 ```
 
-To remove a mapping (without removing Patreon entirely — password access
-remains):
+To remove a mapping (without removing Patreon entirely, password access remains):
 
 ```bash
 vaults patreon unlink dm

@@ -21,13 +21,6 @@ foundry:
     height: 2800
     padding: 0.25
     tokenVision: true
-    # V14 stores the actual background on levels[0].background.src — the
-    # top-level Scene.background.src is a virtual alias that only auto-
-    # promotes onto the default level via Scene._preCreate (so it works on
-    # initial create but is silently lost on subsequent updates). Writing
-    # the level explicitly makes the storage location predictable across
-    # both creates and updates. We pin the level _id so re-syncs target the
-    # same level instead of duplicating it.
     levels:
       - _id: defaultLevel0000
         name: Level
@@ -80,7 +73,7 @@ foundry:
       # `hidden` to drape the tables across the empty hall.
       #
       # Coordinate math: V14 Tile uses `texture.anchorX/Y` as the sprite
-      # anchor within `(tile.x, tile.y)` (both default to 0.5 — set
+      # anchor within `(tile.x, tile.y)` (both default to 0.5; set
       # explicitly here for clarity). `(x, y)` is therefore the tile's
       # CENTRE.
       #
@@ -113,7 +106,7 @@ foundry:
         path: "@vault/Audio/great-hall.ogg"
         x: 2870
         y: 2100
-        radius: 30
+        radius: 100
         volume: 0.5
         easing: true
         walls: true
@@ -148,9 +141,9 @@ cache via the `@vault/...` paths in the scene's `tiles[]` and
 > [!tip] Try the macros
 > Three pinned-id macros target this scene:
 >
-> - [[Toggle feast]] — show / hide the dinner overlay (`mossfootDinner01`)
-> - [[Toggle lights]] — flip scene darkness 0 ↔ 1
-> - [[Toggle ambient noise]] — mute / unmute the ambient sound (`mossfootHallAmb1`)
+> - [[Toggle feast]]: show / hide the dinner overlay (`mossfootDinner01`)
+> - [[Toggle lights]]: flip scene darkness 0 ↔ 1
+> - [[Toggle ambient noise]]: mute / unmute the ambient sound (`mossfootHallAmb1`)
 >
 > Each macro reaches the scene by its pinned `foundry.id`
 > (`mossfootHall0001`) and the placeable by its pinned `_id`, with no

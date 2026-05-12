@@ -58,5 +58,5 @@ the recoded version.
 
 Image compression is the slowest part of a build. Vaults caches every
 encode keyed on the source file's hash, so repeat builds skip the codec
-entirely for unchanged images. The cache lives under `.vault-cache/images/`
+entirely for unchanged images. The cache lives under `.vaults/cache/images/`
 in your vault and is gitignored by default.

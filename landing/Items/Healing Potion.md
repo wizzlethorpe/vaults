@@ -17,7 +17,7 @@ A local variant of the standard healing potion, distilled by the
 [[The Mossfoot Inn|Mossfoot]] family. Tastes faintly of pine.
 
 > [!info] Mechanically standard
-> The recipe behaves identically to a standard potion of healing — the
+> The recipe behaves identically to a standard potion of healing. The
 > overrides above only touch the flavour text and price.
 
 When uncorked, smells like wet stone after rain.

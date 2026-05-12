@@ -70,9 +70,8 @@ export interface BuildResult {
  *         <pages>.preview.json
  *         _search-index.json
  *
- * When there's a single role (the default `public`-only case) we collapse
- * `_variants/public/...` up to the root for backwards compatibility with
- * the current `vaults preview` and `vaults push` flow.
+ * Single-role builds (the default `public`-only case) collapse
+ * `_variants/public/...` up to the root.
  */
 export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   const start = Date.now();
@@ -222,15 +221,9 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     baseSources.set(slugify(basename), await readFile(f.absolute, "utf8"));
   });
 
-  // Per-page parsed gray-matter result (data + content), cached so the render
-  // pipeline doesn't have to re-run gray-matter on every page. Two parses per
-  // page (this gray-matter + parseFrontmatter's regex) is intentional: the
-  // regex is more forgiving for malformed YAML and still extracts title/role,
-  // while gray-matter gives us the full property set for Bases. Removing the
-  // remaining duplication would mean folding one into the other and either
-  // losing resilience or losing the "real YAML" semantics.
-  // TODO: consider unifying once we settle on whether to gate rendering on
-  // YAML validity; today we render anyway and just drop the property block.
+  // Two parses per page: the regex-based parseFrontmatter is tolerant of
+  // malformed YAML and still extracts title/role; gray-matter gives us
+  // the full property set for Bases.
   const parsedSources = new Map<string, PreParsedFrontmatter>();
   for (const f of markdownFiles) {
     parsedSources.set(f.path, parseFullFrontmatterWithContent(sources.get(f.path)!));
@@ -514,10 +507,9 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   await rm(otherStagingDir, { recursive: true, force: true });
 
   // Atomic swap: move the freshly-built tree into the final location.
-  // rm-then-rename instead of rename-with-overwrite because
-  // `node:fs/promises` rename refuses to overwrite a non-empty dir.
-  // A crash between the rm and the rename leaves the deploy missing,
-  // which is the right failure mode (visible) vs. a silent half-build.
+  // rm-then-rename: Node's rename refuses to overwrite a non-empty dir.
+  // A crash between rm and rename leaves the output missing, which is
+  // visibly broken rather than silently half-built.
   await rm(finalOutputDir, { recursive: true, force: true });
   await rename(workOutputDir, finalOutputDir);
 
@@ -771,10 +763,6 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
  *     base: <UUID> | <Type>[:<subtype>]   # required for instantiation
  *     embed: false                          # default true
  *     data: { … deep-merged into the doc }
- *
- * Pre-0.7 vaults used flat `foundry_base` and `foundry_no_embed` keys
- * alongside `foundry: { ...data... }`. Those have NO back-compat path
- * here — the user explicitly opted into a clean break.
  */
 async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<BodyMeta> {
   const fm = p.frontmatter ?? {};
@@ -1145,7 +1133,12 @@ function chooseColumns(pages: PageMeta[]): string[] {
       // Skip control / display keys that aren't meaningful as columns.
       if (["title", "role", "aliases", "tags"].includes(key)) continue;
       const v = fm[key];
-      if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) continue;
+      if (v == null || v === "") continue;
+      // Skip non-scalar values — arrays and plain objects render as
+      // "[object Object]" or comma-joined junk in a table cell. Dates
+      // are technically objects but renderValue formats them nicely,
+      // so let them through.
+      if (typeof v === "object" && !(v instanceof Date)) continue;
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
   }

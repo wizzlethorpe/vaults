@@ -1,14 +1,6 @@
-// Token utilities for the paste-flow connect dialog.
-//
-// The Foundry module no longer authenticates via an iframe + postMessage.
-// Instead, the user clicks "Open vault sign-in page", authenticates in a
-// regular browser tab (password OR Patreon — no iframe constraints), and
-// pastes the resulting bearer token back. Same GitHub-CLI / device-flow
-// pattern, robust to cookie partitioning and provider X-Frame-Options.
-//
-// What used to live here: prepareConnect (iframe URL + CSRF state) and
-// awaitConnectMessage (postMessage listener). Both are gone — see git
-// history if you need them.
+// Token utilities for the paste-flow connect dialog. The GM authenticates
+// in a regular browser tab and pastes the resulting bearer token back —
+// device-flow style, robust to cookie partitioning and X-Frame-Options.
 
 import { updateVault } from "./vaults.mjs";
 import { setVaultManifest } from "./vault-manifests.mjs";

@@ -9,11 +9,9 @@
 // InlineHandler keyed on `prefix`. For each fenced ``` ```lang ``` block it
 // looks up a CodeBlockHandler keyed on `lang`. The handler's `render()` is
 // called with the content and a HandlerContext, and the returned markdown
-// or HTML replaces the matched node in the AST.
-//
-// Build-time only: handlers run during `vaults push` / `vaults build`.
-// Their output is static markup. Runtime widget support (handlers shipping
-// browser JS) is a separate future feature.
+// or HTML replaces the matched node in the AST. Handlers may also ship
+// `assets.{styles,scripts}` to opt their generated markup into runtime
+// CSS / JS bundles.
 
 import type { RenderContext } from "../types.js";
 

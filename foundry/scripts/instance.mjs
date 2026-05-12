@@ -1,23 +1,10 @@
-// Instantiate a world-level Foundry document (Actor / Item) from a vault page.
-// `foundry: { base: <UUID>, data: {...}, embed: false }` in page frontmatter
-// names a template (or a doc type), supplies the deep-merge overlay, and
-// optionally suppresses the auto-embed of the page article into the doc's
-// description field. We clone the template into the world under a
-// deterministic id derived from (vault.id, path), then layer on the page's
-// name + cover image + an `@Embed[…]` of the page's journal so the document
-// description always shows the rendered article.
-//
-// Why clone instead of mutate the template:
-//   - Compendium docs are read-only; you can't mutate them directly.
-//   - Mutating world templates breaks the obvious "this is the goblin you can
-//     drop on every map" expectation.
-//   - Pages stay the source of truth: a page deletion / rename can predictably
-//     create or destroy its derived doc.
-//
-// The deterministic id means re-syncing a page updates the same Actor/Item in
-// place; user-edited fields (HP, conditions, etc.) survive because we only
-// overwrite the canonical "page-driven" fields plus anything in the page's
-// `foundry:` override block.
+// Instantiate a world-level Foundry document from a vault page's
+// `foundry: { base, data, embed }` frontmatter. We clone the template
+// into the world (compendium docs are read-only; mutating world
+// templates would surprise users) under a deterministic id derived
+// from (vault.id, path), then layer name + cover + an `@Embed[…]` of
+// the page's journal on top. Re-syncing updates the same doc in place,
+// so user edits to non-canonical fields (HP, conditions) survive.
 
 import { entryId, pageId, instanceId, folderId, subdocId } from "./ids.mjs";
 import { localFileUrl, localImageUrl } from "./media.mjs";
@@ -125,12 +112,9 @@ export async function applyInstance(vault, vaultPath, meta) {
   // path-derived SHA1s. Falls back to the deterministic id otherwise.
   const id = typeof fm.id === "string" && fm.id ? fm.id : await instanceId(vault.id, vaultPath);
 
-  // Layer order, low → high precedence:
-  //   1. baseData    (template clone OR { type } for blank doc)
-  //   2. data_json   (user-supplied JSON file, e.g. an exported sheet)
-  //   3. overlay     (page-driven name/img/embed + foundry.data)
-  // data_json sits below `foundry.data` so a user can use a hand-shared
-  // JSON as the base and patch its fields via the data block on top.
+  // Layer order, low → high precedence: baseData < data_json < overlay.
+  // foundry.data (inside overlay) wins so a page can patch fields out
+  // of a hand-shared JSON sheet without rewriting the whole file.
   const dataJson = fm.data_json && typeof fm.data_json === "object" && !Array.isArray(fm.data_json)
     ? rewriteVaultPaths(structuredClone(fm.data_json), vault.id)
     : null;

@@ -20,7 +20,7 @@ Wizzlethorpe Vaults is a tool that turns an Obsidian vault into a self-hosted, r
 > callouts inside them. Try Aelar's page at each tier to see the difference.
 
 > [!tip] Support Wizzlethorpe Labs
-> Wizzlethorpe Vaults is a free and open-source Wizzlethorpe Labs product. If you find it useful, please consider supporting us on [Patreon](https://www.patreon.com/wizzlethorpe). Check out [wizzlethorpe.com](https://www.wizzlethorpe.com) for more free tools and content!
+> Wizzlethorpe Vaults is a free and open-source Wizzlethorpe Labs product. If you find it useful, please consider supporting us on [Patreon](https://www.patreon.com/wizzlethorpe). Check out [wizzlethorpe.com](https://wizzlethorpe.com) for more free tools and content!
 
 ## What's demonstrated here
 
@@ -29,20 +29,11 @@ Wizzlethorpe Vaults is a tool that turns an Obsidian vault into a self-hosted, r
 | Wikilinks | [[Features/Wikilinks]] |
 | Callouts | [[Features/Callouts]] |
 | Images & cover discovery | [[Features/Images]] |
-| Bases (filtered/sorted views over your notes) | [[Features/Bases]], scroll down |
+| Bases (filtered/sorted views over your notes) | [[Features/Bases]] |
 | Role gating | [[Features/Role gating]] |
 | Foundry VTT integration | [[Features/Foundry integration]] |
 | Frontmatter dialog | the `{}` button in the top-right of every page |
 | Per-page social-card meta | view source on any page → `og:image`, `og:title`, etc. |
-
-## A small cast
-
-A live [Obsidian Bases](https://obsidian.md/help/bases) cards view filtered to NPCs, sorted by name. The same authoring pattern works for items, locations, sessions, anything you can give consistent frontmatter. The eponymous [[Dr. Bixby Wizzlethorpe]] is in the back booth.
-
-![[NPCs]]
-
-See more about support for Obsidian bases functionality in [[Features/Bases]].
-
 
 ## Try it in Foundry VTT
 

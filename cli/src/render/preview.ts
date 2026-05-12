@@ -35,8 +35,15 @@ const previewPipeline = unified()
   .use(rehypeStringify);
 
 export async function buildPreview(rawMarkdown: string, title: string): Promise<PagePreview> {
-  // Strip frontmatter and Obsidian %% comments %% before walking the body.
-  const body = stripFrontmatter(rawMarkdown).replace(/%%[\s\S]*?%%/g, "").trim();
+  // Strip frontmatter, Obsidian %% comments %%, and fenced code blocks
+  // before walking the body. Code fences render as a wall of source text
+  // in a tiny hover popover, which looks worse than just omitting them —
+  // same rationale as the table skip in truncateMarkdown.
+  const body = stripFrontmatter(rawMarkdown)
+    .replace(/%%[\s\S]*?%%/g, "")
+    .replace(/^```[\s\S]*?^```[^\n]*$/gm, "")
+    .replace(/^~~~[\s\S]*?^~~~[^\n]*$/gm, "")
+    .trim();
   const summary = await renderSnippet(body);
 
   const headings: Record<string, { title: string; summary: string }> = {};
