@@ -47,5 +47,4 @@ This vault has roles `public < patron < dm`, so:
 > above and below this one render at their respective tiers.
 
 Toggle between the public/patron/dm tiers (sidebar auth box) to see the
-difference. The page renders cleanly at every tier — the surrounding
-content adjusts as if the redacted callouts were never authored.
+difference.

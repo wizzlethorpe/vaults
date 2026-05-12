@@ -6,9 +6,6 @@ foundry:
     name: Mossfoot Tarot
     type: deck
     description: A six-card fortune deck the innkeeper's grandmother used to read futures over a cup of pine tea.
-    # Each card needs at least one entry in `faces[]` and a `face` index;
-    # Foundry V13+ shows `faces[face].name`, not the card document name, so
-    # leaving faces empty would render every card as "Unknown" face-up.
     cards:
       - name: "The Lantern"
         type: "base"
@@ -56,4 +53,4 @@ of warning the old innkeeper's grandmother thought was worth giving.
 
 On Foundry sync this becomes a real `Cards` document of type `deck` with six
 `base` cards. No images are wired up, so the cards show Foundry's default
-back / blank face; the names and descriptions are what matters for the demo.
+back / blank face. The names and descriptions are what matters for the demo.

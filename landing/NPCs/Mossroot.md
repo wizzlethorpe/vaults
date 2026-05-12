@@ -1,6 +1,9 @@
 ---
 title: Mossroot
 image: mossroot-portrait.webp
+role-class: Fey
+location: Witchwood
+cr: 3
 foundry:
   base: Actor:npc
   data:

@@ -2,11 +2,7 @@
 title: Bases
 ---
 
-Bases are filtered, sorted, table-or-card views over your vault's pages —
-the same idea as Obsidian's [Bases plugin](https://help.obsidian.md/bases),
-but rendered statically at build time. They're declared as `.base` files
-(YAML), embedded into pages via the same `![[Foo]]` syntax as image embeds,
-and resolved against page frontmatter.
+Bases are filtered, sorted, table-or-card views over your vault's pages, following the same syntax as Obsidian's [Bases plugin](https://help.obsidian.md/bases), but rendered statically at build time. They're declared as `.base` files (YAML), embedded into pages via the same `![[Foo]]` syntax as image embeds, and resolved against page frontmatter.
 
 ## The example on the homepage
 
@@ -44,9 +40,7 @@ views:
       - note.location
 ```
 
-Two views were declared (`Roster` cards + `Stats` table); both render in
-order. Each card's cover image comes from the page's `image:` frontmatter
-(falling back to body auto-discovery; see [[Images]]).
+Two views were declared (`Roster` cards + `Stats` table). Each card's cover image comes from the page's ``image:`` frontmatter (falling back to body auto-discovery; see [[Images]]).
 
 ## View types
 
@@ -58,7 +52,7 @@ order. Each card's cover image comes from the page's `image:` frontmatter
 
 ## Filtering
 
-`filters:` accepts a single expression or an `and`/`or` tree:
+``filters:`` accepts a single expression or an `and`/`or` tree:
 
 ```yaml
 # Simple
@@ -76,7 +70,7 @@ filters:
 
 Available functions: `file.inFolder("NPCs")`, `file.hasTag("villain")`,
 plus comparison operators (`==`, `!=`, `<`, `<=`, `>`, `>=`, `contains`,
-`startsWith`, `endsWith`).
+`startsWith`, `endsWith`). 
 
 ## Sorting + limits
 
@@ -118,5 +112,3 @@ Embed a specific view by name with a `#` anchor:
 
 ![[NPCs#Stats]]
 
-Useful when the same Base wants to appear in different shapes on different
-pages.

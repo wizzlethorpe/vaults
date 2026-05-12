@@ -3,16 +3,12 @@ title: Foundry VTT integration
 ---
 
 The companion **Wizzlethorpe Vaults** Foundry VTT module syncs a deployed
-vault into a Foundry world: every page becomes a JournalEntry +
-JournalEntryPage, every wikilink rewrites to a `@UUID[JournalEntry.…]`
-enricher, every embedded image is downloaded into the world's local data
-dir.
+vault into a Foundry world: every page becomes a JournalEntryPage, every wikilink rewrites to a `@UUID[JournalEntry.…]` enricher, every embedded image is downloaded into the world's local data dir.
 
 > [!tip] Install
 > The module is on the [Foundry package directory](https://foundryvtt.com/packages/vaults).
 > In Foundry, open *Add-on Modules → Install Module*, search for
-> **Wizzlethorpe Vaults**, and click Install. Source on
-> [GitHub](https://github.com/wizzlethorpe/vaults).
+> **Wizzlethorpe Vaults**, and click Install.
 
 Pages can additionally **instantiate a Foundry document** (Actor, Item,
 Scene, etc.) by adding a `foundry:` block to frontmatter.
@@ -28,10 +24,9 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 | `foundry.base: <UUID>` | New `Actor` or `Item` cloned from the template (see below) |
 | `foundry.base: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
 | `foundry.embed: false` | Skip auto-embedding the page article into the doc's description field |
-| `foundry.data` | Deep-merge overlay applied to the resulting document |
+| `foundry.data` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`) |
 | `foundry.data_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.data` (use for exported sheets / community-shared dumps) |
 | `foundry.id` | 16-char `[A-Za-z0-9]` Foundry id pinned for this page's `JournalEntryPage` and (if `foundry.base` is set) its instantiated doc |
-| `"@vault/PATH"` strings inside `foundry.data` | Rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); the referenced asset is pulled into the cache so Scene textures / Playlist sounds work offline |
 
 ## Actor / Item cloning via `foundry.base`
 
@@ -66,7 +61,8 @@ On sync, the Foundry module:
 
 The result is an Actor (or Item) whose description embeds the wiki article. Edit the actor's HP in Foundry, the next sync preserves it (we only overwrite the canonical fields + your `foundry.data` overrides).
 
-For pages that *shouldn't* leak their article into the actor sheet, DM-private notes, or stats-only pages where the embed adds nothing, set `foundry.embed: false`. The clone / blank doc still gets created with the right name, image, and `foundry.data` overlay; only the description field is left at whatever the template (or blank) had.
+> [!warning] WARNING
+> Anything defined in the `foundry.data` block will be overwritten on *every* sync. Think before using this feature for things like player character sheets that change frequently.
 
 ### Blank documents
 
@@ -100,9 +96,7 @@ and lets the active system pick its default, which keeps the syntax
 portable across systems.
 
 [[Mossroot]] is a worked example: blank `Actor:npc`, full `foundry.data`
-block, statblock pulling AC/HP/CR/speed via `fm:` from that same block, so
-one frontmatter source drives both the wiki render and the synced Foundry
-actor sheet.
+block, statblock pulling AC/HP/CR/speed via `fm:` from that same block, so one frontmatter source drives both the wiki render and the synced Foundry actor sheet.
 
 In this vault:
 - [[Aelar]] clones SRD Scout
@@ -267,3 +261,5 @@ Force-sync after changing `dmRole` to re-wrap previously-imported pages.
 
 > [!warning] WARNING
 > There is a known Foundry bug where secrets do not work on documents owned by a non-GM user. This isn't typically an issue with imported Journal Entries since they default to GM ownership (players get read access via the OBSERVER role), but it can cause problems if you change ownership or (more likey), a page is Embedded into an Actor/Item sheet that is owned by a non-GM. Be careful about this!
+
+For pages that *shouldn't* leak their article into the actor sheet, DM-private notes, or stats-only pages where the embed adds nothing, set `foundry.embed: false`. The clone / blank doc still gets created with the right name, image, and `foundry.data` overlay. Only the description field is left at whatever the template (or blank) had.
