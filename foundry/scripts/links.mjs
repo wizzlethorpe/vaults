@@ -16,7 +16,7 @@
 import { entryId, pageId } from "./ids.mjs";
 import { localFileUrl } from "./media.mjs";
 import { CACHED_EXT_RE } from "./parser.mjs";
-import { escapeAttr, escapeHtml } from "./util.mjs";
+import { escapeAttr, escapeHtml, escapeBraces } from "./util.mjs";
 
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 const MEDIA_SRC_RE = /<(img|audio|video)\b([^>]*?)src="([^"]+)"([^>]*)>/gi;
@@ -321,4 +321,3 @@ function rewritePassthroughLinks(vaultId, html) {
 }
 
 function stripTags(s) { return s.replace(TAG_RE, "").trim(); }
-function escapeBraces(s) { return s.replace(/[{}]/g, ""); }

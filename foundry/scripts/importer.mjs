@@ -13,6 +13,7 @@
 import { MODULE_ID } from "./settings.mjs";
 import { entryId, pageId, folderId, folderOfPath, instanceId } from "./ids.mjs";
 import { transformHtmlForFoundry } from "./links.mjs";
+import { escapeBraces } from "./util.mjs";
 
 const INDEX_BASENAME = "index";
 const NON_INDEX_SORT_BASE = 100000;
@@ -317,5 +318,3 @@ async function appendInstanceDocLink(html, vault, path, meta) {
   const label = meta?.title || path.split("/").pop().replace(/\.md$/i, "");
   return html + `\n<p class="vaults-instance-link"><em>Foundry document:</em> @UUID[${docName}.${docId}]{${escapeBraces(label)}}</p>`;
 }
-
-function escapeBraces(s) { return String(s).replace(/[{}]/g, ""); }

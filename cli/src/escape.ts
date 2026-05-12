@@ -24,3 +24,9 @@ export function htmlEscape(s: string): string {
 export function htmlAttr(s: string): string {
   return s.replace(/[&<>"]/g, (c) => HTML_ESCAPE[c]!);
 }
+
+/** Escape every regex metacharacter so the result is safe to use as a
+ *  literal-match needle inside a RegExp constructor. */
+export function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

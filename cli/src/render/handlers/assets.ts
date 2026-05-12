@@ -7,14 +7,11 @@
 // .vaults/handlers/ tree (no `../../etc/passwd`), and included verbatim.
 //
 // Output:
-//   - js, css                   _handlers.js + _handlers.css for the wiki
-//   - targets[name]: { js, css }  per-target subset bundles. Currently the
-//                                 only target is "foundry"; the bundle
-//                                 names map to _handlers.<target>.{js,css}.
-//                                 Each contains only assets whose handler
-//                                 opted in via assets.targets[name].
-// Each unique source is included exactly once even if multiple handlers
-// reference it, so shared utility files don't duplicate.
+//   - js, css                    `_handlers.{js,css}` for the wiki
+//   - foundry: { js, css } | null  subset bundle for the Foundry-VTT module
+//                                  containing only assets whose handler
+//                                  opted in via `assets.foundry`.
+// Each unique source is included exactly once across both bundles.
 
 import { readFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
@@ -35,14 +32,9 @@ export interface BuiltinAsset {
 export interface BuiltinAssetMap {
   scripts?: BuiltinAsset[];
   styles?: BuiltinAsset[];
-  /**
-   * Per-target opt-in for built-in handlers, mirroring the `targets` field
-   * on user-side `HandlerAssets`. Used by `statblock` to opt its CSS into
-   * the Foundry-import bundle (visual parity in synced journal pages).
-   * Default `{}` for handlers whose dynamic behaviour is replicated
-   * server-side (e.g. dice's runtime → Foundry's [[/r]] enricher).
-   */
-  targets?: { [target: string]: { scripts?: boolean; styles?: boolean } };
+  /** Opt-in for the Foundry-import subset bundle. Mirrors the user-facing
+   *  `HandlerAssets.foundry` block. */
+  foundry?: { scripts?: boolean; styles?: boolean };
 }
 
 /**
@@ -55,7 +47,7 @@ export function registerBuiltinAssets(handler: Handler, assets: BuiltinAssetMap)
   BUILTIN_ASSETS.set(handler, assets);
 }
 
-export interface TargetBundle {
+export interface FoundryBundle {
   js: string;
   css: string;
 }
@@ -63,15 +55,14 @@ export interface TargetBundle {
 export interface BundledAssets {
   js: string;
   css: string;
-  /** Per-target opt-in subset bundles, keyed by target name (e.g. "foundry"). */
-  targets: { [target: string]: TargetBundle };
+  /** Foundry-import subset; null when no handler opted in. */
+  foundry: FoundryBundle | null;
 }
 
 /**
- * Build the concatenated _handlers.js and _handlers.css for a deploy, plus
- * a parallel `_handlers.<target>.{js,css}` per registered target containing
- * only the subset of assets whose handler opted in via
- * `assets.targets[<target>].{scripts,styles} = true`.
+ * Build the concatenated `_handlers.{js,css}` for a deploy, plus a parallel
+ * Foundry-import subset of assets whose handler opted in via
+ * `assets.foundry.{scripts,styles} = true`.
  *
  * @param userHandlers handlers loaded from `.vaults/handlers/`
  * @param builtinHandlers handlers shipped by vaults-cli core
@@ -86,31 +77,23 @@ export async function bundleHandlerAssets(
   const seenCss = new Set<string>();
   const jsParts: string[] = [];
   const cssParts: string[] = [];
-  const targetParts: Record<string, { js: string[]; css: string[]; seenJs: Set<string>; seenCss: Set<string> }> = {};
+  const foundryJsParts: string[] = [];
+  const foundryCssParts: string[] = [];
+  const foundryJsSeen = new Set<string>();
+  const foundryCssSeen = new Set<string>();
   const handlersRoot = resolve(vaultPath, ".vaults/handlers");
 
-  const ensureTarget = (name: string) => {
-    if (!targetParts[name]) {
-      targetParts[name] = { js: [], css: [], seenJs: new Set(), seenCss: new Set() };
-    }
-    return targetParts[name];
-  };
-
-  const addToTargets = (
-    targets: Record<string, { scripts?: boolean; styles?: boolean }> | undefined,
+  const addToFoundry = (
+    foundry: { scripts?: boolean; styles?: boolean } | undefined,
     kind: "scripts" | "styles",
     source: string,
     body: string,
   ) => {
-    if (!targets) return;
-    for (const [name, opt] of Object.entries(targets)) {
-      if (!opt?.[kind]) continue;
-      const t = ensureTarget(name);
-      const seen = kind === "scripts" ? t.seenJs : t.seenCss;
-      if (seen.has(source)) continue;
-      seen.add(source);
-      (kind === "scripts" ? t.js : t.css).push(`/* ${source} */\n${body}`);
-    }
+    if (!foundry?.[kind]) return;
+    const seen = kind === "scripts" ? foundryJsSeen : foundryCssSeen;
+    if (seen.has(source)) return;
+    seen.add(source);
+    (kind === "scripts" ? foundryJsParts : foundryCssParts).push(`/* ${source} */\n${body}`);
   };
 
   for (const h of builtinHandlers) {
@@ -121,14 +104,14 @@ export async function bundleHandlerAssets(
         seenJs.add(a.source);
         jsParts.push(`/* ${a.source} */\n${a.content}`);
       }
-      addToTargets(inline.targets, "scripts", a.source, a.content);
+      addToFoundry(inline.foundry, "scripts", a.source, a.content);
     }
     for (const a of inline.styles ?? []) {
       if (!seenCss.has(a.source)) {
         seenCss.add(a.source);
         cssParts.push(`/* ${a.source} */\n${a.content}`);
       }
-      addToTargets(inline.targets, "styles", a.source, a.content);
+      addToFoundry(inline.foundry, "styles", a.source, a.content);
     }
   }
 
@@ -141,7 +124,7 @@ export async function bundleHandlerAssets(
       const body = await readFile(abs, "utf8");
       const labeled = `/* ${rel} (${abs}) */\n${body}`;
       jsParts.push(labeled);
-      addToTargets(handler.assets?.targets, "scripts", abs, labeled);
+      addToFoundry(handler.assets?.foundry, "scripts", abs, labeled);
     }
     for (const rel of handler.assets?.styles ?? []) {
       const abs = resolveAssetPath(handlersRoot, baseDir, rel);
@@ -150,19 +133,17 @@ export async function bundleHandlerAssets(
       const body = await readFile(abs, "utf8");
       const labeled = `/* ${rel} (${abs}) */\n${body}`;
       cssParts.push(labeled);
-      addToTargets(handler.assets?.targets, "styles", abs, labeled);
+      addToFoundry(handler.assets?.foundry, "styles", abs, labeled);
     }
   }
 
-  const targets: { [name: string]: TargetBundle } = {};
-  for (const [name, parts] of Object.entries(targetParts)) {
-    targets[name] = { js: parts.js.join("\n\n"), css: parts.css.join("\n\n") };
-  }
-
+  const hasFoundry = foundryJsParts.length > 0 || foundryCssParts.length > 0;
   return {
     js: jsParts.join("\n\n"),
     css: cssParts.join("\n\n"),
-    targets,
+    foundry: hasFoundry
+      ? { js: foundryJsParts.join("\n\n"), css: foundryCssParts.join("\n\n") }
+      : null,
   };
 }
 

@@ -853,7 +853,7 @@ describe("handler asset bundling", () => {
         "  assets: {\n" +
         "    scripts: ['./optedin.runtime.js'],\n" +
         "    styles: ['./optedin.css'],\n" +
-        "    targets: { foundry: { scripts: true, styles: true } },\n" +
+        "    foundry: { scripts: true, styles: true },\n" +
         "  },\n" +
         "  render: () => ({ html: '<div class=\"optedin\"></div>' }),\n" +
         "};\n",
@@ -924,7 +924,7 @@ describe("handler asset bundling", () => {
         "  assets: {\n" +
         "    scripts: ['./css-only.runtime.js'],\n" +
         "    styles: ['./css-only.css'],\n" +
-        "    targets: { foundry: { styles: true } },\n" +  // scripts intentionally omitted
+        "    foundry: { styles: true },\n" +  // scripts intentionally omitted
         "  },\n" +
         "  render: () => ({ html: '<div class=\"cssonly\"></div>' }),\n" +
         "};\n",

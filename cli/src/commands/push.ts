@@ -7,6 +7,7 @@ import { buildSite } from "../build.js";
 import { generateSessionSecret } from "../auth.js";
 import { runMigrations } from "../migrate/run.js";
 import { defaultOutputDir, requireInitialisedVault } from "../paths.js";
+import { escapeRegex } from "../escape.js";
 
 interface PushOptions {
   projectName?: string;
@@ -147,16 +148,12 @@ async function pagesProjectExists(name: string): Promise<boolean> {
   try {
     const out = await runWranglerCaptured(["pages", "project", "list"]);
     // wrangler prints a table; check for the project name as a whole word.
-    const re = new RegExp(`(^|\\s|\\|)${escapeRe(name)}(\\s|\\||$)`, "m");
+    const re = new RegExp(`(^|\\s|\\|)${escapeRegex(name)}(\\s|\\||$)`, "m");
     return re.test(out);
   } catch {
     // If we can't even list, assume not -- `create` will give a clearer error.
     return false;
   }
-}
-
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function promptIfTty(question: string, fallback: string, nonTtyError: string): Promise<string> {

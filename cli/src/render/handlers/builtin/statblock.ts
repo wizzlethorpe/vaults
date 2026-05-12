@@ -545,14 +545,8 @@ const STATBLOCK_CSS = `
 
 registerBuiltinAssets(statblockHandler, {
   styles: [{ source: "builtin/statblock.css", content: STATBLOCK_CSS }],
-  // Opt the styles into the Foundry-import bundle so a vault carrying
-  // statblocks renders identically when synced into Foundry. The Foundry
-  // module also vendors this CSS in vaults.css, so journals always look
-  // right whether the GM enabled the import toggle or not — the bundle
-  // export is here for symmetry with user handlers and so the styling
-  // tracks future edits to STATBLOCK_CSS without a Foundry-module release.
-  // Scripts intentionally omitted: dice-style runtime is replaced by
-  // Foundry's native [[/r]] enricher in links.mjs, so there's nothing
-  // useful to import.
-  targets: { foundry: { styles: true } },
+  // Styles ride into the Foundry-import bundle so synced statblocks
+  // render identically. Scripts intentionally omitted: dice runtime is
+  // replaced by Foundry's [[/r]] enricher in links.mjs.
+  foundry: { styles: true },
 });

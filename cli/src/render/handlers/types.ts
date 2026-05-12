@@ -62,30 +62,22 @@ export type HandlerOutput =
  * a handler living at `.vaults/handlers/spellcraft.mjs` can reference
  * `./spellcraft.runtime.js` and the build will pick it up.
  *
- * All declared script files are concatenated into one `_handlers.js` at
- * the deploy root; styles into one `_handlers.css`. Each unique source
- * file is included exactly once, even if multiple handlers reference it,
- * so shared utility files don't duplicate.
+ * Declared script files concatenate into one `_handlers.js` at the deploy
+ * root; styles into `_handlers.css`. Each unique source is included
+ * exactly once across all handlers.
  *
- * The optional `targets` block lists secondary consumers (currently just
- * the Foundry VTT companion module under the key `"foundry"`) that the
- * handler wants its assets shipped to. Each consumer requires its own
- * opt-in *and* a runtime opt-in by whoever installs the consumer (the GM
- * for Foundry). New consumers (MCP server, future VTTs) plug in here
- * without growing the top-level HandlerAssets surface.
+ * The optional `foundry` block opts the handler's assets into the
+ * Foundry-VTT companion module's import bundle (the GM still has to
+ * approve import on the Foundry side).
  */
 export interface HandlerAssets {
   /** Browser-side JS source files. Wrap your code in an IIFE to avoid global pollution. */
   scripts?: string[];
   /** Stylesheet source files. */
   styles?: string[];
-  /**
-   * Per-target opt-in for secondary asset bundles. Each key is the target
-   * name (e.g. `"foundry"`); each value declares whether the handler's
-   * scripts and/or styles should ride into that target's bundle. Default
-   * empty: nothing reaches secondary consumers without explicit opt-in.
-   */
-  targets?: { [target: string]: { scripts?: boolean; styles?: boolean } };
+  /** Opt the handler's scripts / styles into the Foundry import bundle.
+   *  Default empty: nothing reaches Foundry without explicit opt-in. */
+  foundry?: { scripts?: boolean; styles?: boolean };
 }
 
 export interface InlineHandler {

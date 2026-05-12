@@ -16,6 +16,7 @@ import { calloutPlugin } from "./callouts.js";
 import { basesPlugin } from "./bases.js";
 import { handlersPlugin } from "./handlers/dispatch.js";
 import { htmlEscape } from "../escape.js";
+import { extractH1 } from "./frontmatter.js";
 
 const sanitizeSchema = {
   ...defaultSchema,
@@ -140,9 +141,4 @@ export async function renderMarkdown(
     || fallbackTitle;
 
   return { html: String(file), title, frontmatter: fm, outlinks, warnings };
-}
-
-function extractH1(markdown: string): string | null {
-  const m = /^#\s+(.+)$/m.exec(markdown);
-  return m ? m[1]!.trim() : null;
 }

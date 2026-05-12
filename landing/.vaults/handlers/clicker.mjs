@@ -13,7 +13,7 @@ export const handler = {
   assets: {
     scripts: ["./clicker.runtime.js"],
     styles: ["./clicker.css"],
-    targets: { foundry: { scripts: true, styles: true } },
+    foundry: { scripts: true, styles: true },
   },
   render(content, ctx) {
     const label = (content || "Click me").trim();

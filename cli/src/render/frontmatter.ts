@@ -1,11 +1,6 @@
-// Frontmatter helpers shared across the rendering pipeline.
-//
-// Today: just the `stripFrontmatter` regex used by both the embed plugin
-// (transcluding ![[Page]] without re-injecting the source's YAML header) and
-// the preview builder (so hover-popover snippets show body content, not
-// metadata). Kept tiny and self-contained — anything richer (parsing,
-// validation) belongs in build.ts where the gray-matter pipeline already
-// lives.
+// Small markdown helpers shared across the rendering pipeline. Anything
+// richer (parsing, validation) belongs in build.ts where the gray-matter
+// pipeline already lives.
 
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 
@@ -15,4 +10,10 @@ const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
  */
 export function stripFrontmatter(source: string): string {
   return source.replace(FRONTMATTER_RE, "");
+}
+
+/** Pull the text of the first level-1 heading out of a markdown source. */
+export function extractH1(source: string): string | null {
+  const m = /^#\s+(.+)$/m.exec(source);
+  return m?.[1] ? m[1].trim() : null;
 }

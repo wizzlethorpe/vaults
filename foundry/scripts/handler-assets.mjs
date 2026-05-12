@@ -30,6 +30,7 @@
 // CSS injection skips the prompt in both paths (low risk).
 
 import { fetchTextOrNull } from "./api.mjs";
+import { escapeHtml as escapeText } from "./util.mjs";
 
 const STYLE_ATTR = "data-vault-handler-styles";
 const SCRIPT_ATTR = "data-vault-handler-scripts";
@@ -143,10 +144,6 @@ async function confirmScriptInjection(vault, reason, js) {
     yes: { label: game.i18n.localize("VAULTS.HandlerAssets.SessionPromptAccept") },
     no:  { label: game.i18n.localize("VAULTS.HandlerAssets.SessionPromptCancel") },
   });
-}
-
-function escapeText(s) {
-  return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 }
 
 /** Idempotent: repeated calls with the same vault.id replace the element. */

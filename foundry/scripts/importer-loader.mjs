@@ -10,6 +10,7 @@
 
 import { updateVault } from "./vaults.mjs";
 import { API_VERSION } from "./host.mjs";
+import { hexDigest } from "./util.mjs";
 
 // Session cache so back-to-back sync + remove (or repeated syncs at the
 // same bundle version) don't refetch+reparse. Keyed by `${vaultId}:${hash}`
@@ -45,7 +46,7 @@ export async function loadImporter(host, vault) {
     return null;
   }
 
-  const hash = await sha256(text);
+  const hash = await hexDigest("SHA-256", text);
   const trusted = vault.trustedImporterHash || "";
   if (trusted !== hash) {
     const ok = await promptTrust(host, vault, trusted, hash);
@@ -98,9 +99,3 @@ async function promptTrust(host, vault, oldHash, newHash) {
   });
 }
 
-async function sha256(text) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}

@@ -6,6 +6,8 @@ import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import type { RenderContext, RenderWarning } from "./types.js";
 import { slugify } from "./slug.js";
+import { stripFrontmatter } from "./frontmatter.js";
+import { escapeRegex } from "../escape.js";
 import { renderBase } from "./bases.js";
 
 import { AUDIO_EXT_RE, IMAGE_EXT_RE, PASSTHROUGH_EXT_RE, VIDEO_EXT_RE } from "./extensions.js";
@@ -239,10 +241,6 @@ function brokenEmbed(slug: string, message: string, klass: string): RootContent 
   };
 }
 
-function stripFrontmatter(source: string): string {
-  return source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
-}
-
 function extractSection(body: string, anchor: string): string | null {
   // Obsidian block references: `[[Page#^block-id]]` resolves to the block
   // (paragraph or list item) ending with `^block-id`. The marker sits at
@@ -305,10 +303,6 @@ function blockStart(lines: string[], end: number): number {
   let start = end;
   while (start > 0 && lines[start - 1]!.trim() !== "") start--;
   return start;
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseSizeHint(alias: string | undefined): string {

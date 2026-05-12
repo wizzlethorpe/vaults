@@ -14,6 +14,7 @@ import {
 } from "./render/extensions.js";
 import { buildFavicon } from "./favicon.js";
 import { renderMarkdown, type PreParsedFrontmatter } from "./render/pipeline.js";
+import { extractH1 } from "./render/frontmatter.js";
 import { CLI_VERSION, MANIFEST_VERSION, ID_SCHEME } from "./version.js";
 import { renderLayout, render404 } from "./render/layout.js";
 import { writeFoundryImporter } from "./foundry-importer.js";
@@ -427,16 +428,15 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     // canonical `/_handlers.foundry.{js,css}` path; the middleware
     // rewrites that to the matching `_variants/<role>/...` per the
     // requesting bearer token's role.
-    // Per-target opt-in subset bundles (_handlers.<target>.{js,css}).
-    // Currently only the "foundry" target exists; the loop is generic so
-    // future targets (mcp, discord, …) plug in by adding a key under
-    // assets.targets in their handler declaration.
-    for (const [name, bundle] of Object.entries(handlerAssets.targets)) {
-      if (bundle.js.length > 0) {
-        await writeFile(join(variantDir, `_handlers.${name}.js`), bundle.js);
+    // Foundry-import subset bundles. The Foundry module fetches these by
+    // their canonical `/_handlers.foundry.{js,css}` paths; the middleware
+    // role-gates per the requesting bearer's variant.
+    if (handlerAssets.foundry) {
+      if (handlerAssets.foundry.js.length > 0) {
+        await writeFile(join(variantDir, "_handlers.foundry.js"), handlerAssets.foundry.js);
       }
-      if (bundle.css.length > 0) {
-        await writeFile(join(variantDir, `_handlers.${name}.css`), bundle.css);
+      if (handlerAssets.foundry.css.length > 0) {
+        await writeFile(join(variantDir, "_handlers.foundry.css"), handlerAssets.foundry.css);
       }
     }
 
@@ -450,8 +450,8 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       {
         hasHandlerJs,
         hasHandlerCss,
-        hasFoundryJs: (handlerAssets.targets.foundry?.js.length ?? 0) > 0,
-        hasFoundryCss: (handlerAssets.targets.foundry?.css.length ?? 0) > 0,
+        hasFoundryJs: (handlerAssets.foundry?.js.length ?? 0) > 0,
+        hasFoundryCss: (handlerAssets.foundry?.css.length ?? 0) > 0,
       },
     );
     await writeFile(join(variantDir, "_manifest.json"), JSON.stringify(manifest));
@@ -1290,11 +1290,6 @@ function parseAliases(fm: string): string[] {
 
 function unquote(s: string): string {
   return s.replace(/^["']|["']$/g, "");
-}
-
-function extractH1(source: string): string | null {
-  const h1 = /^#\s+(.+)$/m.exec(source);
-  return h1?.[1] ? h1[1].trim() : null;
 }
 
 function basenameNoExt(path: string): string {
