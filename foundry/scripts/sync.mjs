@@ -2,6 +2,11 @@
 // the registry: fetch its manifest, diff against its lastManifest, pull
 // changed body.html files in bulk, upsert the resulting journals, and
 // reconcile its image cache.
+//
+// Takes a `host` (see HOST-INTERFACE.md) for the module-side primitives
+// the importer needs — state I/O, vault registry access, notifications.
+// Foundry globals (game.i18n via host.localize, JournalEntry, etc.) are
+// used directly when they don't need to round-trip the host.
 
 import { fetchManifest, fetchSourceBatch } from "./api.mjs";
 import { upsertFile, deleteFile, buildFolderInfo, reconcileEntryPlacement } from "./importer.mjs";
@@ -9,19 +14,20 @@ import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
 import { applyInstance, deleteInstance } from "./instance.mjs";
 import { tokenInfo } from "./auth.mjs";
-import { getVault, updateVault } from "./vaults.mjs";
-import { getVaultManifest, setVaultManifest } from "./vault-manifests.mjs";
-import { applyHandlerAssetsWithConfirm } from "./handler-assets.mjs";
 
-export async function sync(vaultId, { forceFull = false } = {}) {
-  const vault = getVault(vaultId);
-  if (!vault) {
-    ui.notifications.error(`Vaults | unknown vault: ${vaultId}`);
-    return;
-  }
-  if (!vault.url) {
-    ui.notifications.error(game.i18n.localize("VAULTS.Sync.NoUrl"));
-    return;
+/**
+ * @returns A SyncResult shape consumed by the host:
+ *   {
+ *     ok: boolean,
+ *     refreshHandlerAssets: boolean,   // host re-applies CSS/JS post-sync
+ *     added, modified, removed,
+ *     imageStats, instances,
+ *   }
+ */
+export async function sync(host, vault, { forceFull = false } = {}) {
+  if (!vault?.url) {
+    host.notify("error", host.localize("VAULTS.Sync.NoUrl"));
+    return { ok: false, refreshHandlerAssets: false };
   }
 
   // Defensive token-expiry check. Without this, an expired bearer falls
@@ -33,21 +39,21 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     const info = tokenInfo(vault.token);
     const stillValid = info?.expiresAt && info.expiresAt > new Date();
     if (!stillValid) {
-      await updateVault(vault.id, { token: "", role: "" });
-      ui.notifications.warn(game.i18n.format("VAULTS.Sync.TokenExpired", { name: vault.label }));
-      return;
+      await host.updateVaultEntry(vault.id, { token: "", role: "" });
+      host.notify("warn", host.localize("VAULTS.Sync.TokenExpired", { name: vault.label }));
+      return { ok: false, refreshHandlerAssets: false };
     }
   }
 
   const start = Date.now();
-  ui.notifications.info(game.i18n.format("VAULTS.Sync.StartingNamed", { name: vault.label }));
+  host.notify("info", host.localize("VAULTS.Sync.StartingNamed", { name: vault.label }));
 
   let manifest;
   try {
     manifest = await fetchManifest(vault);
   } catch (err) {
-    ui.notifications.error(game.i18n.format("VAULTS.Sync.Error", { message: err.message }));
-    return;
+    host.notify("error", host.localize("VAULTS.Sync.Error", { message: err.message }));
+    return { ok: false, refreshHandlerAssets: false };
   }
   // Manifest schema/version compatibility check. The CLI advertises a
   // `manifest_version` (currently 1) and a `cli_version`. We support
@@ -88,15 +94,15 @@ export async function sync(vaultId, { forceFull = false } = {}) {
   // removed), drop it; the user can re-set on the next settings open.
   if (vault.dmRole && !knownRoles.includes(vault.dmRole)) patch.dmRole = "";
   if (Object.keys(patch).length > 0) {
-    await updateVault(vault.id, patch);
+    await host.updateVaultEntry(vault.id, patch);
     Object.assign(vault, patch);
   }
 
   const remote = new Map(manifest.files.map((f) => [f.path, f.hash]));
-  // Per-vault sync state lives in the separate vaultManifests setting
-  // (see vault-manifests.mjs) so per-vault config edits don't round-trip
-  // every other vault's full file list on every save.
-  const lastSync = getVaultManifest(vault.id);
+  // Per-vault sync state lives behind host.getVaultState, which the host
+  // backs with whatever storage it prefers (currently the vaultManifests
+  // world setting).
+  const lastSync = host.getVaultState(vault.id);
   const local = forceFull ? new Map() : new Map(Object.entries(lastSync.lastManifest || {}));
 
   const bodyPaths = manifest.files.filter((f) => f.path.endsWith(".body.html")).map((f) => f.path);
@@ -119,24 +125,26 @@ export async function sync(vaultId, { forceFull = false } = {}) {
 
   // Pull any new/changed images first so the freshly-rendered <img src>
   // URLs in journal HTML resolve immediately.
-  if (forceFull) await setVaultManifest(vault.id, { lastImageManifest: {} });
+  if (forceFull) await host.setVaultState(vault.id, { lastImageManifest: {} });
   let imageStats = { downloaded: 0, removed: 0, errors: 0 };
   try {
-    const fresh = getVault(vault.id); // re-read after the forceFull reset
-    imageStats = await syncImages(fresh, manifest.files);
+    imageStats = await syncImages(host, vault, manifest.files);
   } catch (err) {
     console.warn(`Vaults | image sync failed for ${vault.label}:`, err);
   }
 
   if (toUpsert.length === 0 && toDelete.length === 0 && imageStats.downloaded === 0 && imageStats.removed === 0) {
-    ui.notifications.info(game.i18n.localize("VAULTS.Sync.NothingToDo"));
-    return;
+    host.notify("info", host.localize("VAULTS.Sync.NothingToDo"));
+    return {
+      ok: true, refreshHandlerAssets: false,
+      added: 0, modified: 0, removed: 0, imageStats, instances: 0,
+    };
   }
 
-  ui.notifications.info(
+  host.notify("info",
     forceFull
-      ? game.i18n.format("VAULTS.Sync.Initial", { count: toUpsert.length })
-      : game.i18n.format("VAULTS.Sync.Incremental", {
+      ? host.localize("VAULTS.Sync.Initial", { count: toUpsert.length })
+      : host.localize("VAULTS.Sync.Incremental", {
           add: toUpsert.length, mod: 0, del: toDelete.length,
         }),
   );
@@ -146,8 +154,8 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     bodies = await fetchSourceBatch(vault, toUpsert);
   } catch (err) {
     console.error(`Vaults | batch fetch failed for ${vault.label}:`, err);
-    ui.notifications.error(game.i18n.format("VAULTS.Sync.Error", { message: err.message }));
-    return;
+    host.notify("error", host.localize("VAULTS.Sync.Error", { message: err.message }));
+    return { ok: false, refreshHandlerAssets: false };
   }
 
   // Foundry's data layer doesn't love concurrent JournalEntry.create calls
@@ -191,28 +199,28 @@ export async function sync(vaultId, { forceFull = false } = {}) {
     catch (err) { console.warn(`Vaults | delete instance failed for ${logicalPath}:`, err); }
   }
 
-  await setVaultManifest(vault.id, { lastManifest: Object.fromEntries(remote) });
+  await host.setVaultState(vault.id, { lastManifest: Object.fromEntries(remote) });
 
   // Re-place existing entries whose leaf-collapse status changed since
   // the last sync (folder gained/lost subfolders). Cheap pass; only hits
   // the journals belonging to this vault.
   await reconcileEntryPlacement(vault, folderInfo);
 
-  // Refresh handler-asset injection. No-op when both per-vault toggles are
-  // off (the default); otherwise pulls the opt-in subset bundles and
-  // (re-)injects scoped <style>/<script> tags. The Confirm variant prompts
-  // the GM before injecting JS — once per session, so back-to-back syncs
-  // don't nag, but a vault whose handler bundle changed mid-session is
-  // re-shown the prompt by the natural session-cache reset on world load.
-  await applyHandlerAssetsWithConfirm(getVault(vault.id), { reason: "sync" });
-
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
-  ui.notifications.info(game.i18n.format("VAULTS.Sync.Done", { added, modified, removed, seconds }));
+  host.notify("info", host.localize("VAULTS.Sync.Done", { added, modified, removed, seconds }));
   if (imageStats.downloaded > 0 || imageStats.removed > 0) {
     console.info(`Vaults | ${vault.label} images: ${imageStats.downloaded} downloaded, ${imageStats.removed} removed`
       + (imageStats.errors ? `, ${imageStats.errors} failed` : ""));
   }
   if (instances > 0) console.info(`Vaults | ${vault.label} instantiated ${instances} document(s) from page foundry.base.`);
+
+  // Handler-asset refresh is module-side (settings + DOM injection), so the
+  // host re-applies post-sync when we flag it. No-op if both per-vault
+  // toggles are off.
+  return {
+    ok: true, refreshHandlerAssets: true,
+    added, modified, removed, imageStats, instances,
+  };
 }
 
 function arraysEqual(a, b) {

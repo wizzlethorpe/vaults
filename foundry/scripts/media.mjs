@@ -10,8 +10,6 @@
 // vaultManifests state; the predicate is the only thing that changed.
 
 import { CACHED_EXT_RE } from "./parser.mjs";
-import { updateVault } from "./vaults.mjs";
-import { getVaultManifest, setVaultManifest } from "./vault-manifests.mjs";
 import { url as vaultUrl } from "./api.mjs";
 
 // Where the cache lives inside the world data dir. No leading dot. Foundry's
@@ -64,16 +62,20 @@ export function vaultCacheDir(vaultId) {
  * Reconcile a vault's local image cache with its manifest. Downloads any
  * image whose hash differs from the cached image manifest, deletes orphans
  * where the Foundry API allows it, and persists the updated manifest into
- * the per-vault sync state (vaultManifests). Returns counts for the
- * user-facing notification.
+ * the per-vault sync state. Returns counts for the user-facing
+ * notification.
+ *
+ * @param host  The Host interface (see HOST-INTERFACE.md). Used for the
+ *              per-vault state I/O — everything else (FilePicker,
+ *              game.world.id) is a Foundry global, called directly.
  */
-export async function syncImages(vault, manifestFiles) {
+export async function syncImages(host, vault, manifestFiles) {
   const remoteImages = new Map();
   for (const f of manifestFiles) {
     if (isCacheable(f.path)) remoteImages.set(f.path, f.hash);
   }
 
-  const lastImageManifest = getVaultManifest(vault.id).lastImageManifest;
+  const lastImageManifest = host.getVaultState(vault.id).lastImageManifest;
   const last = new Map(Object.entries(lastImageManifest || {}));
 
   const toDownload = [];
@@ -165,7 +167,7 @@ export async function syncImages(vault, manifestFiles) {
     if (last.get(path) === hash) { persisted[path] = hash; continue; }
     if (downloaded.includes(path)) persisted[path] = hash;
   }
-  await setVaultManifest(vault.id, { lastImageManifest: persisted });
+  await host.setVaultState(vault.id, { lastImageManifest: persisted });
 
   return { downloaded: downloaded.length, removed, errors: errors.length };
 }

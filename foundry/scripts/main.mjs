@@ -3,8 +3,9 @@
 
 import { registerSettings } from "./settings.mjs";
 import { listVaults, getVault, addVault, updateVault, removeVault, migrateLegacyIfNeeded } from "./vaults.mjs";
-import { applyHandlerAssets, removeHandlerAssets } from "./handler-assets.mjs";
-import { sync } from "./sync.mjs";
+import { applyHandlerAssets, removeHandlerAssets, applyHandlerAssetsWithConfirm } from "./handler-assets.mjs";
+import { runSync } from "./importer-entry.mjs";
+import { createHost } from "./host.mjs";
 import { fetchManifest, url as vaultUrl } from "./api.mjs";
 import { disconnect, tokenInfo } from "./auth.mjs";
 import { deleteVaultJournals } from "./importer.mjs";
@@ -253,8 +254,15 @@ async function handleListAction(action, vaultId, dialog) {
     case "sync":
     case "force-sync":
       await dialog.close();
-      try { await sync(vaultId, { forceFull: action === "force-sync" }); }
-      catch (err) {
+      try {
+        const vault = getVault(vaultId);
+        const result = await runSync(createHost(), vault, { forceFull: action === "force-sync" });
+        // Handler-asset injection lives module-side (DOM + settings). The
+        // importer flags when the post-sync state warrants a re-apply.
+        if (result?.refreshHandlerAssets) {
+          await applyHandlerAssetsWithConfirm(getVault(vaultId), { reason: "sync" });
+        }
+      } catch (err) {
         console.error("Vaults |", err);
         ui.notifications.error(game.i18n.format("VAULTS.Sync.Error", { message: err.message }));
       }
