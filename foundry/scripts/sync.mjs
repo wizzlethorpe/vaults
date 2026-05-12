@@ -3,10 +3,10 @@
 // changed body.html files in bulk, upsert the resulting journals, and
 // reconcile its image cache.
 //
-// Takes a `host` (see HOST-INTERFACE.md) for the module-side primitives
-// the importer needs — state I/O, vault registry access, notifications.
-// Foundry globals (game.i18n via host.localize, JournalEntry, etc.) are
-// used directly when they don't need to round-trip the host.
+// Takes a `host` for the module-side primitives the importer needs —
+// state I/O, vault registry access, notifications. Foundry globals
+// (JournalEntry, etc.) are used directly when they don't need to
+// round-trip the host.
 
 import { fetchManifest, fetchSourceBatch } from "./api.mjs";
 import { upsertFile, deleteFile, buildFolderInfo, reconcileEntryPlacement } from "./importer.mjs";

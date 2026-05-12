@@ -429,7 +429,7 @@ const AUTH_SCRIPT = `<script>
     box.classList.remove('auth-signed-out');
     box.classList.add('auth-signed-in');
     box.innerHTML =
-      '<div class="auth-status">Signed in as <strong>' + esc(role) + '</strong></div>' +
+      '<div class="auth-status"><strong>' + esc(role) + '</strong></div>' +
       '<a class="auth-action" href="/logout?next=' + next + '">Sign out</a>';
   } else {
     box.classList.remove('auth-signed-in');

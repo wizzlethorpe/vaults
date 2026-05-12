@@ -1,7 +1,7 @@
 // Entry point for the wiki-shipped importer bundle. The CLI bundles this
 // + its transitive imports into `${VAULT_URL}/_foundry/importer.js`; the
 // Foundry module fetches, hash-verifies, and evaluates it at sync time.
-// See foundry/HOST-INTERFACE.md for the host contract.
+// See ./host.mjs for the host shape these entry points receive.
 
 import { sync } from "./sync.mjs";
 import { deleteVaultJournals } from "./importer.mjs";

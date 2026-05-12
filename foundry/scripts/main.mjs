@@ -531,12 +531,10 @@ async function openSettingsDialog(vaultId) {
         callback: async () => {
           const ok = await confirmRemoveVault(v);
           if (!ok) return false;
-          // Run the importer-defined cleanup first (best-effort: per
-          // HOST-INTERFACE.md, host catches throws + proceeds). If the
-          // bundle can't be loaded (vault offline, importer evicted from
-          // the deploy), we still drop the registry entry so the GM
-          // isn't stuck. Any leftover Foundry docs can be removed by
-          // hand from the Journal Directory.
+          // Importer-defined cleanup runs first (best-effort). If the
+          // bundle can't be loaded (vault offline, importer evicted),
+          // we still drop the registry entry so the GM isn't stuck;
+          // any leftover Foundry docs can be removed by hand.
           const host = createHost();
           try {
             const importer = await loadImporter(host, v);

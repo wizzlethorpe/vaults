@@ -26,17 +26,19 @@ Other features that don't need a dedicated page:
   out of an existing page or sharing frontmatter snippets.
 - **Folder-index synthesis**: any folder without an `index.md` gets one
   auto-generated as a Bases card view of its contents. See `NPCs/index`,
-  `Items/index`, `Lore/index`, `Features/index` (this page would be
-  generated if it didn't already exist).
+  `Items/index`, `Lore/index` for examples.
+- **Dark mode**: theme picker in the sidebar (auto / light / dark). Set
+  `accent_color_dark` and `bg_color_dark` in `settings.md` to override
+  the dark palette; `accent_color` / `bg_color` cover light mode.
 - **OG / Twitter social meta**: every page emits `og:image`, `og:title`,
   `og:type`, `twitter:card`. Resolved cover image rides through.
-- **Search**: every variant includes its own `_search-index.json`; the
+- **Search**: every variant ships its own `_search-index.json`; the
   client-side search box in the sidebar uses it for fuzzy matching.
 - **Hover previews**: desktop browsers preview a page when you hover its
   link, fetching the per-page `<path>.preview.json` lazily.
 - **Backlinks**: every page lists pages that link to it in the right
   sidebar, computed at build time.
-- **Custom theme colors**: `accent_color` and `bg_color` in `settings.md`
-  override the default scarlet-on-parchment palette.
-- **Obsidian snippets**: `.obsidian/snippets/*.css` files include to the
+- **External links open in a new tab**: anything pointing off-host gets
+  `target="_blank" rel="noopener"` so visitors don't lose their place.
+- **Obsidian snippets**: `.obsidian/snippets/*.css` files ride to the
   deploy as `user.css`, loaded after the default theme.

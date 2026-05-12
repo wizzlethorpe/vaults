@@ -55,9 +55,9 @@ export function vaultCacheDir(vaultId) {
  * the per-vault sync state. Returns counts for the user-facing
  * notification.
  *
- * @param host  The Host interface (see HOST-INTERFACE.md). Used for the
- *              per-vault state I/O — everything else (FilePicker,
- *              game.world.id) is a Foundry global, called directly.
+ * @param host  The Host interface (see host.mjs). Used for the per-vault
+ *              state I/O — everything else (FilePicker, game.world.id) is
+ *              a Foundry global, called directly.
  */
 export async function syncImages(host, vault, manifestFiles) {
   const remoteImages = new Map();

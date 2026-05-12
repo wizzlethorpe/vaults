@@ -335,7 +335,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
 
   // Foundry importer bundle: one ESM file the Foundry module fetches at
   // sync time, plus a tiny version manifest with the SHA-256 the host
-  // verifies against its trust cache. See foundry/HOST-INTERFACE.md.
+  // verifies against its trust cache.
   await writeFoundryImporter(opts.outputDir);
   // Foundry-import bundles are written per-variant inside the role loop
   // below (instead of at the root) so the middleware role-gates them. A

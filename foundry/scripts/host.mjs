@@ -1,7 +1,7 @@
 // Module-side `createHost()`: builds the Host object the bundled importer
-// receives on every runSync call. See foundry/HOST-INTERFACE.md for the
-// full contract narrative; this file is the implementation that backs
-// the contract with the live module's settings + UI surfaces.
+// receives on every runSync call. Narrow by design — state I/O, registry
+// writes, notify / confirm / localize. Everything else (JournalEntry,
+// FilePicker, game, ui, …) the importer reaches via Foundry globals.
 
 import { updateVault } from "./vaults.mjs";
 import { getVaultManifest, setVaultManifest } from "./vault-manifests.mjs";

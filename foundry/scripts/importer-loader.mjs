@@ -6,7 +6,7 @@
 // Trust model: SHA-256 of the bundle text is compared with the vault
 // entry's `trustedImporterHash`. First sync prompts the GM with a hash
 // prefix; subsequent syncs are silent unless the hash changes, in which
-// case both old and new hashes are shown. See foundry/HOST-INTERFACE.md.
+// case both old and new hashes are shown.
 
 import { updateVault } from "./vaults.mjs";
 import { API_VERSION } from "./host.mjs";

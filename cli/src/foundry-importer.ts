@@ -6,8 +6,6 @@
 // trust cache, evaluates it, and calls runSync / runRemove against a
 // host it constructs. The version manifest carries `{ version, sha256 }`
 // so the host can detect skew before evaluating.
-//
-// See foundry/HOST-INTERFACE.md for the host↔importer contract.
 
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
