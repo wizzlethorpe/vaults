@@ -5,7 +5,7 @@ import { registerSettings } from "./settings.mjs";
 import { listVaults, getVault, addVault, updateVault, removeVault, migrateLegacyIfNeeded } from "./vaults.mjs";
 import { applyHandlerAssets, removeHandlerAssets } from "./handler-assets.mjs";
 import { sync } from "./sync.mjs";
-import { fetchManifest } from "./api.mjs";
+import { fetchManifest, url as vaultUrl } from "./api.mjs";
 import { disconnect, tokenInfo } from "./auth.mjs";
 import { deleteVaultJournals } from "./importer.mjs";
 import { deleteVaultCache } from "./media.mjs";
@@ -66,9 +66,13 @@ async function openVaultsDialog() {
   });
   await dialog.render({ force: true });
   attachListHandlers(dialog);
+  // Kick off per-vault liveness checks in parallel; they update the dialog
+  // when they resolve. Not awaited so the dialog appears immediately —
+  // each row shows a pending status until its ping comes back.
+  void refreshVaultStatuses(dialog);
 }
 
-function renderVaultList() {
+function renderVaultList(statuses = new Map()) {
   const vaults = listVaults();
   if (vaults.length === 0) {
     return `
@@ -83,7 +87,7 @@ function renderVaultList() {
   }
   return `
     <div class="vaults-list">
-      ${vaults.map(renderVaultRow).join("")}
+      ${vaults.map((v) => renderVaultRow(v, statuses.get(v.id))).join("")}
       <div class="vaults-add">
         <button type="button" class="vaults-add-btn" data-vaults-action="add">
           <i class="fa-solid fa-plus"></i> ${escapeText(game.i18n.localize("VAULTS.Dialog.AddVault"))}
@@ -92,7 +96,7 @@ function renderVaultList() {
     </div>`;
 }
 
-function renderVaultRow(v) {
+function renderVaultRow(v, status) {
   const info = tokenInfo(v.token);
   // Token-bound role wins; otherwise the deploy serves public-tier content
   // to anyone, so we show "public" rather than the misleading "(not
@@ -101,18 +105,43 @@ function renderVaultRow(v) {
   const roleLabel = tokenOk
     ? (v.role || info?.role || "?")
     : game.i18n.localize("VAULTS.Dialog.Public");
-  const status = `<span class="vaults-row-role">${escapeText(roleLabel)}</span>`;
+  const roleSpan = `<span class="vaults-row-role">${escapeText(roleLabel)}</span>`;
 
-  // Sync is always offered: public tier is reachable on every deploy. The
-  // user explicitly opts in to elevation by clicking Connect, which is only
-  // meaningful for multi-role deploys (single-role has no /connect endpoint).
-  const primary = `<button type="button" class="vaults-row-primary" data-vaults-action="sync" data-vaults-id="${escapeAttr(v.id)}">
+  // Per-vault liveness state. Set by the post-render refreshVaultStatuses()
+  // pass; absent on the very first paint (hence the "checking" default).
+  // Three terminal outcomes:
+  //   ok           → buttons enabled, healthy badge.
+  //   unreachable  → Sync + Authenticate disabled with a tooltip explaining
+  //                  why; Settings + Disconnect stay enabled (both are
+  //                  local-only so there's nothing to be lost in offering them).
+  //   auth-failed  → token already cleared by the refresher; row re-renders
+  //                  as a public vault with the AuthFailedNotice attached.
+  const state = status?.status ?? "checking";
+  const unreachable = state === "unreachable";
+  const checking = state === "checking";
+  const disabledAttrs = (label) =>
+    unreachable
+      ? ` disabled aria-disabled="true" title="${escapeAttr(
+          game.i18n.format("VAULTS.Dialog.StatusUnreachable", { reason: status?.reason ?? "no response" })
+        )}"`
+      : ` title="${escapeAttr(label)}"`;
+
+  const statusBadge = renderStatusBadge(state, status);
+
+  // Sync is always offered when reachable: public tier is reachable on
+  // every deploy. The user explicitly opts in to elevation by clicking
+  // Connect, which is only meaningful for multi-role deploys.
+  const syncDisabled = unreachable ? " disabled aria-disabled=\"true\"" : "";
+  const syncTitle = unreachable
+    ? ` title="${escapeAttr(game.i18n.format("VAULTS.Dialog.StatusUnreachable", { reason: status?.reason ?? "no response" }))}"`
+    : "";
+  const primary = `<button type="button" class="vaults-row-primary" data-vaults-action="sync" data-vaults-id="${escapeAttr(v.id)}"${syncDisabled}${syncTitle}>
        <i class="fa-solid fa-rotate"></i> ${escapeText(game.i18n.localize("VAULTS.Dialog.Sync"))}
      </button>`;
 
   const canConnect = !v.public;
   const connectBtn = (canConnect && !tokenOk)
-    ? `<button type="button" data-vaults-action="connect" data-vaults-id="${escapeAttr(v.id)}" title="${escapeAttr(game.i18n.localize("VAULTS.Dialog.Connect"))}">
+    ? `<button type="button" data-vaults-action="connect" data-vaults-id="${escapeAttr(v.id)}"${disabledAttrs(game.i18n.localize("VAULTS.Dialog.Connect"))}>
          <i class="fa-solid fa-right-to-bracket"></i>
        </button>`
     : "";
@@ -122,17 +151,29 @@ function renderVaultRow(v) {
        </button>`
     : "";
 
-  const secondary = `<button type="button" data-vaults-action="force-sync" data-vaults-id="${escapeAttr(v.id)}" title="${escapeAttr(game.i18n.localize("VAULTS.Dialog.ForceSync"))}">
+  const forceSyncDisabled = unreachable ? " disabled aria-disabled=\"true\"" : "";
+  const forceSyncTitle = unreachable
+    ? ` title="${escapeAttr(game.i18n.format("VAULTS.Dialog.StatusUnreachable", { reason: status?.reason ?? "no response" }))}"`
+    : ` title="${escapeAttr(game.i18n.localize("VAULTS.Dialog.ForceSync"))}"`;
+  const secondary = `<button type="button" data-vaults-action="force-sync" data-vaults-id="${escapeAttr(v.id)}"${forceSyncDisabled}${forceSyncTitle}>
        <i class="fa-solid fa-arrows-rotate"></i>
      </button>
      ${connectBtn}
      ${disconnectBtn}`;
 
+  // Inline notice when the previous token was rejected on this round.
+  // Surfaces what just happened so the user isn't surprised that they
+  // dropped from `dm` back to `public` between dialog opens.
+  const authFailedNotice = status?.status === "auth-failed"
+    ? `<div class="vaults-row-notice">${escapeText(game.i18n.localize("VAULTS.Dialog.AuthFailedNotice"))}</div>`
+    : "";
+
   return `
-    <div class="vaults-row" data-vaults-id="${escapeAttr(v.id)}">
+    <div class="vaults-row${checking ? " is-checking" : ""}${unreachable ? " is-unreachable" : ""}" data-vaults-id="${escapeAttr(v.id)}">
       <div class="vaults-row-meta">
-        <div class="vaults-row-label">${escapeText(v.label)} ${status}</div>
+        <div class="vaults-row-label">${statusBadge} ${escapeText(v.label)} ${roleSpan}</div>
         <div class="vaults-row-url">${escapeText(v.url)}</div>
+        ${authFailedNotice}
       </div>
       <div class="vaults-row-actions">
         ${primary}
@@ -142,6 +183,22 @@ function renderVaultRow(v) {
         </button>
       </div>
     </div>`;
+}
+
+function renderStatusBadge(state, status) {
+  const t = (key, args) => game.i18n.format(key, args);
+  switch (state) {
+    case "ok":
+      return `<span class="vaults-row-status vaults-row-status-ok" title="${escapeAttr(game.i18n.localize("VAULTS.Dialog.StatusOk"))}">●</span>`;
+    case "unreachable":
+      return `<span class="vaults-row-status vaults-row-status-unreachable" title="${escapeAttr(t("VAULTS.Dialog.StatusUnreachable", { reason: status?.reason ?? "no response" }))}">⚠</span>`;
+    case "auth-failed":
+      // Token was just cleared; treat the row as ok for badge purposes
+      // (the inline notice handles the explanation).
+      return `<span class="vaults-row-status vaults-row-status-ok" title="${escapeAttr(game.i18n.localize("VAULTS.Dialog.StatusOk"))}">●</span>`;
+    default:
+      return `<span class="vaults-row-status vaults-row-status-checking" title="${escapeAttr(game.i18n.localize("VAULTS.Dialog.StatusChecking"))}">…</span>`;
+  }
 }
 
 function attachListHandlers(dialog) {
@@ -241,7 +298,7 @@ async function probeManifest(vault) {
   }
 }
 
-async function reRenderList(dialog) {
+async function reRenderList(dialog, statuses) {
   const root = dialog.element?.querySelector(".dialog-content, .window-content");
   if (!root) return;
   // Replace just the vault list block; leaves the surrounding action bar
@@ -249,9 +306,65 @@ async function reRenderList(dialog) {
   const listEl = root.querySelector(".vaults-list");
   if (listEl) {
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = renderVaultList();
+    wrapper.innerHTML = renderVaultList(statuses);
     listEl.replaceWith(wrapper.firstElementChild);
     attachListHandlers(dialog);
+  }
+}
+
+/**
+ * Probe each vault's `/_manifest.json` in parallel and update the dialog
+ * with per-row status. Three outcomes per vault:
+ *
+ *   - 2xx          → reachable; row stays as the user expects.
+ *   - 401 / 403    → token was rejected (password rotated, role removed,
+ *                    OAuth revoked). Clear the vault's token + role so the
+ *                    row re-renders as a public-tier vault, plus an inline
+ *                    notice so the user knows why.
+ *   - other / err  → unreachable (network error, 5xx, DNS, …). Don't touch
+ *                    the token — assume transient. Disable Sync +
+ *                    Authenticate with a tooltip explaining the state.
+ *
+ * Parallel fetches; small-N is the assumed scale (handful of vaults per
+ * world). If the dialog closed mid-flight, abort the re-render — nothing
+ * to update against.
+ */
+async function refreshVaultStatuses(dialog) {
+  const vaults = listVaults();
+  if (vaults.length === 0) return;
+  const statuses = new Map();
+  await Promise.all(vaults.map(async (v) => {
+    statuses.set(v.id, await pingVault(v));
+  }));
+  // Apply token clear-out for any vault whose auth was rejected. updateVault
+  // is async; do them sequentially so we don't race on the shared
+  // settings store.
+  for (const [id, r] of statuses) {
+    if (r.status === "auth-failed") {
+      try { await updateVault(id, { token: "", role: "" }); }
+      catch (err) { console.warn(`Vaults | could not clear stale token for ${id}:`, err); }
+    }
+  }
+  if (!dialog.element) return; // dialog closed before pings finished
+  await reRenderList(dialog, statuses);
+}
+
+/**
+ * One liveness ping per vault. Returns a discriminated status. Uses
+ * `cache: "no-store"` so a stale 200 from the browser cache can't mask
+ * an actual server-side change. Intentionally tolerant of network
+ * errors — they shouldn't surface as scary messages, just "unreachable
+ * for now."
+ */
+async function pingVault(vault) {
+  if (!vault.url) return { status: "unreachable", reason: "no URL configured" };
+  try {
+    const res = await fetch(vaultUrl(vault, "/_manifest.json"), { method: "GET", cache: "no-store" });
+    if (res.status === 401 || res.status === 403) return { status: "auth-failed" };
+    if (!res.ok) return { status: "unreachable", reason: `HTTP ${res.status}` };
+    return { status: "ok" };
+  } catch (err) {
+    return { status: "unreachable", reason: err?.message || "network error" };
   }
 }
 
@@ -321,20 +434,17 @@ async function openSettingsDialog(vaultId) {
   // Handler-asset import is a separate trust gate: handler authors must opt
   // their assets in via assets.targets.foundry.{styles,scripts}, and the GM must
   // tick the matching box here. Defaults off; flipping on triggers a
-  // confirmation dialog (handled in the save callback).
+  // confirmation dialog (handled in the save callback). Two flat form-groups
+  // (one per checkbox) so each pair sits in V14's standard label-then-input
+  // row instead of nesting checkboxes under a third, header-style label.
   const handlerAssetsField = `
     <div class="form-group">
-      <label>${escapeText(game.i18n.localize("VAULTS.Dialog.HandlerAssetsLabel"))}</label>
-      <div>
-        <label class="checkbox" style="display:block; font-weight:normal;">
-          <input id="vaults-edit-import-styles" type="checkbox"${v.importHandlerStyles ? " checked" : ""}>
-          ${escapeText(game.i18n.localize("VAULTS.Dialog.ImportHandlerStyles"))}
-        </label>
-        <label class="checkbox" style="display:block; font-weight:normal;">
-          <input id="vaults-edit-import-scripts" type="checkbox"${v.importHandlerScripts ? " checked" : ""}>
-          ${escapeText(game.i18n.localize("VAULTS.Dialog.ImportHandlerScripts"))}
-        </label>
-      </div>
+      <label>${escapeText(game.i18n.localize("VAULTS.Dialog.ImportHandlerStyles"))}</label>
+      <input id="vaults-edit-import-styles" type="checkbox"${v.importHandlerStyles ? " checked" : ""}>
+    </div>
+    <div class="form-group">
+      <label>${escapeText(game.i18n.localize("VAULTS.Dialog.ImportHandlerScripts"))}</label>
+      <input id="vaults-edit-import-scripts" type="checkbox"${v.importHandlerScripts ? " checked" : ""}>
       <p class="notes">${escapeText(game.i18n.localize("VAULTS.Dialog.HandlerAssetsHint"))}</p>
     </div>`;
 
