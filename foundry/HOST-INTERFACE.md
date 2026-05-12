@@ -90,73 +90,49 @@ old/new hash both shown.
 
 ## Host API
 
+The bundle is evaluated inside Foundry's window context. That means
+**Foundry globals like `JournalEntry`, `Actor`, `Scene`, `game`,
+`fromUuid`, `FilePicker`, `Hooks`, `ui` are reachable directly** from
+the importer — no need to plumb them through the host. The host's job
+is the narrower set of primitives that aren't Foundry globals: things
+the module owns (settings registrations, OAuth UI) or things worth
+abstracting for testability / consistency (notifications, dialogs).
+
 ```ts
 interface Host {
   /** Bumped on breaking contract changes. Importer's REQUIRED_HOST_VERSION
    *  must be ≤ this. */
   readonly API_VERSION: number;
 
-  /** Foundry document classes, passed through. Importer uses these
-   *  instead of CONFIG / global lookups so the host can mock or shim
-   *  in future. */
-  readonly documents: {
-    JournalEntry: typeof JournalEntry;
-    Actor: typeof Actor;
-    Item: typeof Item;
-    Scene: typeof Scene;
-    RollTable: typeof RollTable;
-    Macro: typeof Macro;
-    Cards: typeof Cards;
-    Playlist: typeof Playlist;
-    Folder: typeof Folder;
-  };
-
-  /** Active Foundry game instance, passed through. Importer reads
-   *  game.world.id, game.system.id, game.i18n. Module-side state goes
-   *  through getVaultState/setVaultState, not game.settings. */
-  readonly game: Game;
-
   // ── Per-vault persisted state ──────────────────────────────────────
   //
-  // The host owns where this lives (currently a single world setting
-  // keyed by vault id; could change). The importer reads + writes
-  // opaquely. Shape is the importer's concern; host doesn't introspect.
+  // The module registers a single `vaultManifests` world setting keyed
+  // by vault id; the importer doesn't see that detail. Writes are
+  // shallow patches over the current state object — pass `{ a: 1, b: 2 }`
+  // to set those two keys, leaving every other key untouched.
 
   getVaultState(vaultId: string): VaultState;
   setVaultState(vaultId: string, patch: Partial<VaultState>): Promise<void>;
   clearVaultState(vaultId: string): Promise<void>;
 
-  // ── Per-vault local file cache ─────────────────────────────────────
-  //
-  // The host owns the cache root path (currently
-  // `worlds/<id>/vaults-cache/<vault-id>/`). The importer uses
-  // relative paths; the host turns them into Foundry-served URLs.
-
-  /** Upload a binary into the vault's cache subtree. */
-  uploadToCache(vaultId: string, relPath: string, blob: Blob): Promise<void>;
-
-  /** Remove a single cached file. Best-effort; failures logged, not thrown. */
-  deleteFromCache(vaultId: string, relPath: string): Promise<void>;
-
-  /** Wipe the entire per-vault cache dir. Used on runRemove. */
-  deleteVaultCache(vaultId: string): Promise<void>;
-
-  /** Foundry-served URL Foundry can use as an <img src=> / scene texture /
-   *  audio sound.path. Importer rewrites `@vault/PATH` to this. */
-  localFileUrl(vaultId: string, relPath: string): string;
-
   // ── Authentication ────────────────────────────────────────────────
   //
-  // Tokens live in vault state; the host's job is just the user-facing
-  // flows (OAuth-style copy/paste from `${URL}/connect`). The importer
-  // never directly prompts for credentials.
+  // Tokens themselves live in the vault registry (also module-side);
+  // the importer just receives the resolved token via the `vault` arg
+  // to runSync. This method is only called when the importer detects a
+  // mid-sync 401 and wants to re-prompt rather than fail.
 
   /** Run the host's "you need to (re-)authenticate" flow. Returns the new
-   *  token on success, null on cancel. The host writes the token to
-   *  vault state itself; the importer just gets the resolved value. */
+   *  token on success, null on cancel. The host writes the token to the
+   *  vault registry itself; the importer just gets the resolved value. */
   refreshToken(vault: VaultEntry, reason: "expired" | "rejected" | "manual"): Promise<string | null>;
 
   // ── User-facing affordances ───────────────────────────────────────
+  //
+  // Wrappers over `ui.notifications.*` and DialogV2. The importer
+  // *could* call them directly, but going through the host means the
+  // shape is consistent across importer versions and we have one place
+  // to swap V13/V14 API differences.
 
   notify(level: "info" | "warn" | "error", message: string): void;
 
@@ -172,6 +148,22 @@ interface Host {
    *  rather than rendering raw key strings. */
   localize(key: string, args?: Record<string, string | number>): string;
 }
+```
+
+### What's NOT on the host (and why)
+
+Everything below stays as a direct Foundry-global reference in the
+bundle. They're stable APIs Foundry exposes globally, and adding a host
+layer over them would be performative.
+
+| Used directly | Why not on the host |
+|---|---|
+| `JournalEntry`, `Actor`, `Item`, `Scene`, `RollTable`, `Macro`, `Cards`, `Playlist`, `Folder` | Foundry globals. Stable across V13/V14. |
+| `game`, `ui`, `Hooks`, `CONFIG` | Same. |
+| `fromUuid()` | Same. |
+| `FilePicker.implementation.upload / createDirectory / deleteFile` | Same. The local-cache directory convention (`worlds/<id>/vaults-cache/<vault-id>/…`) is encoded as a bundle constant, since changing it would also break the journal HTML's image-src rewrites that already hardcode it. |
+| `foundry.utils.getRoute(…)` | Same. |
+| `game.settings.get("vaults", …)` | NOT used by the importer — that's host-only. The importer reaches vault state through `getVaultState` / `setVaultState`. |
 
 interface ProgressHandle {
   update(done: number, total?: number, label?: string): void;
