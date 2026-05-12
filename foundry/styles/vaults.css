@@ -95,8 +95,43 @@
   border-radius: 3px; cursor: pointer;
 }
 .vaults-row-actions button:hover { background: var(--color-button-bg-hover, #444); }
+.vaults-row-actions button[disabled],
+.vaults-row-actions button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.vaults-row-actions button[disabled]:hover,
+.vaults-row-actions button[aria-disabled="true"]:hover {
+  background: var(--color-button-bg, #303030);
+}
 .vaults-row-primary {
   font-weight: 600;
+}
+
+/* Per-vault liveness indicator: small dot before the label.
+     ●  ok           — vault reachable
+     ⚠  unreachable  — sync/auth disabled until the next dialog open
+     …  checking     — ping in flight; refreshes when it resolves
+   Distinct from the older `.vaults-status` class (used by the connect
+   dialog's spinner text) — keep the row-scoped name to avoid collision. */
+.vaults-row-status {
+  display: inline-block;
+  width: 1em;
+  text-align: center;
+  font-weight: 700;
+  margin-right: 0.15rem;
+  vertical-align: baseline;
+}
+.vaults-row-status-ok { color: #4caf50; }
+.vaults-row-status-unreachable { color: #c8763a; }
+.vaults-row-status-checking { color: var(--color-text-secondary, #888); }
+
+.vaults-row.is-unreachable .vaults-row-meta { opacity: 0.65; }
+.vaults-row-notice {
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: #c8763a;
+  font-style: italic;
 }
 
 .vaults-add { margin-top: 0.4rem; }
@@ -395,6 +430,52 @@ code.dice-roll-invalid {
   text-decoration: line-through;
 }
 
+/* Inline rolls inside a statblock. The CLI renders dice as
+   `<button class="dice-roll">`; the Foundry-side rewriter replaces those
+   with `[[/r FORMULA]]` so Foundry's text enricher turns them into a
+   real clickable `<a class="inline-roll">…<i class="fa-dice-d20">…</a>`
+   with built-in tooltip + chat-message behaviour. The defaults inherit
+   --content-link-* from the parent Foundry theme, which under dark
+   themes resolves to a near-white colour — invisible against the
+   statblock's fixed parchment background. Pin the colours to the
+   statblock's own primary palette so they stay readable. */
+/* Inline-roll text + chip styling. Repeated `.statblock` keeps
+   specificity above dnd5e's
+   `:is(.dnd5e2, .dnd5e2-journal) a:is(.content-link, .inline-roll) > i`
+   (0,2,2) so we don't lose the colour fight at module-vs-system source
+   order. */
+.statblock.statblock a.inline-roll,
+.statblock.statblock a.content-link {
+  color: var(--statblock-primary-color);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--statblock-primary-color) 40%, transparent);
+}
+.statblock.statblock a.inline-roll:hover,
+.statblock.statblock a.content-link:hover {
+  background: transparent;
+}
+
+/* Dice icon colouring needs two paths because systems disagree on how
+   to render the d20 glyph:
+     1. Most systems (and Foundry core) render `<i.fa-dice-d20>` as a
+        FontAwesome font character — `color` controls it.
+     2. dnd5e (5.x) replaces the glyph entirely: it sets
+        `background: url(d20-black.svg)` and a `::before { content: unset }`
+        on `i.fa-dice-d20`, then applies `filter: var(--dnd5e-roll-icon-filter)`
+        on top. Under dark themes that filter resolves to `invert(1)`,
+        which turns the black SVG into ~white against our parchment
+        statblock bg → the "light grey" the user reported.
+        `color` has no effect on a background-image SVG, so we override
+        the dnd5e filter variable scoped to `.statblock`, which lets
+        the original black SVG show through (matches the statblock's
+        own `color: #000` body text). */
+.statblock.statblock i.fa-dice-d20,
+.statblock.statblock i[class*="fa-dice"] {
+  color: var(--statblock-primary-color);
+  opacity: 1;
+}
+.statblock { --dnd5e-roll-icon-filter: none; }
+
 /* fm: handler — the wrapper span is intentionally invisible (no rules);
    the missing-key marker stays loud so authors notice typos in the
    Foundry journal too. */
@@ -421,6 +502,14 @@ code.fm-missing {
   font-size: 14px;
   line-height: 1.4;
 }
+/* Force every text-bearing descendant to inherit `.statblock`'s `color`
+   instead of picking up Foundry's theme-driven text colour (which can
+   resolve to a near-white under dark themes — unreadable against the
+   parchment statblock bg). Specific subclass rules below (.statblock-name,
+   .statblock-section-heading, .statblock-property, .statblock-error)
+   come later in source order, same specificity, so they win and keep
+   their custom colours. */
+.statblock * { color: inherit; }
 .statblock p { margin: 0.15rem 0; }
 .statblock-name {
   font-family: var(--statblock-heading-font);
@@ -488,4 +577,23 @@ code.fm-missing {
   background: #fde7e3;
   color: #7a200d;
   border-color: #7a200d;
+}
+
+/* `<pre><code>` blocks (markdown fenced code, the fm code-block handler,
+   macro source listings, etc.) overflow Foundry's narrow journal-page
+   column by default — long lines push the whole sheet off-canvas.
+   Constrain to parent width and scroll horizontally instead. Scoped to
+   journal page content so Foundry's own UI <pre> elements aren't
+   affected. */
+section.journal-page-content pre,
+.journal-entry-pages pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+  word-wrap: normal;
+}
+section.journal-page-content pre > code,
+.journal-entry-pages pre > code {
+  white-space: inherit;
+  display: block;
 }
