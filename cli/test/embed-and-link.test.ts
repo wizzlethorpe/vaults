@@ -111,6 +111,41 @@ describe("![[file]] embeds: images", () => {
       assert.match(html, /<img[^>]+width="240"/, "width attribute reflects the |N hint");
     } finally { await cleanup(v); }
   });
+
+  // Standard markdown image syntax: a relative URL the author wrote
+  // (e.g. ../attachments/foo.webp from a subdir) must be normalised to
+  // the absolute deployed URL. Otherwise the wiki render works only by
+  // accident of the browser resolving the relative path against the
+  // current page URL — anywhere else loading the rendered HTML out of
+  // context (the Foundry journal sheet runs from /game) ends up pointing
+  // at the wrong place and 404s.
+  it("rewrites a relative ![alt](path) markdown image to an absolute URL", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "attachments/portrait.webp": PLACEHOLDER,
+      "Notes/Page.md": "# Page\n\n![A portrait](../attachments/portrait.webp)\n",
+    });
+    try {
+      await build(v);
+      const html = await readBody(v, "Notes/Page.body.html");
+      assert.match(html, /<img[^>]+src="\/attachments\/portrait\.webp"/,
+        "relative author URL must be rewritten to the absolute slugified path");
+      assert.doesNotMatch(html, /\.\.\//,
+        "relative path segments must not survive into the rendered HTML");
+    } finally { await cleanup(v); }
+  });
+
+  it("leaves external image URLs alone", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": "# Page\n\n![logo](https://example.com/logo.png)\n",
+    });
+    try {
+      await build(v);
+      const html = await readBody(v, "Page.body.html");
+      assert.match(html, /<img[^>]+src="https:\/\/example\.com\/logo\.png"/);
+    } finally { await cleanup(v); }
+  });
 });
 
 describe("![[file]] embeds: audio", () => {
@@ -216,6 +251,57 @@ describe("![[Page]] page transclusion", () => {
       const html = await readBody(v, "Host.body.html");
       assert.match(html, /class="embed embed-broken"/);
       assert.match(html, /page not found/i);
+    } finally { await cleanup(v); }
+  });
+});
+
+// ── External-link tagging ──────────────────────────────────────────────────
+//
+// `[label](https://…)` should open in a new tab so a click doesn't drop the
+// reader off the wiki. Implemented via mdast plugin so the attributes are
+// baked into the HTML — Foundry-side journal renderings inherit the
+// behaviour too. Internal wikilinks and relative URLs stay in-tab.
+
+describe("external link tagging", () => {
+  it("opens https://… links in a new tab with noopener", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": "# Page\n\nSee [the docs](https://example.com/docs).\n",
+    });
+    try {
+      await build(v);
+      const html = await readBody(v, "Page.body.html");
+      assert.match(html, /<a[^>]+href="https:\/\/example\.com\/docs"[^>]+target="_blank"[^>]+rel="noopener noreferrer"/);
+    } finally { await cleanup(v); }
+  });
+
+  it("leaves relative links in the same tab", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": "# Page\n\n[Local file](handouts/letter.pdf).\n",
+    });
+    try {
+      await build(v);
+      const html = await readBody(v, "Page.body.html");
+      // The link should NOT have target= attribute
+      const m = /<a[^>]+href="handouts\/letter\.pdf"[^>]*>/.exec(html);
+      assert.ok(m, "anchor must render");
+      assert.doesNotMatch(m[0], /target=/, "relative links stay in-tab");
+    } finally { await cleanup(v); }
+  });
+
+  it("leaves internal wikilinks in the same tab", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Other.md": "# Other",
+      "Page.md": "# Page\n\nSee [[Other]].\n",
+    });
+    try {
+      await build(v);
+      const html = await readBody(v, "Page.body.html");
+      const m = /<a[^>]+class="[^"]*\binternal-link\b[^"]*"[^>]*>/.exec(html);
+      assert.ok(m, "internal link must render");
+      assert.doesNotMatch(m[0], /target=/, "internal wikilinks stay in-tab");
     } finally { await cleanup(v); }
   });
 });

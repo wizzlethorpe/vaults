@@ -10,6 +10,8 @@ import matter from "gray-matter";
 import type { RenderContext, RenderWarning } from "./types.js";
 import { wikiLinkPlugin } from "./wikilink.js";
 import { embedPlugin } from "./embed.js";
+import { externalLinksPlugin } from "./external-links.js";
+import { imageSrcsPlugin } from "./image-srcs.js";
 import { calloutPlugin } from "./callouts.js";
 import { basesPlugin } from "./bases.js";
 import { handlersPlugin } from "./handlers/dispatch.js";
@@ -33,7 +35,7 @@ const sanitizeSchema = {
     audio: ["src", "controls", "preload", "loop", "muted"],
     video: ["src", "controls", "preload", "loop", "muted", "width", "height", "poster"],
     source: ["src", "type"],
-    a: ["href", "title", "className", "id"],
+    a: ["href", "title", "className", "id", "target", "rel"],
     div: ["className", "data*", "role"],
     span: ["className", "data*"],
     code: ["className", "title"],
@@ -120,6 +122,11 @@ export async function renderMarkdown(
     // process anything inside the table.
     .use(basesPlugin({ context, warnings }))
     .use(embedPlugin({ context, warnings }))
+    // Normalise plain markdown image URLs (`![alt](path/foo.webp)`) to the
+    // absolute slugified URL the build emits. Sits after embedPlugin (which
+    // handles the wikilink form) so both shapes converge on the same output.
+    .use(imageSrcsPlugin({ context }))
+    .use(externalLinksPlugin())
     .use(wikiLinkPlugin({ context, outlinks, warnings }))
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
