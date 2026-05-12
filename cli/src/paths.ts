@@ -5,6 +5,7 @@
 // locations; runtime code should always use the helpers below rather than
 // hardcoding strings.
 
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 
 /** Top-level dotfolder owning all vaults-cli state. */
@@ -40,6 +41,27 @@ export function defaultOutputDir(vaultPath: string): string {
 /** Fully-qualified .vaults/.gitignore path. */
 export function vaultsGitignore(vaultPath: string): string {
   return join(vaultPath, VAULTS_DIR, VAULTS_GITIGNORE);
+}
+
+/**
+ * Throw with a friendly error if `vaultPath` doesn't look like an
+ * initialised vault. The marker is `settings.md` at the vault root —
+ * `vaults init` writes it; the rest of the CLI (build / preview / push /
+ * role / patreon / password) reads it.
+ *
+ * Catches the common confused-cwd case — `vaults preview` from $HOME or
+ * a parent directory — with a clear next step instead of an opaque
+ * "wrangler exited 1" / blank build a few seconds later.
+ */
+export async function requireInitialisedVault(vaultPath: string): Promise<void> {
+  const marker = join(vaultPath, SETTINGS_FILE);
+  try { await stat(marker); }
+  catch {
+    throw new Error(
+      `Not a vaults-initialised directory: ${vaultPath}\n` +
+      `Missing ${SETTINGS_FILE}. Run \`vaults init\` here first, or pass the vault path as the first argument.`,
+    );
+  }
 }
 
 // ── Legacy paths (pre-migration) ─────────────────────────────────────────

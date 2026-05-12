@@ -6,7 +6,7 @@ import { loadConfig, saveConfig, saveSessionSecret, type VaultConfig } from "../
 import { buildSite } from "../build.js";
 import { generateSessionSecret } from "../auth.js";
 import { runMigrations } from "../migrate/run.js";
-import { defaultOutputDir } from "../paths.js";
+import { defaultOutputDir, requireInitialisedVault } from "../paths.js";
 
 interface PushOptions {
   projectName?: string;
@@ -18,6 +18,7 @@ interface PushOptions {
 }
 
 export async function push(vaultPath: string, opts: PushOptions): Promise<void> {
+  await requireInitialisedVault(vaultPath);
   await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {
     ...(opts.projectName ? { projectName: opts.projectName } : {}),

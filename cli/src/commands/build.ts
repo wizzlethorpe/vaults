@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { buildSite } from "../build.js";
-import { defaultOutputDir } from "../paths.js";
+import { defaultOutputDir, requireInitialisedVault } from "../paths.js";
 
 interface BuildOptions {
   output?: string;
@@ -13,6 +13,7 @@ interface BuildOptions {
 const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
 
 export async function build(vaultPath: string, opts: BuildOptions): Promise<void> {
+  await requireInitialisedVault(vaultPath);
   const outputDir = opts.output ? resolve(opts.output) : defaultOutputDir(vaultPath);
 
   console.log(`Building site from ${vaultPath}...`);

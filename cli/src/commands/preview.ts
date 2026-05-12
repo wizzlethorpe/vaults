@@ -4,7 +4,7 @@ import { buildSite } from "../build.js";
 import { generateSessionSecret } from "../auth.js";
 import { loadConfig, saveSessionSecret } from "../config.js";
 import { runMigrations } from "../migrate/run.js";
-import { defaultOutputDir } from "../paths.js";
+import { defaultOutputDir, requireInitialisedVault } from "../paths.js";
 
 interface PreviewOptions {
   output?: string;
@@ -23,6 +23,7 @@ const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
  * the same cookies that production does.
  */
 export async function preview(vaultPath: string, opts: PreviewOptions): Promise<void> {
+  await requireInitialisedVault(vaultPath);
   await runMigrations(vaultPath);
   const outputDir = opts.output ? resolve(opts.output) : defaultOutputDir(vaultPath);
   const port = opts.port ?? 4173;
