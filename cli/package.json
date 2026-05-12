@@ -63,6 +63,7 @@
     "@types/node": "^22.10.0",
     "@types/picomatch": "^3.0.1",
     "@types/unist": "^3.0.3",
+    "esbuild": "^0.28.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

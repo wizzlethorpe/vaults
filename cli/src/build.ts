@@ -16,6 +16,7 @@ import { buildFavicon } from "./favicon.js";
 import { renderMarkdown, type PreParsedFrontmatter } from "./render/pipeline.js";
 import { CLI_VERSION, MANIFEST_VERSION, ID_SCHEME } from "./version.js";
 import { renderLayout, render404 } from "./render/layout.js";
+import { writeFoundryImporter } from "./foundry-importer.js";
 import { slugify } from "./render/slug.js";
 import { buildPreview } from "./render/preview.js";
 import { resolvePageImage } from "./render/cover.js";
@@ -338,6 +339,11 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // declared any assets (purely declarative handlers stay overhead-free).
   if (hasHandlerJs) await writeFile(join(opts.outputDir, "_handlers.js"), handlerAssets.js);
   if (hasHandlerCss) await writeFile(join(opts.outputDir, "_handlers.css"), handlerAssets.css);
+
+  // Foundry importer bundle: one ESM file the Foundry module fetches at
+  // sync time, plus a tiny version manifest with the SHA-256 the host
+  // verifies against its trust cache. See foundry/HOST-INTERFACE.md.
+  await writeFoundryImporter(opts.outputDir);
   // Foundry-import bundles are written per-variant inside the role loop
   // below (instead of at the root) so the middleware role-gates them. A
   // public visitor can't fetch the dm-tier handler bundle even if it

@@ -958,6 +958,7 @@ function isSharedAsset(pathname) {
   // 404s for every visitor. Build code that places root-level files:
   //   - styles.css / user.css        — build.ts (writeFile join(outputDir, ...))
   //   - _handlers.js / _handlers.css — build.ts (handler asset bundles, root)
+  //   - _foundry/importer.js + version.json — build.ts (foundry-importer bundle)
   //   - login.html                   — build.ts (multi-role only)
   //   - favicon.ico                  — build.ts (buildFavicon)
   //   - functions/_middleware.js     — build.ts (multi-role only; not served)
@@ -972,6 +973,8 @@ function isSharedAsset(pathname) {
   if (pathname === "/user.css") return true;
   if (pathname === "/_handlers.js") return true;
   if (pathname === "/_handlers.css") return true;
+  if (pathname === "/_foundry/importer.js") return true;
+  if (pathname === "/_foundry/version.json") return true;
   if (pathname === "/login.html") return true;
   if (pathname === "/favicon.ico" || pathname === "/favicon.svg") return true;
   if (pathname === "/robots.txt") return true;
