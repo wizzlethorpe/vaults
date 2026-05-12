@@ -4,13 +4,10 @@
 import { registerSettings } from "./settings.mjs";
 import { listVaults, getVault, addVault, updateVault, removeVault, migrateLegacyIfNeeded } from "./vaults.mjs";
 import { applyHandlerAssets, removeHandlerAssets, applyHandlerAssetsWithConfirm } from "./handler-assets.mjs";
-import { runSync } from "./importer-entry.mjs";
+import { loadImporter } from "./importer-loader.mjs";
 import { createHost } from "./host.mjs";
 import { fetchManifest, url as vaultUrl } from "./api.mjs";
 import { disconnect, tokenInfo } from "./auth.mjs";
-import { deleteVaultJournals } from "./importer.mjs";
-import { deleteVaultCache } from "./media.mjs";
-import { deleteVaultInstances } from "./instance.mjs";
 import { escapeAttr, escapeHtml as escapeText } from "./util.mjs";
 
 Hooks.once("init", () => {
@@ -256,11 +253,15 @@ async function handleListAction(action, vaultId, dialog) {
       await dialog.close();
       try {
         const vault = getVault(vaultId);
-        const result = await runSync(createHost(), vault, { forceFull: action === "force-sync" });
-        // Handler-asset injection lives module-side (DOM + settings). The
-        // importer flags when the post-sync state warrants a re-apply.
-        if (result?.refreshHandlerAssets) {
-          await applyHandlerAssetsWithConfirm(getVault(vaultId), { reason: "sync" });
+        const host = createHost();
+        const importer = await loadImporter(host, vault);
+        if (importer) {
+          const result = await importer.runSync(host, vault, { forceFull: action === "force-sync" });
+          // Handler-asset injection lives module-side (DOM + settings).
+          // The importer flags when the post-sync state warrants a re-apply.
+          if (result?.refreshHandlerAssets) {
+            await applyHandlerAssetsWithConfirm(getVault(vaultId), { reason: "sync" });
+          }
         }
       } catch (err) {
         console.error("Vaults |", err);
@@ -534,9 +535,20 @@ async function openSettingsDialog(vaultId) {
         callback: async () => {
           const ok = await confirmRemoveVault(v);
           if (!ok) return false;
-          await deleteVaultJournals(vaultId);
-          await deleteVaultInstances(v);
-          await deleteVaultCache(vaultId);
+          // Run the importer-defined cleanup first (best-effort: per
+          // HOST-INTERFACE.md, host catches throws + proceeds). If the
+          // bundle can't be loaded (vault offline, importer evicted from
+          // the deploy), we still drop the registry entry so the GM
+          // isn't stuck. Any leftover Foundry docs can be removed by
+          // hand from the Journal Directory.
+          const host = createHost();
+          try {
+            const importer = await loadImporter(host, v);
+            if (importer) await importer.runRemove(host, v);
+            else console.warn(`Vaults | could not load importer for ${v.label}; skipping document cleanup.`);
+          } catch (err) {
+            console.warn(`Vaults | importer cleanup failed for ${v.label}:`, err);
+          }
           // Drop any injected handler-asset elements for this vault before
           // the registry entry goes away. JS already-running effects (event
           // handlers, hooks attached at execution time) survive until the

@@ -68,6 +68,11 @@ export const VAULT_DEFAULTS = {
   // path instead of guessing /_handlers.foundry.{js,css}. Empty / null
   // fields fall back to the well-known names for older deploys.
   handlerAssetPaths: { foundryJs: null, foundryCss: null },
+  // SHA-256 of the wiki's `_foundry/importer.js` bundle the GM last
+  // approved for this vault. The loader compares this on every sync;
+  // empty string = no trust granted yet (first sync prompts). A mismatch
+  // re-prompts with old → new hash.
+  trustedImporterHash: "",
 };
 
 export function registerSettings() {

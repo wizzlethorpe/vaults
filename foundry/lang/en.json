@@ -11,6 +11,14 @@
   "VAULTS.Sync.NoUrl": "Vault URL is missing.",
   "VAULTS.Sync.TokenExpired": "Vault token for {name} has expired. Click Authenticate, then Sync again.",
 
+  "VAULTS.Importer.Missing": "This vault's deployed CLI doesn't ship an importer (<code>{url}/_foundry/importer.js</code> 404'd). Update the CLI on the vault's author end and re-deploy, then try again.",
+  "VAULTS.Importer.FetchFailed": "Could not fetch the vault importer: {message}",
+  "VAULTS.Importer.EvalFailed": "Failed to evaluate the vault importer: {message}",
+  "VAULTS.Importer.ModuleTooOld": "{name} ships an importer that needs a newer Wizzlethorpe Vaults module than this world has. Update the module and try again.",
+  "VAULTS.Importer.TrustTitle": "Trust this vault's importer?",
+  "VAULTS.Importer.TrustPrompt": "<p>This is the first sync from <code>{url}</code>. The wiki ships its own importer code, which will run inside Foundry.</p><p>Bundle fingerprint: <code>{hash}</code></p><p>Continue only if you trust the vault author.</p>",
+  "VAULTS.Importer.HashChanged": "<p>The importer at <code>{url}</code> has changed since you last trusted it.</p><p>Old: <code>{oldHash}</code><br>New: <code>{newHash}</code></p><p>Accept the new bundle and continue?</p>",
+
   "VAULTS.Connect.Success": "Vault authenticated as {role}.",
   "VAULTS.Connect.DialogTitleNamed": "Authenticate with {name}",
   "VAULTS.Connect.StepOpen": "Open the vault sign-in page in your browser:",
