@@ -228,32 +228,32 @@ export async function deleteInstance(vault, vaultPath) {
  * docs the GM took over by hand are safe), and only deletes folders
  * whose id matches the deterministic id we'd compute.
  */
-export async function deleteVaultInstances(vault) {
+export async function deleteVaultInstances(vaultId) {
   // Docs first (so the folders end up empty before we try to remove them).
   for (const [docName, getCollection] of Object.entries(COLLECTION_FOR)) {
     const collection = getCollection();
     if (!collection) continue;
-    const ours = collection.contents.filter((d) => d.getFlag(MODULE_ID, "vaultId") === vault.id);
+    const ours = collection.contents.filter((d) => d.getFlag(MODULE_ID, "vaultId") === vaultId);
     for (const doc of ours) {
       try { await doc.delete(); }
-      catch (err) { console.warn(`Vaults | failed to delete ${docName} ${doc.id} for ${vault.label}:`, err); }
+      catch (err) { console.warn(`Vaults | failed to delete ${docName} ${doc.id}:`, err); }
     }
   }
   // Then the now-empty folders.
   for (const docName of BLANK_DOC_TYPES) {
-    const fId = await instanceFolderId(vault, docName);
+    const fId = await instanceFolderId(vaultId, docName);
     const folder = game.folders.get(fId);
     if (!folder || folder.type !== docName) continue;
     if (folder.contents.length > 0 || folder.children.length > 0) continue;
     try { await folder.delete(); }
-    catch (err) { console.warn(`Vaults | failed to delete ${docName} folder for ${vault.label}:`, err); }
+    catch (err) { console.warn(`Vaults | failed to delete ${docName} folder:`, err); }
   }
 }
 
 /** Deterministic per-(vault, docType) folder id — same key derivation
  *  family as folderId() so cleanup can recompute and find the folder. */
-async function instanceFolderId(vault, docName) {
-  return folderId(vault.id, `${vault.id}/__instance__/${docName}`);
+async function instanceFolderId(vaultId, docName) {
+  return folderId(vaultId, `${vaultId}/__instance__/${docName}`);
 }
 
 /**
@@ -263,7 +263,7 @@ async function instanceFolderId(vault, docName) {
  * tree. Idempotent — repeated calls return the existing folder.
  */
 async function ensureInstanceFolder(vault, docName) {
-  const fId = await instanceFolderId(vault, docName);
+  const fId = await instanceFolderId(vault.id, docName);
   const existing = game.folders.get(fId);
   const name = vault.rootFolder || vault.label || "Vault";
   if (existing) {
