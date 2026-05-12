@@ -1,7 +1,6 @@
 {
   "VAULTS.ButtonTitle": "Sync Vault",
 
-  "VAULTS.Sync.Starting": "Starting vault sync…",
   "VAULTS.Sync.StartingNamed": "Syncing {name}…",
   "VAULTS.Sync.Initial": "Initial sync: {count} file(s) to import.",
   "VAULTS.Sync.Incremental": "Incremental sync: {add} added, {mod} changed, {del} removed.",
@@ -59,13 +58,11 @@
   "VAULTS.Dialog.Save": "Save",
   "VAULTS.Dialog.Cancel": "Cancel",
   "VAULTS.Dialog.Close": "Close",
-  "VAULTS.Dialog.NotConnected": "(not authenticated)",
   "VAULTS.Dialog.Public": "public",
   "VAULTS.Dialog.DmRoleLabel": "DM role",
   "VAULTS.Dialog.DmRoleNone": "(none — everything imports as GM-only)",
   "VAULTS.Dialog.DmRoleHint": "Pages whose role is below this tier are imported as player-visible (Observer ownership). Pages at this tier or higher stay GM-only.",
 
-  "VAULTS.Dialog.HandlerAssetsLabel": "Handler assets",
   "VAULTS.Dialog.ImportHandlerStyles": "Import handler stylesheets (CSS)",
   "VAULTS.Dialog.ImportHandlerScripts": "Import handler scripts (JS)",
   "VAULTS.Dialog.HandlerAssetsHint": "Optional: pull handler-shipped CSS/JS from this vault into Foundry. Each handler also has to opt in (assets.targets.foundry.{styles,scripts}). Off by default.",

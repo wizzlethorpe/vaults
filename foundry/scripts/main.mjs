@@ -2,7 +2,7 @@
 // journal-directory Sync Vault button.
 
 import { registerSettings } from "./settings.mjs";
-import { listVaults, getVault, addVault, updateVault, removeVault, migrateLegacyIfNeeded } from "./vaults.mjs";
+import { listVaults, getVault, addVault, updateVault, removeVault } from "./vaults.mjs";
 import { applyHandlerAssets, removeHandlerAssets, applyHandlerAssetsWithConfirm } from "./handler-assets.mjs";
 import { loadImporter } from "./importer-loader.mjs";
 import { createHost } from "./host.mjs";
@@ -15,7 +15,6 @@ Hooks.once("init", () => {
 });
 
 Hooks.once("ready", async () => {
-  await migrateLegacyIfNeeded();
   // Fire-and-forget so a slow / offline vault doesn't stall world boot.
   // Silent: persistent toggles already record GM consent; the next sync
   // re-prompts if the bundle changed.

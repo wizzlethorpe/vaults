@@ -42,10 +42,6 @@ export function localFileUrl(vaultId, vaultPath) {
   return foundry.utils?.getRoute?.(relative) ?? `/${relative}`;
 }
 
-/** Back-compat alias. New callers prefer localFileUrl since the cache now
- *  holds non-image media too. */
-export const localImageUrl = localFileUrl;
-
 /** Where this vault's image cache lives on disk (relative to the data dir). */
 export function vaultCacheDir(vaultId) {
   const worldId = game.world.id;

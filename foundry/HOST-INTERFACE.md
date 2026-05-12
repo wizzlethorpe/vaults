@@ -113,28 +113,21 @@ interface Host {
 
   getVaultState(vaultId: string): VaultState;
   setVaultState(vaultId: string, patch: Partial<VaultState>): Promise<void>;
-  clearVaultState(vaultId: string): Promise<void>;
 
   // ── Vault registry entry ──────────────────────────────────────────
   //
-  // The registry itself is module-side. The importer reads to pick up
-  // post-auth changes (token / role) and writes when probing the
-  // manifest reveals new metadata.
+  // The registry itself is module-side. The importer writes through
+  // here when probing the manifest reveals new metadata.
 
-  getVaultEntry(vaultId: string): VaultEntry | null;
   updateVaultEntry(vaultId: string, patch: Partial<VaultEntry>): Promise<void>;
 
   // ── User-facing affordances ───────────────────────────────────────
   //
-  // Wrappers over `ui.notifications.*` and DialogV2. The importer
-  // *could* call them directly, but going through the host means the
-  // shape is consistent across importer versions and we have one place
-  // to swap V13/V14 API differences.
+  // Wrappers over `ui.notifications.*` and DialogV2. Going through the
+  // host means the shape is consistent across importer versions and we
+  // have one place to swap V13/V14 API differences.
 
   notify(level: "info" | "warn" | "error", message: string): void;
-
-  /** Show a progress notification that the importer can update + close. */
-  progress(opts: { title: string; total?: number }): ProgressHandle;
 
   /** A native-style confirm dialog. Used for destructive operations
    *  ("Sync removed N pages; delete the corresponding journal entries?"). */
@@ -161,14 +154,6 @@ layer over them would be performative.
 | `FilePicker.implementation.upload / createDirectory / deleteFile` | Same. The local-cache directory convention (`worlds/<id>/vaults-cache/<vault-id>/…`) is encoded as a bundle constant, since changing it would also break the journal HTML's image-src rewrites that already hardcode it. |
 | `foundry.utils.getRoute(…)` | Same. |
 | `game.settings.get("vaults", …)` | NOT used by the importer — that's host-only. The importer reaches vault state through `getVaultState` / `setVaultState`. |
-
-```ts
-interface ProgressHandle {
-  update(done: number, total?: number, label?: string): void;
-  done(message?: string): void;
-  fail(error: Error): void;
-}
-```
 
 ## Stable shapes
 

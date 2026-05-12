@@ -1,44 +1,8 @@
 // Vault registry. Wraps the `vaults` setting (array of entries) with a
-// small CRUD API + a one-time migration from the legacy single-vault keys.
+// small CRUD API.
 
-import { MODULE_ID, SETTINGS, VAULT_DEFAULTS, get, set } from "./settings.mjs";
-import { setVaultManifest, removeVaultManifest, migrateInlineManifestsIfNeeded } from "./vault-manifests.mjs";
-
-let migrated = false;
-
-/** Run on init. Idempotent; safe to call repeatedly. */
-export async function migrateLegacyIfNeeded() {
-  if (migrated) return;
-  migrated = true;
-
-  // Lift any inline lastManifest/lastImageManifest off existing vault
-  // entries into the separate per-vault setting (pre-0.7 layout).
-  await migrateInlineManifestsIfNeeded();
-
-  const list = get(SETTINGS.vaults) || [];
-  if (list.length > 0) return; // already on the new model
-
-  const legacyUrl = get(SETTINGS.url) || "";
-  if (!legacyUrl) return; // nothing to migrate
-
-  const id = newVaultId();
-  const entry = {
-    ...VAULT_DEFAULTS,
-    id,
-    label: deriveLabel(legacyUrl),
-    url: legacyUrl,
-    rootFolder: get(SETTINGS.rootFolder) || "Vault",
-    token: get(SETTINGS.token) || "",
-    role: get(SETTINGS.role) || "",
-  };
-  await set(SETTINGS.vaults, [entry]);
-  // Sync state from legacy single-vault setting → per-vault entry.
-  await setVaultManifest(id, {
-    lastManifest: { ...(get(SETTINGS.lastManifest) || {}) },
-    lastImageManifest: { ...(get(SETTINGS.lastImageManifest) || {}) },
-  });
-  console.info(`Vaults | migrated single-vault config to multi-vault registry: ${entry.label}`);
-}
+import { SETTINGS, VAULT_DEFAULTS, get, set } from "./settings.mjs";
+import { removeVaultManifest } from "./vault-manifests.mjs";
 
 /** All registered vaults (a copy; mutate via update/remove). */
 export function listVaults() {
@@ -84,7 +48,7 @@ export async function removeVault(id) {
 }
 
 /** Pretty label derived from a URL host. */
-export function deriveLabel(url) {
+function deriveLabel(url) {
   if (!url) return "Vault";
   try { return new URL(url).host.split(".")[0] || "Vault"; }
   catch { return "Vault"; }

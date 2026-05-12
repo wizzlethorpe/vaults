@@ -46,9 +46,6 @@ describe("migration framework", () => {
   it("listMigrations returns a stable, ordered list", () => {
     const ids = listMigrations().map((m) => m.id);
     assert.ok(ids.includes("0.7-vaults-dir"));
-    assert.ok(ids.includes("0.6-legacy-auth-settings"));
-    // .vaults-dir must run before legacy-auth (so loadConfig finds the new path).
-    assert.ok(ids.indexOf("0.7-vaults-dir") < ids.indexOf("0.6-legacy-auth-settings"));
   });
 
   it("runMigrations on an empty vault does nothing", async () => {

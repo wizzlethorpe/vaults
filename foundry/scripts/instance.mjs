@@ -7,7 +7,7 @@
 // so user edits to non-canonical fields (HP, conditions) survive.
 
 import { entryId, pageId, instanceId, folderId, subdocId } from "./ids.mjs";
-import { localFileUrl, localImageUrl } from "./media.mjs";
+import { localFileUrl } from "./media.mjs";
 import { MODULE_ID } from "./settings.mjs";
 
 // Where the rendered article HTML lands inside each system's document, keyed
@@ -455,7 +455,7 @@ function imageUrlFromMeta(vaultId, image) {
   if (/^https?:\/\//i.test(image)) return image;
   const vaultPath = decodeURIComponent(image.replace(/^\//, ""));
   if (!vaultPath) return null;
-  return localImageUrl(vaultId, vaultPath);
+  return localFileUrl(vaultId, vaultPath);
 }
 
 /** Set `obj[a.b.c] = value`, creating intermediate objects. */

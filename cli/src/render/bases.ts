@@ -774,7 +774,8 @@ function findCoverImage(row: Row, prop: string | undefined, context: RenderConte
   // body embed when settings.auto_image is on). Already a served URL.
   if (!raw && row.page.coverImage) return row.page.coverImage;
   if (!raw) {
-    // Last-resort body scan: covers older callers that pre-date PageMeta.coverImage.
+    // Body scan: when no cover is set explicitly or precomputed, take the
+    // first image embed in the source.
     const slug = slugifySimple(row.page.path.replace(/\.md$/i, ""));
     const source = context.markdownContent.get(slug);
     if (source) {

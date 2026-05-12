@@ -79,8 +79,7 @@ async function upsertFolder(id, name, parentId) {
  *
  * Returned map is keyed by folder path (root = ""). Every directory that
  * contains a page or has descendants gets an entry; ancestors are walked
- * so subfolder presence propagates up. `pageCount` is computed but no
- * longer drives the collapse decision; kept as useful metadata.
+ * so subfolder presence propagates up.
  */
 export function buildFolderInfo(mdPaths) {
   const map = new Map();
@@ -88,7 +87,7 @@ export function buildFolderInfo(mdPaths) {
     let info = map.get(folderPath);
     if (!info) {
       const segs = folderPath ? folderPath.split("/") : [];
-      info = { pageCount: 0, hasSubfolders: false, displayName: segs[segs.length - 1] || "" };
+      info = { hasSubfolders: false, displayName: segs[segs.length - 1] || "" };
       map.set(folderPath, info);
     }
     return info;
@@ -96,7 +95,7 @@ export function buildFolderInfo(mdPaths) {
   ensure("");
   for (const p of mdPaths) {
     const folderPath = folderOfPath(p);
-    ensure(folderPath).pageCount++;
+    ensure(folderPath);
     // Mark every strict ancestor as having a subfolder. For a file at "" the
     // segs array is empty and this loop is a no-op.
     const segs = folderPath ? folderPath.split("/") : [];
