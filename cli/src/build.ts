@@ -325,6 +325,8 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   const themeOverride = renderThemeOverride({
     lightAccent: settings.values.accent_color,
     lightBg: settings.values.bg_color,
+    darkAccent: settings.values.accent_color_dark,
+    darkBg: settings.values.bg_color_dark,
   });
   await writeFile(join(opts.outputDir, "styles.css"), DEFAULT_CSS + themeOverride);
   const userCss = await loadObsidianSnippets(opts.vaultPath);
@@ -684,6 +686,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
       hasHandlerJs: a.hasHandlerJs,
       hasHandlerCss: a.hasHandlerCss,
       footerHtml: a.footerHtml,
+      theme: themeOf(a.settings.theme),
       ...(p.mtime != null ? { mtime: p.mtime } : {}),
       ...(p.birthtime != null ? { birthtime: p.birthtime } : {}),
       ...(p.coverImage ? { coverImage: p.coverImage } : {}),
@@ -721,6 +724,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     hasHandlerJs: a.hasHandlerJs,
     hasHandlerCss: a.hasHandlerCss,
     footerHtml: a.footerHtml,
+    theme: themeOf(a.settings.theme),
   }));
 
   // Per-variant search index. `text` is the page's RENDERED HTML body
@@ -842,6 +846,12 @@ async function loadDataJson(
 /** Foundry document ids: exactly 16 chars from [A-Za-z0-9]. Validated when
  *  authors set `foundry.id` to override the SHA1-derived default. */
 const FOUNDRY_ID_RE = /^[A-Za-z0-9]{16}$/;
+
+/** Coerce settings.theme to the layout's narrowed union, defaulting to
+ *  "auto" for any unrecognised value rather than failing the build. */
+function themeOf(s: string): "auto" | "light" | "dark" {
+  return s === "light" || s === "dark" ? s : "auto";
+}
 
 const EMBED_RE = /!\[\[([^\[\]|#\n]+?)(?:\|[^\[\]#\n]*)?\]\]/g;
 

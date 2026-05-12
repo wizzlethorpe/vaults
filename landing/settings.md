@@ -27,8 +27,17 @@ default_role: ""
 # Override the accent color (links, headings, highlights). Any CSS color works: '#a8201a', 'crimson', 'rgb(168 32 26)'. Empty = use the built-in scarlet.
 accent_color: ""
 
-# Override the background color. Any CSS color works: '#f4ecd8', 'wheat', 'rgb(244 236 216)'. Empty = use the built-in parchment.
+# Override the background color for the light palette. Any CSS color works: '#f4ecd8', 'wheat', 'rgb(244 236 216)'. Empty = use the built-in parchment.
 bg_color: ""
+
+# Override the accent color for the dark palette. Any CSS color works. Empty = use the built-in dark accent (a brighter scarlet).
+accent_color_dark: ""
+
+# Override the background color for the dark palette. Any CSS color works. Empty = use the built-in deep warm dark.
+bg_color_dark: ""
+
+# Default colour theme: 'auto' (follows the visitor's OS preference), 'light' (parchment + scarlet), or 'dark'. Visitors can flip via the sidebar toggle; their choice persists in localStorage.
+theme: auto
 
 # Vault-relative path to an image used as the site favicon (png/jpg/svg/webp). Empty = generated default with the vault's accent color.
 favicon: ""

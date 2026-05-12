@@ -2,23 +2,45 @@
 // Single light theme: parchment + scarlet.
 
 /**
- * Per-vault theme overrides. When `accent_color` or `bg_color` are set in
- * settings.md, append this block after DEFAULT_CSS so it wins. The derived
- * shades (--accent-soft, --wikilink-bg, --rule, etc) are recomputed via
- * color-mix so they stay coherent with whatever colors the user picked.
+ * Per-vault theme overrides. When any of `accent_color`, `bg_color`,
+ * `accent_color_dark`, `bg_color_dark` are set in settings.md, append this
+ * block after DEFAULT_CSS so it wins. The derived shades (--accent-soft,
+ * --wikilink-bg, --rule, etc) are recomputed via color-mix so they stay
+ * coherent with whatever colors the user picked.
+ *
+ * Dark overrides target both the explicit `[data-theme="dark"]` selector
+ * and the auto/prefers-dark form, so a vault setting `bg_color_dark`
+ * applies whether the visitor forced dark or arrived via OS preference.
  */
-export function renderThemeOverride(opts: { lightAccent?: string; lightBg?: string }): string {
+export function renderThemeOverride(opts: {
+  lightAccent?: string;
+  lightBg?: string;
+  darkAccent?: string;
+  darkBg?: string;
+}): string {
   const blocks: string[] = [];
   if (opts.lightAccent) blocks.push(accentBlock(":root", opts.lightAccent));
-  if (opts.lightBg) blocks.push(bgBlock(":root", opts.lightBg));
+  if (opts.lightBg) blocks.push(bgBlock(":root", opts.lightBg, "light"));
+  if (opts.darkAccent) {
+    blocks.push(accentBlock(`:root[data-theme="dark"]`, opts.darkAccent));
+    blocks.push(`@media (prefers-color-scheme: dark) {\n${accentBlock(`  :root[data-theme="auto"]`, opts.darkAccent)}\n}`);
+  }
+  if (opts.darkBg) {
+    blocks.push(bgBlock(`:root[data-theme="dark"]`, opts.darkBg, "dark"));
+    blocks.push(`@media (prefers-color-scheme: dark) {\n${bgBlock(`  :root[data-theme="auto"]`, opts.darkBg, "dark")}\n}`);
+  }
   if (!blocks.length) return "";
   return "\n\n/* User theme overrides (settings.md) */\n" + blocks.join("\n");
 }
 
-function bgBlock(selector: string, color: string): string {
+/** `--rule` is a slightly off-bg shade for hairlines + borders. In light
+ *  mode that means "darker than bg"; in dark mode the relationship inverts
+ *  to "lighter than bg" or the rule disappears against the background. */
+function bgBlock(selector: string, color: string, mode: "light" | "dark"): string {
+  const tint = mode === "light" ? "#000" : "#fff";
   return `${selector} {
   --bg: ${color};
-  --rule: color-mix(in srgb, ${color} 85%, #000);
+  --rule: color-mix(in srgb, ${color} 85%, ${tint});
 }`;
 }
 
@@ -38,6 +60,26 @@ export const DEFAULT_CSS = `:root {
   --wikilink-bg: rgba(168,32,26,0.10); --wikilink-bg-hover: rgba(168,32,26,0.20);
   --max-width: 56rem;
   font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+}
+/* Dark palette: deep warm bg, brighter scarlet for readable contrast.
+   Activates when settings.theme = "dark", or when the visitor's OS prefers
+   dark and settings.theme = "auto". The light defaults above are the base;
+   these vars override only when [data-theme=...] matches. */
+:root[data-theme="dark"],
+:root[data-theme="dark"] body {
+  --bg: #1d1a17; --fg: #e8dec8; --muted: #9a8e78;
+  --accent: #d35550; --accent-soft: #e87a75; --accent-fg: #1d1a17;
+  --rule: #3a342d;
+  --wikilink-bg: rgba(211,85,80,0.16); --wikilink-bg-hover: rgba(211,85,80,0.28);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"],
+  :root[data-theme="auto"] body {
+    --bg: #1d1a17; --fg: #e8dec8; --muted: #9a8e78;
+    --accent: #d35550; --accent-soft: #e87a75; --accent-fg: #1d1a17;
+    --rule: #3a342d;
+    --wikilink-bg: rgba(211,85,80,0.16); --wikilink-bg-hover: rgba(211,85,80,0.28);
+  }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); line-height: 1.6; }
@@ -131,6 +173,37 @@ main > article { flex: 1 0 auto; }
 .search-result-title { font-weight: 600; color: var(--accent); }
 .search-result-folder { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.15rem; }
 .search-empty { padding: 0.75rem; color: var(--muted); font-style: italic; font-size: 0.85rem; }
+
+/* Sidebar row that holds the theme toggle (always present) and, on
+   multi-role builds, the auth box. Lays them out left-to-right with the
+   auth box absorbing remaining width so its existing button styling stays
+   correct regardless of theme-toggle width. */
+.sidebar-row {
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.sidebar-row > .auth-box { flex: 1; min-width: 0; }
+
+/* Theme toggle: small square icon button matching the auth-box height so
+   they line up. Sun icon when current theme is dark (click → switch to
+   light); moon icon when current is light. The script paints the icon. */
+.theme-toggle {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem;
+  padding: 0; margin: 0;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.theme-toggle:hover {
+  background: var(--wikilink-bg);
+  border-color: var(--accent-soft);
+}
+.theme-toggle .theme-toggle-icon { display: inline-flex; }
+.theme-toggle .theme-toggle-icon svg { display: block; }
 
 /* Auth box; sits under the search box; populated by JS from a non-HttpOnly
    display cookie set by the Function on login. */

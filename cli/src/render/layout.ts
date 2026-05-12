@@ -23,6 +23,9 @@ export interface LayoutInput {
   hasHandlerCss: boolean;
   /** Pre-rendered footer HTML (empty string = no footer). */
   footerHtml: string;
+  /** Default theme: "auto" follows the OS preference; "light" / "dark" force.
+   *  Visitor's localStorage choice overrides at runtime via theme-toggle.js. */
+  theme: "auto" | "light" | "dark";
   /** Unix-seconds. Optional; synthesized folder indexes may have neither. */
   mtime?: number;
   birthtime?: number;
@@ -55,7 +58,7 @@ export function renderLayout(input: LayoutInput): string {
   const sitemap = renderSitemap(input.pages, input.pagePath);
 
   return `<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="${attr(input.theme)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -65,6 +68,7 @@ export function renderLayout(input: LayoutInput): string {
 <link rel="stylesheet" href="/user.css">
 ${input.hasHandlerCss ? `<link rel="stylesheet" href="/_handlers.css">` : ""}${input.hasHandlerJs ? `\n<script src="/_handlers.js" defer></script>` : ""}
 ${renderSocialMeta(input)}
+${THEME_BOOT_SCRIPT}
 </head>
 <body${input.centerImages ? ` class="center-images"` : ""}${input.defaultImageWidth ? ` style="--default-img-width: ${attr(input.defaultImageWidth)}"` : ""}>
 <div class="app-grid">
@@ -74,7 +78,12 @@ ${renderSocialMeta(input)}
       <input id="vault-search" type="search" placeholder="Search…" aria-label="Search vault" autocomplete="off">
       <div class="search-results" role="listbox"></div>
     </div>
-    ${input.authConfigured ? '<div class="auth-box" id="vault-auth"></div>' : ''}
+    <div class="sidebar-row">
+      <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <span class="theme-toggle-icon" aria-hidden="true"></span>
+      </button>
+      ${input.authConfigured ? '<div class="auth-box" id="vault-auth"></div>' : ''}
+    </div>
     ${sitemap}
   </aside>
   <main>
@@ -100,6 +109,7 @@ ${TOC_SCRIPT}
 ${SEARCH_SCRIPT}
 ${LIGHTBOX_SCRIPT}
 ${AUTH_SCRIPT}
+${THEME_TOGGLE_SCRIPT}
 ${BASES_SCRIPT}
 ${FRONTMATTER_SCRIPT}
 </body>
@@ -434,6 +444,57 @@ const AUTH_SCRIPT = `<script>
     return '';
   }
   function esc(s) { return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+})();
+</script>`;
+
+// Boot script: runs in <head> before any paint so the visitor's stored theme
+// preference (or the OS preference for "auto") wins immediately, no
+// flash-of-wrong-theme. Reads localStorage.vaultTheme; falls back to the
+// data-theme value the server emitted on <html>. Sets an effective-theme
+// data attribute the toggle uses to flip the icon without re-deriving.
+const THEME_BOOT_SCRIPT = `<script>
+(function () {
+  try {
+    const html = document.documentElement;
+    const stored = localStorage.getItem('vaultTheme');
+    if (stored === 'light' || stored === 'dark' || stored === 'auto') html.setAttribute('data-theme', stored);
+  } catch (e) { /* localStorage may be blocked; the SSR data-theme stays in effect */ }
+})();
+</script>`;
+
+// Click handler: cycles through light → dark → auto, persisting to
+// localStorage. The button icon swaps based on the effective theme so the
+// affordance always shows what's currently active. Listens for OS-pref
+// changes too so the icon updates live when the visitor flips their
+// system theme while on the page.
+const THEME_TOGGLE_SCRIPT = `<script>
+(function () {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  const html = document.documentElement;
+  const mql = window.matchMedia('(prefers-color-scheme: dark)');
+  const SUN = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+  const MOON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  const icon = btn.querySelector('.theme-toggle-icon');
+  function effective() {
+    const t = html.getAttribute('data-theme') || 'auto';
+    if (t === 'light' || t === 'dark') return t;
+    return mql.matches ? 'dark' : 'light';
+  }
+  function paint() {
+    const eff = effective();
+    if (icon) icon.innerHTML = eff === 'dark' ? SUN : MOON;
+    btn.setAttribute('aria-pressed', eff === 'dark' ? 'true' : 'false');
+    btn.title = eff === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+  }
+  paint();
+  mql.addEventListener('change', paint);
+  btn.addEventListener('click', function () {
+    const next = effective() === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    try { localStorage.setItem('vaultTheme', next); } catch (e) { /* blocked storage */ }
+    paint();
+  });
 })();
 </script>`;
 

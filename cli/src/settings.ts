@@ -21,6 +21,9 @@ export interface Settings {
   default_role: string;
   accent_color: string;
   bg_color: string;
+  accent_color_dark: string;
+  bg_color_dark: string;
+  theme: string;
   favicon: string;
   auto_image: boolean;
   include_unknown_files: boolean;
@@ -91,7 +94,25 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     default: "",
     type: "string",
     description:
-      "Override the background color. Any CSS color works: '#f4ecd8', 'wheat', 'rgb(244 236 216)'. Empty = use the built-in parchment.",
+      "Override the background color for the light palette. Any CSS color works: '#f4ecd8', 'wheat', 'rgb(244 236 216)'. Empty = use the built-in parchment.",
+  },
+  accent_color_dark: {
+    default: "",
+    type: "string",
+    description:
+      "Override the accent color for the dark palette. Any CSS color works. Empty = use the built-in dark accent (a brighter scarlet).",
+  },
+  bg_color_dark: {
+    default: "",
+    type: "string",
+    description:
+      "Override the background color for the dark palette. Any CSS color works. Empty = use the built-in deep warm dark.",
+  },
+  theme: {
+    default: "auto",
+    type: "string",
+    description:
+      "Default colour theme: 'auto' (follows the visitor's OS preference), 'light' (parchment + scarlet), or 'dark'. Visitors can flip via the sidebar toggle; their choice persists in localStorage.",
   },
   favicon: {
     default: "",
