@@ -159,6 +159,8 @@ export async function upsertFile(vault, path, body, index, meta, folderInfo) {
     ? idOverride
     : await pageId(vault.id, path);
 
+  const pageOwnership = pageOwnershipLevelFor(vault, meta?.role);
+
   const flags = { [MODULE_ID]: { vaultId: vault.id, path } };
   const pageData = {
     _id: pId,
@@ -167,21 +169,21 @@ export async function upsertFile(vault, path, body, index, meta, folderInfo) {
     text: { content: html, format: 1 /* HTML */ },
     sort: isIndexFile(filename) ? 0 : NON_INDEX_SORT_BASE,
     flags,
+    // Ownership is set on the *page*, not the parent entry: in the
+    // folder-as-entry model a single entry can host pages of different
+    // tiers, and entry-level ownership would leak DM pages to players via
+    // the default INHERIT on sibling pages. The entry's own ownership is
+    // reconciled separately as the max of its pages' levels (so the entry
+    // remains visible in the sidebar to anyone who can see at least one
+    // page in it). See reconcileOwnership below.
+    ...(pageOwnership !== null ? { ownership: { default: pageOwnership } } : {}),
   };
-
-  const ownershipPatch = ownershipFor(vault, meta?.role);
 
   const existing = game.journal.get(eId);
   if (existing) {
     const entryPatch = {};
     if (existing.name !== entryName) entryPatch.name = entryName;
     if (existing.folder?.id !== folderFId) entryPatch.folder = folderFId;
-    // Only push ownership when the page tier moved across the dmRole cutoff.
-    // Avoids stomping over manual ownership tweaks the GM made on individual
-    // entries during regular re-syncs.
-    if (ownershipPatch && existing.ownership?.default !== ownershipPatch.default) {
-      entryPatch.ownership = ownershipPatch;
-    }
     if (Object.keys(entryPatch).length > 0) await existing.update(entryPatch);
 
     const existingPage = existing.pages.get(pId);
@@ -196,21 +198,26 @@ export async function upsertFile(vault, path, body, index, meta, folderInfo) {
     folder: folderFId,
     pages: [pageData],
     flags,
-    ...(ownershipPatch ? { ownership: ownershipPatch } : {}),
+    // Bootstrap the entry visible at the page's tier so player-visible
+    // pages aren't hidden in the gap between create and the post-sync
+    // reconcileOwnership pass. Mixed-tier folders converge to max(pages)
+    // via reconcile.
+    ...(pageOwnership !== null ? { ownership: { default: pageOwnership } } : {}),
   }, { keepId: true });
   return "added";
 }
 
 /**
- * Map a page's role tier to a JournalEntry ownership stanza, given the
- * vault's configured dmRole. Returns null when no gating is configured;
- * callers fall back to Foundry's default (GM-only) in that case.
+ * Map a page's role tier to a numeric ownership level (the value that
+ * goes in `ownership.default`), given the vault's configured dmRole.
+ * Returns null when no gating is configured; callers leave the doc's
+ * ownership untouched in that case (Foundry's default = GM-only).
  *
  * Ranks come straight from vault.knownRoles (lowest → highest, as reported
  * by the deploy manifest). Rank below dmRole → OBSERVER for everyone; rank
- * at-or-above dmRole → no override (so the entry remains GM-only).
+ * at-or-above dmRole → NONE (GM-only).
  */
-function ownershipFor(vault, pageRole) {
+function pageOwnershipLevelFor(vault, pageRole) {
   if (!vault.dmRole || !vault.knownRoles?.length) return null;
   const dmIdx = vault.knownRoles.indexOf(vault.dmRole);
   if (dmIdx < 0) return null;
@@ -219,10 +226,54 @@ function ownershipFor(vault, pageRole) {
   // player-visible. Conservative the other way (default to GM-only) would
   // hide pages from older deploys whose manifest predates the role field.
   const effectiveIdx = pageIdx < 0 ? 0 : pageIdx;
-  if (effectiveIdx < dmIdx) {
-    return { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER };
+  return effectiveIdx < dmIdx
+    ? CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER
+    : CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE;
+}
+
+/**
+ * Walk every JournalEntry belonging to `vault` and bring each page's
+ * ownership in line with its current manifest role, then set each entry's
+ * ownership to max(page.ownership.default) so the entry shows up in the
+ * sidebar for anyone who can see at least one of its pages.
+ *
+ * Called once per sync (after upserts/deletes), so it fixes pages that
+ * never re-upserted because their body hash hadn't changed — important
+ * for retroactively repairing deploys that suffered the pre-fix bug
+ * where DM pages inherited a sibling's OBSERVER ownership from the
+ * entry. Idempotent: no writes when current state already matches.
+ *
+ * `bodyMetaIndex` is keyed by `<path>.body.html` (what the manifest
+ * advertises); pages flag their logical `<path>.md`, so we convert.
+ * Pages with no matching meta (e.g. files removed from the manifest but
+ * not yet deleted by this sync) are skipped.
+ */
+export async function reconcileOwnership(vault, bodyMetaIndex) {
+  if (!vault.dmRole || !vault.knownRoles?.length) return;
+  const ours = game.journal.contents.filter(
+    (j) => j.getFlag(MODULE_ID, "vaultId") === vault.id,
+  );
+  for (const entry of ours) {
+    let entryMax = null;
+    for (const page of entry.pages.contents) {
+      const pPath = page.getFlag(MODULE_ID, "path");
+      if (!pPath) continue;
+      const bodyPath = pPath.replace(/\.md$/i, ".body.html");
+      const meta = bodyMetaIndex.get(bodyPath);
+      if (!meta) continue;
+      const level = pageOwnershipLevelFor(vault, meta.role);
+      if (level === null) continue;
+      if (page.ownership?.default !== level) {
+        try { await page.update({ ownership: { default: level } }); }
+        catch (err) { console.warn(`Vaults | reconcile ownership ${pPath} → ${level} failed:`, err); }
+      }
+      if (entryMax === null || level > entryMax) entryMax = level;
+    }
+    if (entryMax !== null && entry.ownership?.default !== entryMax) {
+      try { await entry.update({ ownership: { default: entryMax } }); }
+      catch (err) { console.warn(`Vaults | reconcile entry ownership for ${entry.name} → ${entryMax} failed:`, err); }
+    }
   }
-  return null;
 }
 
 /**

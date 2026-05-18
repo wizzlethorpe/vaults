@@ -9,7 +9,7 @@
 // round-trip the host.
 
 import { fetchManifest, fetchSourceBatch } from "./api.mjs";
-import { upsertFile, deleteFile, buildFolderInfo, reconcileEntryPlacement } from "./importer.mjs";
+import { upsertFile, deleteFile, buildFolderInfo, reconcileEntryPlacement, reconcileOwnership } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
 import { applyInstance, deleteInstance } from "./instance.mjs";
@@ -202,6 +202,12 @@ export async function sync(host, vault, { forceFull = false } = {}) {
   // the last sync (folder gained/lost subfolders). Cheap pass; only hits
   // the journals belonging to this vault.
   await reconcileEntryPlacement(vault, folderInfo);
+
+  // Reconcile per-page ownership against the current manifest roles.
+  // Catches pages whose role flipped but body hash didn't (so they wouldn't
+  // be in `toUpsert`), and retroactively repairs deploys where DM pages
+  // had been leaking via the old entry-level ownership scheme.
+  await reconcileOwnership(vault, bodyMetaIndex);
 
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
   host.notify("info", host.localize("VAULTS.Sync.Done", { added, modified, removed, seconds }));
