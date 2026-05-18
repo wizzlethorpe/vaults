@@ -2,10 +2,15 @@ import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import remarkRehype from "remark-rehype";
+import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeStringify from "rehype-stringify";
 import { slugify } from "./slug.js";
 import { stripFrontmatter } from "./frontmatter.js";
+import { handlersPlugin } from "./handlers/dispatch.js";
+import type { HandlerRegistry } from "./handlers/types.js";
+import type { RenderContext } from "./types.js";
+import { htmlEscape } from "../escape.js";
 
 // Builds compact JSON preview blobs at build time for hover popovers.
 // One file per page, served alongside the rendered .html as `<path>.preview.json`.
@@ -21,20 +26,62 @@ export interface PagePreview {
   headings: Record<string, { title: string; summary: string }>;
 }
 
+/**
+ * Context needed to resolve inline / code-block handlers (`fm:`, `dice:`, …)
+ * inside preview snippets. Omit to skip handler dispatch entirely — the
+ * preview then falls through with handler syntax preserved as literal text.
+ * Pass all four together; partial context can't satisfy HandlerContext.
+ */
+export interface PreviewOptions {
+  frontmatter: Record<string, unknown>;
+  registry: HandlerRegistry;
+  renderContext: RenderContext;
+  /** Vault-relative path of the page (for handlers that emit page-relative URLs). */
+  pagePath: string;
+}
+
 const SUMMARY_CHARS = 320;
 
-const previewPipeline = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(remarkRehype)
-  .use(rehypeSanitize, {
-    ...defaultSchema,
-    // Strip away anything heavy or risky for a tiny popover.
-    tagNames: defaultSchema.tagNames?.filter((t) => !["img", "iframe", "video"].includes(t)),
-  })
-  .use(rehypeStringify);
+// Span/code className survive sanitisation so handler output like
+// <span class="fm-value">…</span> keeps its styling hook in the popover.
+const previewSanitizeSchema = {
+  ...defaultSchema,
+  tagNames: defaultSchema.tagNames?.filter((t) => !["img", "iframe", "video"].includes(t)),
+  attributes: {
+    ...defaultSchema.attributes,
+    "*": [...(defaultSchema.attributes?.["*"] ?? []), "className"],
+    code: ["className", "title"],
+  },
+};
 
-export async function buildPreview(rawMarkdown: string, title: string): Promise<PagePreview> {
+// handlersPlugin needs a HandlerContext; an empty no-op plugin keeps the
+// pipeline shape identical when no handler context is supplied so we don't
+// have to fork the chain type.
+const noopRemarkPlugin = () => () => {};
+
+function buildPipeline(opts?: PreviewOptions) {
+  // allowDangerousHtml + rehypeRaw are needed so HTML emitted by handlers
+  // (e.g. fm's <span>) survives into the rendered output instead of being
+  // dropped as raw nodes at the markdown→hast boundary.
+  return unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(opts ? handlersPlugin({
+      registry: opts.registry,
+      context: {
+        pagePath: opts.pagePath,
+        frontmatter: opts.frontmatter,
+        render: opts.renderContext,
+        escape: htmlEscape,
+      },
+    }) : noopRemarkPlugin)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeRaw)
+    .use(rehypeSanitize, previewSanitizeSchema)
+    .use(rehypeStringify);
+}
+
+export async function buildPreview(rawMarkdown: string, title: string, opts?: PreviewOptions): Promise<PagePreview> {
   // Strip frontmatter, Obsidian %% comments %%, and fenced code blocks
   // before walking the body. Code fences render as a wall of source text
   // in a tiny hover popover, which looks worse than just omitting them —
@@ -44,7 +91,8 @@ export async function buildPreview(rawMarkdown: string, title: string): Promise<
     .replace(/^```[\s\S]*?^```[^\n]*$/gm, "")
     .replace(/^~~~[\s\S]*?^~~~[^\n]*$/gm, "")
     .trim();
-  const summary = await renderSnippet(body);
+  const pipeline = buildPipeline(opts);
+  const summary = await renderSnippet(body, pipeline);
 
   const headings: Record<string, { title: string; summary: string }> = {};
   // Match headings even when nested inside a callout/blockquote.
@@ -60,7 +108,7 @@ export async function buildPreview(rawMarkdown: string, title: string): Promise<
     const anchor = slugify(headingTitle);
     headings[anchor] = {
       title: headingTitle,
-      summary: await renderSnippet(sectionBody),
+      summary: await renderSnippet(sectionBody, pipeline),
     };
   }
   return { title, summary, headings };
@@ -70,10 +118,10 @@ export async function buildPreview(rawMarkdown: string, title: string): Promise<
  * Truncate the markdown to the first ~SUMMARY_CHARS of body content (skipping
  * headings, image embeds, tables) and render it to sanitised HTML.
  */
-async function renderSnippet(source: string): Promise<string> {
+async function renderSnippet(source: string, pipeline: ReturnType<typeof buildPipeline>): Promise<string> {
   const truncated = truncateMarkdown(source.trim(), SUMMARY_CHARS);
   if (!truncated) return "";
-  const file = await previewPipeline.process(truncated);
+  const file = await pipeline.process(truncated);
   return String(file).trim();
 }
 

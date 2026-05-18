@@ -704,7 +704,12 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     bodyMeta.set(bodyPath, await collectBodyMeta(p, a.vaultPath));
 
     const source = visibleSources.get(p.path)!;
-    const preview = await buildPreview(source, r.title);
+    const preview = await buildPreview(source, r.title, {
+      frontmatter: a.parsedSources.get(p.path)?.data ?? {},
+      registry: a.handlerRegistry,
+      renderContext: context,
+      pagePath: p.path,
+    });
     await writeFile(join(a.variantDir, outputBase + ".preview.json"), JSON.stringify(preview));
   });
 
