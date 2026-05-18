@@ -9,6 +9,7 @@
 // case both old and new hashes are shown.
 
 import { updateVault } from "./vaults.mjs";
+import { url as vaultUrl } from "./api.mjs";
 import { API_VERSION } from "./host.mjs";
 import { hexDigest } from "./util.mjs";
 
@@ -29,14 +30,21 @@ export async function loadImporter(host, vault) {
     host.notify("error", host.localize("VAULTS.Sync.NoUrl"));
     return null;
   }
-  const base = vault.url.replace(/\/+$/, "");
-  const url = `${base}/_foundry/importer.js`;
+  // Resolve against the vault's origin via api.url() so a vault.url that
+  // includes a path (a GM pasting the browser URL, e.g. ".../welcome") still
+  // hits the root-served bundle. Raw concatenation here had previously
+  // produced ".../welcome/_foundry/importer.js" → 404.
+  const url = vaultUrl(vault, "/_foundry/importer.js");
+  // Used only for diagnostic messages — the resolved origin, not the path
+  // the GM happened to paste. Falls back to vault.url if URL parsing fails.
+  let origin;
+  try { origin = new URL(url).origin; } catch { origin = vault.url; }
 
   let text;
   try {
     const res = await fetch(url, { cache: "no-cache" });
     if (res.status === 404) {
-      host.notify("error", host.localize("VAULTS.Importer.Missing", { url: base }));
+      host.notify("error", host.localize("VAULTS.Importer.Missing", { url: origin }));
       return null;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
