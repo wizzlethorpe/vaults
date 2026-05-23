@@ -254,6 +254,15 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     };
   });
 
+  // Stage assets referenced inside each page's foundry.data_json (Scene
+  // backgrounds / ambient sounds / tile art live in that JSON, not the page
+  // frontmatter, so the asset scanners below consult p.foundryAssets).
+  await Promise.all(allPageMetas.map(async (p) => {
+    if (!p.frontmatter) return;
+    const refs = await collectDataJsonVaultRefs(opts.vaultPath, p.frontmatter, p.path);
+    if (refs.length > 0) p.foundryAssets = refs;
+  }));
+
   // ── Image compression (staged; copied per-variant later) ────────────────
   // Compress once into a private staging dir under the deploy root. Each
   // variant's render pass copies whichever images its visible pages
@@ -842,6 +851,29 @@ async function loadDataJson(
   }
 }
 
+/** Collect the `@vault/...` paths referenced inside a page's foundry.data_json
+ *  file. A Scene's bulk asset refs (backgrounds, ambient sounds, tiles) live in
+ *  that JSON content rather than the page frontmatter, so the per-variant asset
+ *  scanners would otherwise never stage them. Returns vault-relative paths. */
+async function collectDataJsonVaultRefs(
+  vaultPath: string,
+  fm: Record<string, unknown>,
+  pagePath: string,
+): Promise<string[]> {
+  const fo = fm["foundry"];
+  if (!fo || typeof fo !== "object" || Array.isArray(fo)) return [];
+  const rel = (fo as Record<string, unknown>)["data_json"];
+  if (typeof rel !== "string" || !rel.trim()) return [];
+  const parsed = await loadDataJson(vaultPath, rel.trim(), pagePath);
+  if (parsed === null) return [];
+  const out: string[] = [];
+  forEachString(parsed, (s) => {
+    const path = vaultRefPath(s);
+    if (path) out.push(path);
+  });
+  return out;
+}
+
 /** Foundry document ids: exactly 16 chars from [A-Za-z0-9]. Validated when
  *  authors set `foundry.id` to override the SHA1-derived default. */
 const FOUNDRY_ID_RE = /^[A-Za-z0-9]{16}$/;
@@ -890,6 +922,12 @@ async function copyReferencedImages(
           if (image) refs.add(image.outputPath);
         }
       });
+    }
+    // Image refs inside the page's foundry.data_json (Scene backgrounds, tiles).
+    for (const path of p.foundryAssets ?? []) {
+      if (!IMAGE_EXT_RE.test(path)) continue;
+      const image = imageIndex.get(slugify(path.split("/").pop()!));
+      if (image) refs.add(image.outputPath);
     }
   }
   for (const outputPath of refs) {
@@ -1019,6 +1057,11 @@ async function copyReferencedPassthroughs(
         if (entry) refs.add(entry.outputPath);
       }
     });
+    // Audio/video/pdf refs inside the page's foundry.data_json (ambient sounds).
+    for (const path of p.foundryAssets ?? []) {
+      const entry = passthroughIndex.get(slugify(path.split("/").pop()!));
+      if (entry) refs.add(entry.outputPath);
+    }
   }
   for (const outputPath of refs) {
     const src = join(stagingDir, outputPath);
