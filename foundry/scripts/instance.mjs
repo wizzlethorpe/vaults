@@ -322,33 +322,38 @@ async function buildOverlay(vault, vaultPath, meta, docName) {
   }
 
   // Auto-add a Map Note that links the scene back to its source journal
-  // page. Placed in the right padding area (just outside the image's
-  // top-right corner) so it's discoverable but doesn't collide with map
-  // content. User-supplied notes in foundry.data.notes survive — we
-  // append, not replace.
+  // page, tucked into the padding margin off the top-left corner so it's
+  // discoverable but doesn't collide with map content. User-supplied notes
+  // in foundry.data.notes survive — we append, not replace.
   if (docName === "Scene") {
-    const note = await buildJournalNote(vault, vaultPath, meta, overlay);
+    const note = await buildJournalNote(vault, vaultPath, meta);
     if (note) overlay.notes = [...(overlay.notes ?? []), note];
   }
   return overlay;
 }
 
 /**
- * Build a Map Note pinned just outside the scene's image area, linking
- * back to the source page's JournalEntryPage. Position is grid-aligned
- * (same math V14 uses to grid-align the image origin) so the icon sits
- * cleanly in the padding stripe to the right of the map. Reads scene
- * dims from the merged overlay (which already has fm.data layered in)
- * so author-overridden width/height/padding/grid all flow through.
+ * Build a Map Note linking back to the source page's JournalEntryPage. It
+ * sits in the padding margin just off the map's top-left corner: half a grid
+ * cell left of the grid-aligned image origin, and half a cell below the top
+ * edge, sized to a single grid square. The image origin is grid-aligned the
+ * same way Foundry computes it (ceil(padding * dim / gridSize) cells), per
+ * axis. Reads scene dims from the merged overlay (which already has fm.data
+ * layered in) so author-overridden width/height/padding/grid flow through.
  */
-async function buildJournalNote(vault, vaultPath, meta, overlay) {
-  const width = Number(overlay.width) || 4000;
-  const height = Number(overlay.height) || 3000;
-  const padding = Number(overlay.padding ?? 0.25);
-  const gridSize = Number(overlay.grid?.size) || 100;
-  const iconSize = 200;
-  const imageOriginX = Math.ceil((padding * width) / gridSize) * gridSize;
-  const imageOriginY = Math.ceil((padding * height) / gridSize) * gridSize;
+async function buildJournalNote(vault, vaultPath, meta) {
+  // Scene dimensions live in the page's data_json (the extracted scene),
+  // with any inline foundry.data taking precedence. They are NOT on the
+  // overlay object the rest of buildOverlay assembles, so read them straight
+  // from the meta — otherwise every field falls back to a placeholder default
+  // and the note is mis-placed and mis-sized.
+  const fm = meta?.foundry ?? {};
+  const cfg = { ...(fm.data_json ?? {}), ...(fm.data ?? {}) };
+  const width = Number(cfg.width) || 4000;
+  const height = Number(cfg.height) || 3000;
+  const padding = Number(cfg.padding ?? 0.25);
+  const gridSize = Number(cfg.grid?.size) || 100;
+  const iconSize = gridSize;
   const eId = await entryId(vault.id, vaultPath);
   const idOverride = meta?.foundry?.id;
   const pId = typeof idOverride === "string" && idOverride
@@ -358,8 +363,8 @@ async function buildJournalNote(vault, vaultPath, meta, overlay) {
     _id: await subdocId(vault.id, vaultPath, "/notes/__journalLink__"),
     entryId: eId,
     pageId: pId,
-    x: imageOriginX + width + iconSize,
-    y: imageOriginY + iconSize / 2,
+    x: gridSize * (Math.ceil((width / gridSize) * padding) - 0.5),
+    y: gridSize * (Math.ceil((height / gridSize) * padding) + 0.5),
     iconSize,
     texture: {
       src: "icons/svg/book.svg",
