@@ -62,6 +62,10 @@ export const vaultsDirMigration: Migration = {
 export async function ensureVaultsGitignore(vaultPath: string): Promise<void> {
   const path = vaultsGitignore(vaultPath);
   if (await exists(path)) return;
+  // Make the function self-sufficient: the migration's apply() pre-creates
+  // .vaults/ via the config mkdir, but `init` calls us on a fresh vault with
+  // no .vaults/ yet, so create it here or the writeFile below throws ENOENT.
+  await mkdir(dirname(path), { recursive: true });
   const lines = [
     "# vaults-cli internal state — do not edit by hand.",
     "# These entries are forward-compat: if this vault becomes a git repo,",

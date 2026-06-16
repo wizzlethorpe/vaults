@@ -17,7 +17,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runMigrations, listMigrations } from "../src/migrate/run.js";
-import { vaultsDirMigration } from "../src/migrate/0.7-vaults-dir.js";
+import { vaultsDirMigration, ensureVaultsGitignore } from "../src/migrate/0.7-vaults-dir.js";
 import { buildSite } from "../src/build.js";
 
 interface Vault { dir: string; }
@@ -152,6 +152,19 @@ describe("0.7-vaults-dir migration", () => {
       // Second apply doesn't blow up (rename of a non-existent legacy file).
       await vaultsDirMigration.apply(v.dir);
       assert.equal(await vaultsDirMigration.needs(v.dir), false);
+    } finally { await cleanup(v); }
+  });
+
+  it("ensureVaultsGitignore creates .vaults/ on a fresh vault (init path)", async () => {
+    // Regression: `vaults init` calls ensureVaultsGitignore directly, with no
+    // prior mkdir of .vaults/ (unlike apply(), which creates it first). It must
+    // create the directory itself, or the writeFile throws ENOENT.
+    const v = await setup({});
+    try {
+      await ensureVaultsGitignore(v.dir);
+      const gitignore = await readFile(join(v.dir, ".vaults/.gitignore"), "utf8");
+      assert.match(gitignore, /cache\//);
+      assert.match(gitignore, /config\.json/);
     } finally { await cleanup(v); }
   });
 
