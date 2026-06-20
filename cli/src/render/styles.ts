@@ -229,7 +229,8 @@ main > article { flex: 1 0 auto; }
   width: 100%;
   display: block;
   text-align: center;
-  padding: 0.52rem 0.75rem;
+  padding: 0.55rem 0.75rem;
+  line-height: 1;
   border-radius: 4px;
   border: 1px solid var(--accent);
   background: transparent;
@@ -249,7 +250,8 @@ main > article { flex: 1 0 auto; }
 /* Signed-in auth UI: keep status on the left and present Sign out as a
    right-side action split by a divider. */
 .auth-box.auth-signed-in {
-  padding: 0.3rem 0.35rem 0.3rem 0.65rem;
+  height: 2rem;
+  padding: 0 0.35rem 0 0.65rem;
   flex-wrap: nowrap;
   gap: 0;
 }
@@ -266,12 +268,12 @@ main > article { flex: 1 0 auto; }
   align-items: center;
   justify-content: center;
   margin-left: auto;
-  padding: 0.32rem 0.6rem;
+  padding: 0.25rem 0.6rem;
   border-left: 1px solid var(--rule);
   border-radius: 0;
   text-decoration: none;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1;
   white-space: nowrap;
 }
 .auth-box.auth-signed-in .auth-action:hover {

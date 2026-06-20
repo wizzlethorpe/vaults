@@ -74,6 +74,34 @@ describe("foundry.data_json asset staging", () => {
     } finally { await rm(v.dir, { recursive: true, force: true }); }
   });
 
+  it("stages same-named data_json assets from different folders without collision", async () => {
+    // Two scenes each ship their own copy of an identically-named ambient
+    // sound under their own scene folder. The asset index is keyed by basename
+    // slug for body wikilinks, so a basename-only lookup would collapse both to
+    // one entry and stage only one file. data_json refs carry the full path and
+    // must resolve by it.
+    const v = await setupVault({
+      ".vaultrc.json": JSON.stringify({ roles: ["public"], rolePasswords: {} }),
+      "Maps/Forum.md": scenePage("scenes/forum.json"),
+      "Maps/Library.md": scenePage("scenes/library.json"),
+      "scenes/forum.json": sceneJson("@vault/attachments/foundry/forum/Water Fountain (Loop).ogg"),
+      "scenes/library.json": sceneJson("@vault/attachments/foundry/library/Water Fountain (Loop).ogg"),
+      "attachments/foundry/forum/Water Fountain (Loop).ogg": "FORUM OGG",
+      "attachments/foundry/library/Water Fountain (Loop).ogg": "LIBRARY OGG",
+    });
+    try {
+      await build(v);
+      assert.equal(
+        await exists(join(v.out, "attachments/foundry/forum/Water Fountain (Loop).ogg")), true,
+        "the forum scene's ambient sound must ship",
+      );
+      assert.equal(
+        await exists(join(v.out, "attachments/foundry/library/Water Fountain (Loop).ogg")), true,
+        "the library scene's identically-named ambient sound must also ship",
+      );
+    } finally { await rm(v.dir, { recursive: true, force: true }); }
+  });
+
   it("gates a data_json asset by the scene page's role", async () => {
     const v = await setupVault({
       ".vaultrc.json": JSON.stringify({

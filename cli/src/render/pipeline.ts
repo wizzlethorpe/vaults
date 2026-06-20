@@ -31,7 +31,7 @@ const sanitizeSchema = {
     // `hidden` is essential — Bases tab panels and card-filter rows toggle
     // it from JS to show/hide elements. Without it on the allowlist the
     // initial render shows everything because the sanitizer strips it.
-    "*": [...(defaultSchema.attributes?.["*"] ?? []), "className", "role", "ariaSelected", "ariaLabel", "ariaHaspopup", "tabindex", "hidden"],
+    "*": [...(defaultSchema.attributes?.["*"] ?? []), "className", "role", "ariaSelected", "ariaPressed", "ariaLabel", "ariaHaspopup", "tabindex", "hidden"],
     img: ["src", "alt", "width", "height", "loading"],
     audio: ["src", "controls", "preload", "loop", "muted"],
     video: ["src", "controls", "preload", "loop", "muted", "width", "height", "poster"],

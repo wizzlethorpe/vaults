@@ -289,10 +289,16 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       await mkdir(dirname(dest), { recursive: true });
       await writeFile(dest, compressed.body);
 
-      imageIndex.set(slugify(f.path.split("/").pop()!), {
-        sourcePath: f.path,
-        outputPath: compressed.outputPath,
-      });
+      // Two keys for one entry: basename slug for body wikilinks/embeds
+      // (Obsidian resolves those by basename), and the full vault-relative
+      // path for `@vault/PATH` refs (frontmatter, data_json). Paths contain
+      // "/" and slugs don't, so the keyspaces never overlap. The full-path
+      // key is what stops identically-named assets in different scene folders
+      // (e.g. a shared `Water Fountain (Loop).ogg`) from colliding under one
+      // basename slug and staging only one of them.
+      const entry = { sourcePath: f.path, outputPath: compressed.outputPath };
+      imageIndex.set(slugify(f.path.split("/").pop()!), entry);
+      imageIndex.set(f.path, entry);
     }, (done, total) => progress.update(done, total));
 
     progress.done(`${imageFiles.length} processed (${cacheHits} cached, ${imageFiles.length - cacheHits} compressed)`);
@@ -312,10 +318,12 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       const dest = join(otherStagingDir, f.path);
       await mkdir(dirname(dest), { recursive: true });
       await copyFile(f.absolute, dest);
-      passthroughIndex.set(slugify(f.path.split("/").pop()!), {
-        sourcePath: f.path,
-        outputPath: f.path,
-      });
+      // Dual-keyed like imageIndex: basename slug for body refs, full
+      // vault-relative path for `@vault/PATH` refs (ambient sounds in
+      // data_json), so same-named files in different folders don't collide.
+      const entry = { sourcePath: f.path, outputPath: f.path };
+      passthroughIndex.set(slugify(f.path.split("/").pop()!), entry);
+      passthroughIndex.set(f.path, entry);
     }, (done, total) => progress.update(done, total));
     progress.done(`${stagedPassthroughs.length} staged`);
   }
@@ -918,7 +926,7 @@ async function copyReferencedImages(
       forEachString(p.frontmatter, (s) => {
         const path = vaultRefPath(s);
         if (path && IMAGE_EXT_RE.test(path)) {
-          const image = imageIndex.get(slugify(path.split("/").pop()!));
+          const image = imageIndex.get(path);
           if (image) refs.add(image.outputPath);
         }
       });
@@ -926,7 +934,7 @@ async function copyReferencedImages(
     // Image refs inside the page's foundry.data_json (Scene backgrounds, tiles).
     for (const path of p.foundryAssets ?? []) {
       if (!IMAGE_EXT_RE.test(path)) continue;
-      const image = imageIndex.get(slugify(path.split("/").pop()!));
+      const image = imageIndex.get(path);
       if (image) refs.add(image.outputPath);
     }
   }
@@ -1053,13 +1061,13 @@ async function copyReferencedPassthroughs(
     forEachString(p.frontmatter, (s) => {
       const path = vaultRefPath(s);
       if (path) {
-        const entry = passthroughIndex.get(slugify(path.split("/").pop()!));
+        const entry = passthroughIndex.get(path);
         if (entry) refs.add(entry.outputPath);
       }
     });
     // Audio/video/pdf refs inside the page's foundry.data_json (ambient sounds).
     for (const path of p.foundryAssets ?? []) {
-      const entry = passthroughIndex.get(slugify(path.split("/").pop()!));
+      const entry = passthroughIndex.get(path);
       if (entry) refs.add(entry.outputPath);
     }
   }
