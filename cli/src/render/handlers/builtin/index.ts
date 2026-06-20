@@ -8,8 +8,9 @@ import { battlemapHandler } from "./battlemap.js";
 import { diceHandler } from "./dice.js";
 import { fmHandler } from "./fm.js";
 import { fmCodeHandler } from "./fm-code.js";
+import { galleryHandler } from "./gallery.js";
 import { statblockHandler } from "./statblock.js";
 
 export const BUILTIN_HANDLERS: Handler[] = [
-  diceHandler, fmHandler, fmCodeHandler, statblockHandler, battlemapHandler,
+  diceHandler, fmHandler, fmCodeHandler, statblockHandler, battlemapHandler, galleryHandler,
 ];

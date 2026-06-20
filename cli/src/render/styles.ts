@@ -65,16 +65,14 @@ export const DEFAULT_CSS = `:root {
    Activates when settings.theme = "dark", or when the visitor's OS prefers
    dark and settings.theme = "auto". The light defaults above are the base;
    these vars override only when [data-theme=...] matches. */
-:root[data-theme="dark"],
-:root[data-theme="dark"] body {
+:root[data-theme="dark"] {
   --bg: #1d1a17; --fg: #e8dec8; --muted: #9a8e78;
   --accent: #d35550; --accent-soft: #e87a75; --accent-fg: #1d1a17;
   --rule: #3a342d;
   --wikilink-bg: rgba(211,85,80,0.16); --wikilink-bg-hover: rgba(211,85,80,0.28);
 }
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="auto"],
-  :root[data-theme="auto"] body {
+  :root[data-theme="auto"] {
     --bg: #1d1a17; --fg: #e8dec8; --muted: #9a8e78;
     --accent: #d35550; --accent-soft: #e87a75; --accent-fg: #1d1a17;
     --rule: #3a342d;

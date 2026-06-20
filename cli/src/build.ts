@@ -893,6 +893,25 @@ function themeOf(s: string): "auto" | "light" | "dark" {
 }
 
 const EMBED_RE = /!\[\[([^\[\]|#\n]+?)(?:\|[^\[\]#\n]*)?\]\]/g;
+// A ```gallery code block. Its body lists images by name (one per line,
+// optional `| caption`), which the gallery handler renders but the source
+// scanners would otherwise never see — so we read the block here to stage
+// the referenced images per variant, the same way `![[ ]]` embeds are staged.
+const GALLERY_BLOCK_RE = /^```gallery[^\n]*\n([\s\S]*?)^```/gm;
+
+/** Image basenames referenced inside a page's ```gallery blocks. */
+function galleryImageNames(source: string): string[] {
+  const names: string[] = [];
+  for (const block of source.matchAll(GALLERY_BLOCK_RE)) {
+    for (const line of block[1]!.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const name = (trimmed.split("|")[0] ?? "").trim();
+      if (name) names.push(name);
+    }
+  }
+  return names;
+}
 
 async function copyReferencedImages(
   visibleSources: Map<string, string>,
@@ -907,6 +926,10 @@ async function copyReferencedImages(
       const name = m[1]!.trim();
       if (!IMAGE_EXT_RE.test(name)) continue;
       const image = imageIndex.get(slugify(name));
+      if (image) refs.add(image.outputPath);
+    }
+    for (const name of galleryImageNames(source)) {
+      const image = imageIndex.get(slugify(name.split("/").pop()!));
       if (image) refs.add(image.outputPath);
     }
   }
