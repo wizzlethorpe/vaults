@@ -379,9 +379,15 @@ async function buildJournalNote(vault, vaultPath, meta) {
 
 /**
  * Walk an arbitrary value and assign deterministic _ids to objects that
- * sit inside arrays and don't already have one. The id is derived from
- * the JSON pointer to the item, hashed with vault id + page path so
+ * sit inside arrays and don't already have a *valid* one. The id is derived
+ * from the JSON pointer to the item, hashed with vault id + page path so
  * collisions across vaults / pages are impossible.
+ *
+ * "Valid" means exactly 16 [A-Za-z0-9] chars — Foundry rejects anything
+ * else, and authored / exported `data_json` sheets sometimes carry short or
+ * foreign sub-doc ids that would otherwise abort the whole document create
+ * with an opaque validation error. We regenerate those. A malformed id is
+ * not a usable reference target, so replacing it breaks nothing valid.
  *
  * Reordering an array shifts every item's _id one slot, so existing
  * Foundry-side sub-docs match by NEW position, not by their previous
@@ -389,15 +395,16 @@ async function buildJournalNote(vault, vaultPath, meta) {
  * and the alternative (content-hashed ids) would break in-place edits.
  *
  * Authors who want a sub-doc identity that survives reordering can pin
- * `_id` manually in the YAML; this walker leaves existing _ids alone.
+ * `_id` manually in the YAML; this walker leaves valid existing _ids alone.
  */
+const VALID_SUBDOC_ID = /^[A-Za-z0-9]{16}$/;
 async function ensureEmbeddedIds(value, vaultId, pagePath, ptr = "") {
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
       const childPtr = `${ptr}/${i}`;
       const item = value[i];
       if (item && typeof item === "object" && !Array.isArray(item)) {
-        if (typeof item._id !== "string" || !item._id) {
+        if (typeof item._id !== "string" || !VALID_SUBDOC_ID.test(item._id)) {
           item._id = await subdocId(vaultId, pagePath, childPtr);
         }
       }

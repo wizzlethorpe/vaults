@@ -77,8 +77,9 @@ export async function sync(host, vault, { forceFull = false } = {}) {
   if (vault.public !== isPublic) patch.public = isPublic;
   if (!arraysEqual(vault.knownRoles, knownRoles)) patch.knownRoles = knownRoles;
   // Cache the manifest's advertised asset paths so applyHandlerAssetsWithConfirm can
-  // fetch them via the canonical URL (instead of guessing /_handlers.foundry.*).
-  // Falls back to the well-known names when the manifest predates the field.
+  // fetch them via the canonical URL. A bundle the manifest doesn't advertise
+  // stays null, and the apply step skips it rather than probing a path the
+  // deploy never built (which would 404).
   const remoteAssets = manifest.assets?.foundry || {};
   const newAssetPaths = {
     foundryJs: remoteAssets.js || null,

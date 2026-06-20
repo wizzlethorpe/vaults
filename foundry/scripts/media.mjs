@@ -11,10 +11,13 @@ import { url as vaultUrl } from "./api.mjs";
 // uploads underneath them depending on the version.
 export const CACHE_DIR = "vaults-cache";
 
-// Each batch is one HTTP request that returns up to BATCH_SIZE base64 image
-// bodies; we run BATCH_CONCURRENCY in parallel. Sized so total in-flight
-// payload stays under ~30MB.
+// Each batch is one HTTP request that returns base64 image bodies; we run
+// BATCH_CONCURRENCY in parallel. A batch is capped by BOTH a max entry count
+// and a cumulative byte budget — the byte budget is what keeps a handful of
+// large map images from base64-inflating the response past the worker's
+// memory limit (which would 500 the batch and surface as a CORS error).
 const BATCH_SIZE = 25;
+const BATCH_BYTE_BUDGET = 8 * 1024 * 1024;
 const BATCH_CONCURRENCY = 4;
 
 /** Should this manifest path be pulled into the per-vault cache? Filters out
@@ -103,10 +106,29 @@ export async function syncImages(host, vault, manifestFiles) {
   }
   await ensureDirs([...dirsNeeded]);
 
+  // Batch by cumulative byte size, not just count. A fixed count of large
+  // map images base64-inflates the JSON response past the worker's memory
+  // limit, which 500s the whole batch — and an error response carries no CORS
+  // header, so the browser reports it as a CORS failure. Sizes come from the
+  // manifest. Each chunk stays under BATCH_BYTE_BUDGET and BATCH_SIZE entries;
+  // a single file bigger than the budget still ships in a chunk of its own.
+  const sizeOf = new Map();
+  for (const f of manifestFiles) sizeOf.set(f.path, f.size ?? 0);
+
   const chunks = [];
-  for (let i = 0; i < toDownload.length; i += BATCH_SIZE) {
-    chunks.push(toDownload.slice(i, i + BATCH_SIZE));
+  let chunk = [];
+  let chunkBytes = 0;
+  for (const path of toDownload) {
+    const bytes = sizeOf.get(path) ?? 0;
+    if (chunk.length > 0 && (chunk.length >= BATCH_SIZE || chunkBytes + bytes > BATCH_BYTE_BUDGET)) {
+      chunks.push(chunk);
+      chunk = [];
+      chunkBytes = 0;
+    }
+    chunk.push(path);
+    chunkBytes += bytes;
   }
+  if (chunk.length > 0) chunks.push(chunk);
 
   let next = 0;
   const downloaded = [];

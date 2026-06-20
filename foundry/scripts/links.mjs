@@ -103,12 +103,28 @@ export async function transformHtmlForFoundry(vault, html, index) {
 async function applyDomTransforms(html, vault, index) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   let touched = false;
+  touched = stripWebOnlyWidgets(doc) || touched;
   touched = flattenBasesTabs(doc) || touched;
   touched = neutralizeEnrichersInCode(doc) || touched;
   touched = (await rewriteBasesCardLinks(doc, vault.id, index)) || touched;
   touched = rewriteDiceButtons(doc) || touched;
   touched = wrapRestrictedCalloutsAsSecret(doc, vault) || touched;
   return touched ? doc.body.innerHTML : html;
+}
+
+// Handler widgets that only make sense on the static wiki and should not be
+// carried into a Foundry journal. The `battlemap` viewer is interactive,
+// JS-driven, and redundant in Foundry (the real Scene is imported separately),
+// so its runtime never loads there — leaving it in would just render dead
+// markup. The surrounding heading/prose is left intact; only the widget goes.
+const WEB_ONLY_WIDGET_SELECTOR = ".vaults-battlemap";
+
+/** Remove web-only handler widgets from an article before it becomes a
+ *  JournalEntryPage. Returns true if anything was removed. */
+function stripWebOnlyWidgets(doc) {
+  const widgets = doc.querySelectorAll(WEB_ONLY_WIDGET_SELECTOR);
+  for (const el of widgets) el.remove();
+  return widgets.length > 0;
 }
 
 /**

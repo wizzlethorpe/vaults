@@ -51,16 +51,19 @@ const sessionApprovedScripts = new Set();
  */
 export async function applyHandlerAssets(vault) {
   if (!vault?.id || !vault?.url) return;
-  const cssPath = vault.handlerAssetPaths?.foundryCss || "/_handlers.foundry.css";
-  const jsPath = vault.handlerAssetPaths?.foundryJs || "/_handlers.foundry.js";
+  // Only fetch the bundles the manifest actually advertises. A vault that
+  // ships no Foundry-opted handler scripts has no `_handlers.foundry.js`;
+  // probing a hardcoded default just 404s (harmlessly, but noisily).
+  const cssPath = vault.handlerAssetPaths?.foundryCss;
+  const jsPath = vault.handlerAssetPaths?.foundryJs;
 
-  if (vault.importHandlerStyles) {
+  if (vault.importHandlerStyles && cssPath) {
     const css = await fetchTextOrNull(vault, cssPath);
     injectStyle(vault.id, css);
   } else {
     removeStyle(vault.id);
   }
-  if (vault.importHandlerScripts) {
+  if (vault.importHandlerScripts && jsPath) {
     const js = await fetchTextOrNull(vault, jsPath);
     injectScript(vault.id, js);
     // A silent inject still primes the per-session cache — if a sync
@@ -83,11 +86,13 @@ export async function applyHandlerAssets(vault) {
  */
 export async function applyHandlerAssetsWithConfirm(vault, opts = {}) {
   if (!vault?.id || !vault?.url) return;
-  const cssPath = vault.handlerAssetPaths?.foundryCss || "/_handlers.foundry.css";
-  const jsPath = vault.handlerAssetPaths?.foundryJs || "/_handlers.foundry.js";
+  // Only fetch advertised bundles (see applyHandlerAssets) — no probing a
+  // hardcoded default the deploy never built.
+  const cssPath = vault.handlerAssetPaths?.foundryCss;
+  const jsPath = vault.handlerAssetPaths?.foundryJs;
 
   // CSS: no prompt.
-  if (vault.importHandlerStyles) {
+  if (vault.importHandlerStyles && cssPath) {
     const css = await fetchTextOrNull(vault, cssPath);
     injectStyle(vault.id, css);
   } else {
@@ -95,7 +100,7 @@ export async function applyHandlerAssetsWithConfirm(vault, opts = {}) {
   }
 
   // JS: prompt unless already approved this session.
-  if (vault.importHandlerScripts) {
+  if (vault.importHandlerScripts && jsPath) {
     const js = await fetchTextOrNull(vault, jsPath);
     if (!js) {
       removeScript(vault.id);
