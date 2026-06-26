@@ -1,7 +1,8 @@
-# Only `cli/` is a TypeScript pnpm workspace. `foundry/` is a Foundry VTT
-# module loaded directly as `.mjs` at runtime by Foundry (no bundler, no
-# package.json), and `landing/` is a vault content directory (markdown,
-# images), not a node project. Adding either here would force pnpm to
-# create unwanted node_modules and tsconfig.references in their trees.
+# `cli/` and `foundry-compiler/` are TypeScript pnpm workspace packages.
+# `foundry/` is a Foundry VTT module loaded directly as `.mjs` at runtime by
+# Foundry (no bundler, no package.json), and `landing/` is a vault content
+# directory (markdown, images), not a node project. Adding either here would
+# force pnpm to create unwanted node_modules and tsconfig.references.
 packages:
   - cli
+  - foundry-compiler
