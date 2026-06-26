@@ -154,6 +154,10 @@ main > article { flex: 1 0 auto; }
   .sidebar > nav > details.explorer > .sitemap-list { display: block; }
 }
 
+/* Search row: the search box paired with the theme toggle to its right. The
+   search box absorbs remaining width; the toggle stays a fixed square. */
+.search-row { display: flex; align-items: center; gap: 0.5rem; }
+.search-row > .search-box { flex: 1; min-width: 0; }
 .search-box { position: relative; }
 #vault-search {
   width: 100%; padding: 0.5rem 0.75rem; font: inherit; font-size: 0.9rem;
@@ -161,7 +165,11 @@ main > article { flex: 1 0 auto; }
 }
 #vault-search:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--wikilink-bg); }
 .search-results {
-  display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; right: auto;
+  /* Break out wider than the narrow sidebar search box, but never narrower
+     than the box itself (mobile, where it spans full width) nor wider than
+     the viewport. */
+  min-width: 100%; width: 26rem; max-width: 90vw;
   background: var(--bg); border: 1px solid var(--rule); border-radius: 4px;
   box-shadow: 0 6px 20px rgba(0,0,0,0.18); max-height: 22rem; overflow-y: auto; z-index: 100;
 }
@@ -172,22 +180,13 @@ main > article { flex: 1 0 auto; }
 .search-result-folder { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.15rem; }
 .search-empty { padding: 0.75rem; color: var(--muted); font-style: italic; font-size: 0.85rem; }
 
-/* Sidebar row that holds the theme toggle (always present) and, on
-   multi-role builds, the auth box. Lays them out left-to-right with the
-   auth box absorbing remaining width so its existing button styling stays
-   correct regardless of theme-toggle width. */
-.sidebar-row {
-  display: flex; align-items: center; gap: 0.5rem;
-}
-.sidebar-row > .auth-box { flex: 1; min-width: 0; }
-
-/* Theme toggle: small square icon button matching the auth-box height so
-   they line up. Sun icon when current theme is dark (click → switch to
-   light); moon icon when current is light. The script paints the icon. */
+/* Theme toggle: small square icon button sitting beside the search input.
+   Sun icon when current theme is dark (click → switch to light); moon icon
+   when current is light. The script paints the icon. */
 .theme-toggle {
   flex: 0 0 auto;
+  align-self: stretch; aspect-ratio: 1;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 2rem; height: 2rem;
   padding: 0; margin: 0;
   background: transparent;
   color: var(--accent);
@@ -526,6 +525,17 @@ article img { cursor: zoom-in; }
   max-width: 95vw; max-height: 95vh;
   object-fit: contain; border-radius: 4px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+/* Composited battlemap level: the first layer sizes the box; the rest overlay it. */
+.lightbox-overlay .lightbox-stack {
+  position: relative; line-height: 0;
+  border-radius: 4px; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+.lightbox-overlay .lightbox-stack img { box-shadow: none; border-radius: 0; }
+.lightbox-overlay .lightbox-stack img:first-child { display: block; }
+.lightbox-overlay .lightbox-stack img:not(:first-child) {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; max-width: none; max-height: none;
 }
 @keyframes lightbox-fade { from { opacity: 0; } to { opacity: 1; } }
 article code { background: color-mix(in srgb, var(--muted) 12%, transparent); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }

@@ -222,37 +222,50 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     baseSources.set(slugify(basename), await readFile(f.absolute, "utf8"));
   });
 
-  // Two parses per page: the regex-based parseFrontmatter is tolerant of
-  // malformed YAML and still extracts title/role; gray-matter gives us
-  // the full property set for Bases.
+  // One parse per page: gray-matter is the single source of truth for every
+  // frontmatter field, including `role` (which gates access). Sources are
+  // normalized for Obsidian quirks first; malformed YAML throws inside
+  // parsePageFrontmatter and aborts the build rather than silently dropping a
+  // page's metadata (and, with it, its role gate).
   const parsedSources = new Map<string, PreParsedFrontmatter>();
   for (const f of markdownFiles) {
-    parsedSources.set(f.path, parseFullFrontmatterWithContent(sources.get(f.path)!));
+    parsedSources.set(f.path, parsePageFrontmatter(sources.get(f.path)!, f.path));
   }
 
-  // Parse role + title per page. Pages with an unrecognised role fall back
-  // to the default with a warning; better than silently dropping them. We
-  // also stash the full frontmatter on each PageMeta so the Bases plugin
-  // can query arbitrary properties.
+  // Derive role/title/aliases per page from that parse. A role that's present
+  // but isn't a configured role fails the build (collected below): falling back
+  // to a lower tier would silently expose pages the author meant to gate. The
+  // full frontmatter is stashed on each PageMeta so the Bases plugin can query
+  // arbitrary properties.
+  const roleErrors: string[] = [];
   const allPageMetas: PageMeta[] = markdownFiles.map((f) => {
     const src = sources.get(f.path)!;
-    const meta = parseFrontmatter(src);
-    const fullFm = parsedSources.get(f.path)!.data;
-    let role = meta.role ?? defaultRole;
+    const fm = parsedSources.get(f.path)!.data;
+
+    const role = fm.role == null ? defaultRole : String(fm.role);
     if (!allRoleSet.has(role)) {
-      console.warn(`  ${f.path}: role "${role}" not in settings.roles, using "${defaultRole}"`);
-      role = defaultRole;
+      roleErrors.push(`  ${f.path}: role "${role}" is not one of settings.roles [${roles.join(", ")}]`);
     }
+    const title = (typeof fm.title === "string" ? fm.title
+      : fm.title != null ? String(fm.title) : undefined)
+      ?? extractH1(src) ?? basenameNoExt(f.path);
+    const aliases = toStringArray(fm.aliases);
+
     return {
       path: f.path,
-      title: meta.title ?? extractH1(src) ?? basenameNoExt(f.path),
+      title,
       role,
-      ...(meta.aliases && meta.aliases.length > 0 ? { aliases: meta.aliases } : {}),
-      ...(Object.keys(fullFm).length > 0 ? { frontmatter: fullFm } : {}),
+      ...(aliases.length > 0 ? { aliases } : {}),
+      ...(Object.keys(fm).length > 0 ? { frontmatter: fm } : {}),
       mtime: f.mtime,
       birthtime: f.birthtime,
     };
   });
+  if (roleErrors.length > 0) {
+    throw new Error(
+      `Unknown frontmatter role on ${roleErrors.length} page(s) (build aborted so gated pages can't leak):\n${roleErrors.join("\n")}`,
+    );
+  }
 
   // Stage assets referenced inside each page's foundry.data_json (Scene
   // backgrounds / ambient sounds / tile art live in that JSON, not the page
@@ -386,7 +399,12 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   // in, so it must not come from inside a `[!dm]` block (which would leak
   // the image to public deploys). Frontmatter `image:` values are honoured
   // as-is — those are explicit author intent.
-  const allRoleTypes = new Set(roles);
+  // Callout types are matched case-insensitively (both stripRoleGatedCallouts
+  // and the renderer's calloutPlugin lowercase the `[!type]`), so these
+  // redaction sets must be lowercased too — otherwise a role like "Previewer"
+  // never matches its `[!Previewer]` callouts and the block leaks to lower
+  // tiers. Page-level role gating (visibleRoles) stays exact-case.
+  const allRoleTypes = new Set(roles.map((r) => r.toLowerCase()));
   for (const meta of allPageMetas) {
     const src = sources.get(meta.path);
     if (!src) continue;
@@ -409,7 +427,9 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     // redacted (callouts dropped, pages skipped, wikilinks broken).
     const idx = roles.indexOf(role);
     const visibleRoles = new Set(roles.slice(0, idx + 1));
-    const redactRoles = new Set(roles.slice(idx + 1));
+    // Lowercased: redactRoles gates callouts by `[!type]`, which is matched
+    // case-insensitively (see allRoleTypes above).
+    const redactRoles = new Set(roles.slice(idx + 1).map((r) => r.toLowerCase()));
 
     const stats = await buildVariant({
       role,
@@ -1259,8 +1279,6 @@ async function compressImageCached(
   return { body: compressed.body, outputPath: compressed.outputPath };
 }
 
-interface PageFrontmatter { title?: string; role?: string; aliases?: string[]; }
-
 /**
  * Pull the raw `---\n...\n---` frontmatter block out of a markdown source so
  * the layout can show it verbatim (preserving the user's exact formatting,
@@ -1306,69 +1324,55 @@ function extractFrontmatterBlock(source: string): { frontmatterYaml: string } | 
   return { frontmatterYaml: m[1] };
 }
 
-function parseFrontmatter(source: string): PageFrontmatter {
-  const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(source);
-  if (!block) return {};
-  const fm = block[1] ?? "";
-  const titleMatch = /^title:\s*(.+?)\s*$/m.exec(fm);
-  const roleMatch = /^role:\s*(\w+)\s*$/m.exec(fm);
-  return {
-    ...(titleMatch?.[1] ? { title: titleMatch[1].replace(/^["']|["']$/g, "") } : {}),
-    ...(roleMatch?.[1] ? { role: roleMatch[1] } : {}),
-    ...({ aliases: parseAliases(fm) }),
-  };
+/**
+ * Normalize an Obsidian-flavored frontmatter block into strict YAML before
+ * gray-matter sees it. This is the one place to absorb editor/Obsidian quirks
+ * that aren't valid YAML — keep it conservative: only rewrite what's
+ * unambiguous, never anything that could change a well-formed value. Only the
+ * `---\n…\n---` block is touched; body content is returned verbatim.
+ *
+ *  - strips a leading UTF-8 BOM (some editors prepend one, which pushes the
+ *    opening `---` off column 0 so gray-matter sees no frontmatter at all)
+ *  - converts leading TAB indentation to spaces (tabs are illegal YAML
+ *    indentation but editors insert them on auto-indent)
+ */
+function normalizeFrontmatterSource(source: string): string {
+  const src = source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
+  const m = /^(---\r?\n)([\s\S]*?)(\r?\n---)/.exec(src);
+  if (!m) return src;
+  const [whole, open, body, close] = m;
+  // Only leading whitespace is rewritten, so tabs inside a quoted value survive.
+  const fixedBody = body!.replace(/^[ \t]+/gm, (ws) => ws.replace(/\t/g, "  "));
+  if (fixedBody === body) return src;
+  return open! + fixedBody + close! + src.slice(whole!.length);
 }
 
 /**
- * Full YAML frontmatter + body content, used by the Bases plugin (frontmatter
- * properties) and threaded through to renderMarkdown so the pipeline doesn't
- * have to call gray-matter again. `data` is real YAML; falls back to {} on
- * malformed YAML so the page still renders. Content matches what gray-matter
- * would give the pipeline (frontmatter block stripped from the head).
+ * Parse a page's YAML frontmatter (after normalization) with gray-matter.
+ * This is the SINGLE source of truth for every frontmatter field, including
+ * `role`, which gates access. Malformed YAML throws so the build fails loudly:
+ * a page whose frontmatter can't be parsed must never silently fall back to a
+ * permissive default. `path` only makes that error actionable. The result is
+ * threaded through to renderMarkdown so the pipeline doesn't re-parse.
  */
-function parseFullFrontmatterWithContent(source: string): PreParsedFrontmatter {
-  if (!source.startsWith("---")) return { data: {}, content: source };
+function parsePageFrontmatter(source: string, path: string): PreParsedFrontmatter {
+  const normalized = normalizeFrontmatterSource(source);
+  if (!normalized.startsWith("---")) return { data: {}, content: normalized };
   try {
-    const m = matter(source);
+    const m = matter(normalized);
     const data = (m.data && typeof m.data === "object" ? m.data : {}) as Record<string, unknown>;
     return { data, content: m.content };
-  } catch {
-    // Malformed YAML; the existing parseFrontmatter is more forgiving for
-    // the title/role/aliases keys we actually need. Return empty data + the
-    // body with the leading `---\n…\n---\n` stripped via regex so the rest
-    // of the pipeline still sees a clean body.
-    return { data: {}, content: source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "") };
+  } catch (err) {
+    const detail = err instanceof Error ? err.message.split("\n")[0] : String(err);
+    throw new Error(`${path}: malformed YAML frontmatter — ${detail}`);
   }
 }
 
-/**
- * Pull `aliases:` out of frontmatter. Supports the inline form
- * (`aliases: [Foo, Bar]`) and the block form (`aliases:\n- Foo\n- Bar`,
- * indented or not. Obsidian writes both shapes depending on version).
- */
-function parseAliases(fm: string): string[] {
-  const inline = /^aliases:\s*\[([^\]\n]*)\]\s*$/m.exec(fm);
-  if (inline) {
-    return inline[1]!.split(",").map((s) => unquote(s.trim())).filter(Boolean);
-  }
-  const blockHead = /^aliases:\s*$/m.exec(fm);
-  if (!blockHead) return [];
-  const after = fm.slice(blockHead.index + blockHead[0].length).split("\n");
-  const out: string[] = [];
-  for (const line of after) {
-    if (!line) continue;
-    // Allow zero or more leading spaces. Obsidian sometimes writes block
-    // arrays without indentation, which strict YAML wouldn't accept but
-    // both Obsidian and gray-matter parse fine.
-    const item = /^\s*-\s+(.+?)\s*$/.exec(line);
-    if (!item) break;
-    out.push(unquote(item[1]!));
-  }
-  return out;
-}
-
-function unquote(s: string): string {
-  return s.replace(/^["']|["']$/g, "");
+/** Coerce a frontmatter value (array, scalar, or missing) to a string list. */
+function toStringArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
+  if (typeof v === "string") return v.trim() ? [v.trim()] : [];
+  return [];
 }
 
 function basenameNoExt(path: string): string {

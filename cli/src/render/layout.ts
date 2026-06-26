@@ -74,16 +74,16 @@ ${THEME_BOOT_SCRIPT}
 <div class="app-grid">
   <aside class="sidebar">
     <a class="brand" href="/">${esc(input.vaultName)}</a>
-    <div class="search-box">
-      <input id="vault-search" type="search" placeholder="Search…" aria-label="Search vault" autocomplete="off">
-      <div class="search-results" role="listbox"></div>
-    </div>
-    <div class="sidebar-row">
+    <div class="search-row">
+      <div class="search-box">
+        <input id="vault-search" type="search" placeholder="Search…" aria-label="Search vault" autocomplete="off">
+        <div class="search-results" role="listbox"></div>
+      </div>
       <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
         <span class="theme-toggle-icon" aria-hidden="true"></span>
       </button>
-      ${input.authConfigured ? '<div class="auth-box" id="vault-auth"></div>' : ''}
     </div>
+    ${input.authConfigured ? '<div class="auth-box" id="vault-auth"></div>' : ''}
     ${sitemap}
   </aside>
   <main>
@@ -514,10 +514,25 @@ const LIGHTBOX_SCRIPT = `<script>
     e.preventDefault();
     const overlay = document.createElement('div');
     overlay.className = 'lightbox-overlay';
-    const big = document.createElement('img');
-    big.src = img.src;
-    big.alt = img.alt;
-    overlay.appendChild(big);
+    // A battlemap layer is one of several stacked images; open the whole
+    // composited level, not just the (top) layer that caught the click.
+    const pane = img.closest('.vaults-bm-pane');
+    if (pane) {
+      const stack = document.createElement('div');
+      stack.className = 'lightbox-stack';
+      pane.querySelectorAll('img').forEach((layer) => {
+        const c = document.createElement('img');
+        c.src = layer.src;
+        c.alt = layer.alt;
+        stack.appendChild(c);
+      });
+      overlay.appendChild(stack);
+    } else {
+      const big = document.createElement('img');
+      big.src = img.src;
+      big.alt = img.alt;
+      overlay.appendChild(big);
+    }
     document.body.appendChild(overlay);
     overlay.addEventListener('click', () => close(overlay));
     onKey = (ev) => { if (ev.key === 'Escape') close(overlay); };

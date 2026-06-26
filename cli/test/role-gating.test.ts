@@ -137,19 +137,78 @@ describe("role gating: page visibility", () => {
     } finally { await cleanup(v); }
   });
 
-  it("a page tagged with a role outside the configured set falls back to default with a warning", async () => {
-    // Captures the legitimate-typo case (`role: dn` instead of `dm`): the
-    // page must NOT silently land in the highest tier — it should fall back
-    // to public so the typo doesn't accidentally publish DM-only content.
+  it("a page tagged with a role outside the configured set fails the build", async () => {
+    // Captures the legitimate-typo case (`role: dn` instead of `dm`): an
+    // unrecognized role must abort the build, naming the offending page. The
+    // old fall-back-to-default behavior was a footgun — it relied on the
+    // typo landing in the LOW tier, but any parser change (or a typo that
+    // happened to match a higher tier) could silently publish gated content.
+    // Fail closed instead: refuse to build until the role is fixed.
     const v = await setupVault({
       ".vaultrc.json": VAULTRC_3,
       "Typo.md": "---\nrole: dn\n---\n# Page with typo",
     });
     try {
+      await assert.rejects(build(v), /Typo\.md: role "dn" is not one of settings\.roles/);
+    } finally { await cleanup(v); }
+  });
+
+  it("a quoted role value gates correctly (regression: regex parser ignored quotes)", async () => {
+    // The old regex role parser matched only `(\w+)`, so `role: "dm"` failed
+    // to match and the page silently fell back to public — leaking gated
+    // content. Both quote styles are valid YAML and must gate to `dm`.
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "Double.md": '---\nrole: "dm"\n---\n# Double-quoted',
+      "Single.md": "---\nrole: 'dm'\n---\n# Single-quoted",
+    });
+    try {
       await build(v);
-      // Falls back to default (public), so it appears at every tier.
-      assert.equal(await exists(join(v.out, VARIANT("public", "Typo.html"))), true);
-      assert.equal(await exists(join(v.out, VARIANT("dm", "Typo.html"))), true);
+      for (const name of ["Double", "Single"]) {
+        assert.equal(await exists(join(v.out, VARIANT("public", `${name}.html`))), false, `${name} must not leak to public`);
+        assert.equal(await exists(join(v.out, VARIANT("dm", `${name}.html`))), true, `${name} should be in the dm variant`);
+      }
+    } finally { await cleanup(v); }
+  });
+
+  it("a UTF-8 BOM before the frontmatter doesn't defeat the role gate", async () => {
+    // A leading BOM pushes `---` off column 0, so gray-matter sees no
+    // frontmatter and the role defaults to public. Normalization strips it.
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "Bom.md": "﻿---\nrole: dm\n---\n# BOM page",
+    });
+    try {
+      await build(v);
+      assert.equal(await exists(join(v.out, VARIANT("public", "Bom.html"))), false, "BOM page must not leak to public");
+      assert.equal(await exists(join(v.out, VARIANT("dm", "Bom.html"))), true);
+    } finally { await cleanup(v); }
+  });
+
+  it("tab-indented frontmatter is normalized so it parses (and still gates)", async () => {
+    // Editors auto-indent nested YAML with tabs, which is illegal YAML
+    // indentation. Without normalization this throws; the page must instead
+    // parse and gate to dm.
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "Tabbed.md": "---\nrole: dm\nfoundry:\n\tbase: scene\n---\n# Tabbed page",
+    });
+    try {
+      await build(v);
+      assert.equal(await exists(join(v.out, VARIANT("public", "Tabbed.html"))), false);
+      assert.equal(await exists(join(v.out, VARIANT("dm", "Tabbed.html"))), true);
+    } finally { await cleanup(v); }
+  });
+
+  it("malformed YAML fails the build instead of silently dropping the role gate", async () => {
+    // An unterminated quoted scalar is genuinely unparseable. Rather than
+    // swallow the error and lose the `role: dm` gate, the build aborts.
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_3,
+      "Bad.md": '---\nrole: dm\ntitle: "unterminated\n---\n# Bad page',
+    });
+    try {
+      await assert.rejects(build(v), /Bad\.md: malformed YAML frontmatter/);
     } finally { await cleanup(v); }
   });
 });
@@ -209,6 +268,39 @@ describe("role gating: callouts", () => {
       assert.ok(!pub.includes("Patreon-only lore"));
       assert.ok(pat.includes("Patreon-only lore"));
       assert.ok(dm.includes("Patreon-only lore"));
+    } finally { await cleanup(v); }
+  });
+
+  it("a callout gated by a mixed-case role name is still redacted (case-insensitive)", async () => {
+    // Regression: callout `[!type]` is matched case-insensitively (lowercased),
+    // but the redaction set was built from the original-case role names, so a
+    // role like "Reviewer" never matched its `[!Reviewer]` callouts and the
+    // block leaked to public. The redaction sets are now lowercased to match.
+    const VAULTRC_CAP = JSON.stringify({
+      roles: ["public", "Reviewer"],
+      rolePasswords: { Reviewer: "100000:0000:0000" },
+    });
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_CAP,
+      "Note.md": [
+        "# Note",
+        "",
+        "Public line.",
+        "",
+        "> [!Reviewer] Editor note",
+        "> Reviewers only.",
+      ].join("\n"),
+    });
+    try {
+      await build(v);
+      const pub = await readFile(join(v.out, VARIANT("public", "Note.body.html")), "utf8");
+      const rev = await readFile(join(v.out, VARIANT("Reviewer", "Note.body.html")), "utf8");
+
+      assert.ok(!pub.includes("Editor note"), "public must not leak the [!Reviewer] callout title");
+      assert.ok(!pub.includes("Reviewers only"), "public must not leak the [!Reviewer] callout body");
+      assert.ok(pub.includes("Public line"), "non-redacted content should remain");
+
+      assert.ok(rev.includes("Editor note"), "the Reviewer variant should keep the callout");
     } finally { await cleanup(v); }
   });
 

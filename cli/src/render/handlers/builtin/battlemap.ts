@@ -5,6 +5,8 @@
 //
 //   ```battlemap
 //   grid: 140                 # px per grid cell at the image's native size (optional)
+//   grid_offset_x: 0          # px to shift the grid overlay right, native size (optional)
+//   grid_offset_y: 0          # px to shift the grid overlay down, native size (optional)
 //   default_level: 1          # 0-based index of the level shown first (optional)
 //   name: Wizard Prison       # download-filename prefix (optional)
 //   levels:
@@ -35,6 +37,8 @@ interface RawLevel {
 }
 interface RawSpec {
   grid?: unknown;
+  grid_offset_x?: unknown;
+  grid_offset_y?: unknown;
   default_level?: unknown;
   name?: unknown;
   levels?: unknown;
@@ -75,6 +79,8 @@ export const battlemapHandler: CodeBlockHandler = {
     if (levels.length === 0) return errorBox("battlemap: no levels with layers");
 
     const grid = Number(spec.grid) > 0 ? Number(spec.grid) : 0;
+    const offX = Number.isFinite(Number(spec.grid_offset_x)) ? Number(spec.grid_offset_x) : 0;
+    const offY = Number.isFinite(Number(spec.grid_offset_y)) ? Number(spec.grid_offset_y) : 0;
     let active = Number.isInteger(Number(spec.default_level)) ? Number(spec.default_level) : 0;
     if (active < 0 || active >= levels.length) active = 0;
     const mapName = typeof spec.name === "string" ? spec.name.trim() : "";
@@ -106,6 +112,8 @@ export const battlemapHandler: CodeBlockHandler = {
 
     const html =
       `<div class="vaults-battlemap"${grid ? ` data-grid="${grid}"` : ""}`
+      + `${grid && offX ? ` data-grid-ox="${offX}"` : ""}`
+      + `${grid && offY ? ` data-grid-oy="${offY}"` : ""}`
       + `${mapName ? ` data-name="${htmlEscape(mapName)}"` : ""}>`
       + `<div class="vaults-bm-bar">`
       + `<div class="vaults-bm-levels" role="tablist">${levelBtns}</div>`
@@ -123,6 +131,8 @@ const BATTLEMAP_RUNTIME = `
 (function () {
   function initMap(root) {
     var grid = parseFloat(root.getAttribute('data-grid')) || 0;
+    var offX = parseFloat(root.getAttribute('data-grid-ox')) || 0;
+    var offY = parseFloat(root.getAttribute('data-grid-oy')) || 0;
     var overlay = root.querySelector('.vaults-bm-grid-overlay');
     var panes = root.querySelectorAll('.vaults-bm-pane');
     var btns = root.querySelectorAll('.vaults-bm-level');
@@ -134,8 +144,11 @@ const BATTLEMAP_RUNTIME = `
       var pane = active();
       var img = pane && pane.querySelector('img');
       if (!img || !img.naturalWidth) return;
-      overlay.style.backgroundSize =
-        (grid / img.naturalWidth * 100) + '% ' + (grid / img.naturalHeight * 100) + '%';
+      // Work in displayed pixels so the optional native-px offset maps correctly.
+      var sx = img.clientWidth / img.naturalWidth;
+      var sy = img.clientHeight / img.naturalHeight;
+      overlay.style.backgroundSize = (grid * sx) + 'px ' + (grid * sy) + 'px';
+      overlay.style.backgroundPosition = (offX * sx) + 'px ' + (offY * sy) + 'px';
     }
 
     function setLevel(i) {
@@ -176,14 +189,18 @@ const BATTLEMAP_RUNTIME = `
 
     // Bake in the grid only when it's currently shown, matching the overlay.
     var grid = parseFloat(root.getAttribute('data-grid')) || 0;
+    var offX = parseFloat(root.getAttribute('data-grid-ox')) || 0;
+    var offY = parseFloat(root.getAttribute('data-grid-oy')) || 0;
     if (grid > 0 && root.classList.contains('show-grid')) {
       // Scale the line to the on-screen 1px so the baked grid looks the same.
       var scale = imgs[0].width ? imgs[0].naturalWidth / imgs[0].width : 1;
       ctx.strokeStyle = 'rgba(0,0,0,0.5)';
       ctx.lineWidth = Math.max(1, scale);
       ctx.beginPath();
-      for (var gx = 0; gx <= canvas.width; gx += grid) { ctx.moveTo(gx, 0); ctx.lineTo(gx, canvas.height); }
-      for (var gy = 0; gy <= canvas.height; gy += grid) { ctx.moveTo(0, gy); ctx.lineTo(canvas.width, gy); }
+      var startX = ((offX % grid) + grid) % grid;
+      var startY = ((offY % grid) + grid) % grid;
+      for (var gx = startX; gx <= canvas.width; gx += grid) { ctx.moveTo(gx, 0); ctx.lineTo(gx, canvas.height); }
+      for (var gy = startY; gy <= canvas.height; gy += grid) { ctx.moveTo(0, gy); ctx.lineTo(canvas.width, gy); }
       ctx.stroke();
     }
 
