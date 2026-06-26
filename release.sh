@@ -112,8 +112,8 @@ fi
 if [[ $SKIP_COMPILER -eq 0 ]]; then
   echo ""
   echo "=== Publishing foundry-compiler to npm ==="
-  pnpm --filter @wizzlethorpe/foundry-compiler run build
-  pnpm --filter @wizzlethorpe/foundry-compiler publish --access public --no-git-checks
+  pnpm --filter @wizzlethorpe/vaults-foundry-compiler run build
+  pnpm --filter @wizzlethorpe/vaults-foundry-compiler publish --access public --no-git-checks
 fi
 
 if [[ $SKIP_FOUNDRY -eq 0 ]]; then

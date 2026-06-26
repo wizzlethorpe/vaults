@@ -1,4 +1,4 @@
-# @wizzlethorpe/foundry-compiler
+# @wizzlethorpe/vaults-foundry-compiler
 
 `vfmc` — the **v**aults **f**oundry **m**odule **c**ompiler. Compiles a
 [wizzlethorpe vault](../) into the Foundry VTT module that lives at
@@ -50,8 +50,8 @@ From the monorepo root (`vaults/`):
 
 ```bash
 pnpm install
-pnpm --filter @wizzlethorpe/foundry-compiler run build
-pnpm --filter @wizzlethorpe/foundry-compiler link --global   # puts `vfmc` on PATH
+pnpm --filter @wizzlethorpe/vaults-foundry-compiler run build
+pnpm --filter @wizzlethorpe/vaults-foundry-compiler link --global   # puts `vfmc` on PATH
 ```
 
 The bundled Foundry CLI (`@foundryvtt/foundryvtt-cli`) is resolved from this

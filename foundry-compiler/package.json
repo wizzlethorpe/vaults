@@ -1,5 +1,5 @@
 {
-  "name": "@wizzlethorpe/foundry-compiler",
+  "name": "@wizzlethorpe/vaults-foundry-compiler",
   "version": "0.9.2",
   "description": "Compile a wizzlethorpe vault into a distributable Foundry VTT module (LevelDB compendium packs + module.json).",
   "type": "module",
