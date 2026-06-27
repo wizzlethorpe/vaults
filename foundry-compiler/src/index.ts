@@ -48,6 +48,10 @@ interface FoundryBlock {
   data_json?: string;
   data?: Record<string, unknown>;
   folder?: string;
+  /** Emit one document per variant: the base doc with `data` deep-merged and
+   *  `_id` set to the variant id. Used e.g. for a dnd5e subclass that must be
+   *  duplicated per `classIdentifier`. */
+  variants?: Array<{ id: string; data?: Record<string, unknown> }>;
 }
 
 interface Page {
@@ -177,6 +181,32 @@ function assembleRollTable(page: Page, html: string): Record<string, unknown> {
   };
 }
 
+/** Recursively merge plain-object source into target; arrays and scalars replace. */
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): void {
+  for (const [k, v] of Object.entries(source)) {
+    const t = target[k];
+    if (v && typeof v === "object" && !Array.isArray(v) && t && typeof t === "object" && !Array.isArray(t)) {
+      deepMerge(t as Record<string, unknown>, v as Record<string, unknown>);
+    } else {
+      target[k] = v;
+    }
+  }
+}
+
+/** A page with `foundry.variants` expands to one doc per variant (base + patch,
+ *  own _id); otherwise it's just the base doc. */
+function expandVariants(base: Record<string, unknown>, page: Page, keyPrefix: string): Array<Record<string, unknown>> {
+  const variants = page.foundry.variants;
+  if (!Array.isArray(variants) || variants.length === 0) return [base];
+  return variants.map((v) => {
+    const clone = structuredClone(base);
+    if (v.data) deepMerge(clone, v.data);
+    clone._id = v.id;
+    clone._key = `!${keyPrefix}!${v.id}`;
+    return clone;
+  });
+}
+
 function assembleDoc(page: Page, vault: string, index: Map<string, LinkEntry>): Record<string, unknown> {
   const meta = DOC_META[page.docType];
   if (!meta) throw new Error(`unsupported foundry.base type "${page.docType}" (${page.name})`);
@@ -252,15 +282,20 @@ function main(): void {
     );
     const packJsonDir = path.join(jsonDir, decl.name);
     fs.mkdirSync(packJsonDir, { recursive: true });
+    let docCount = 0;
     for (const page of packPages) {
-      const doc = assembleDoc(page, vault, index);
-      doc.folder = leafFor.get(page) ?? null;
-      fs.writeFileSync(path.join(packJsonDir, `${doc._id as string}.json`), JSON.stringify(doc, null, 2));
+      const base = assembleDoc(page, vault, index);
+      const folder = leafFor.get(page) ?? null;
+      for (const doc of expandVariants(base, page, DOC_META[page.docType]!.key)) {
+        doc.folder = folder;
+        fs.writeFileSync(path.join(packJsonDir, `${doc._id as string}.json`), JSON.stringify(doc, null, 2));
+        docCount++;
+      }
     }
     for (const f of folderDocs) {
       fs.writeFileSync(path.join(packJsonDir, `${f._id}.json`), JSON.stringify(f, null, 2));
     }
-    console.log(`  ${decl.name}: ${packPages.length} documents, ${folderDocs.length} folders`);
+    console.log(`  ${decl.name}: ${docCount} documents, ${folderDocs.length} folders`);
   }
 
   // Compile LevelDB packs into <out>/packs/.
