@@ -840,7 +840,7 @@ describe("handler asset bundling", () => {
       assert.match(js, /builtin\/dice\.runtime\.js/);
       // Layout should reference both files
       const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /<script src="\/_handlers\.js" defer><\/script>/);
+      assert.match(html, /<script src="\/_handlers\.js\?v=[a-f0-9]+" defer><\/script>/);
     } finally { await cleanup(v); }
   });
 
@@ -1080,7 +1080,7 @@ describe("handler asset bundling", () => {
     try {
       await build(v);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /<script src="\/_handlers\.js"/);
+      assert.match(html, /<script src="\/_handlers\.js\?v=/);
       assert.match(html, /<link[^>]*_handlers\.css/);
     } finally { await cleanup(v); }
   });

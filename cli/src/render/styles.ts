@@ -893,7 +893,8 @@ code.fm-missing { color: #b94a3a; background: color-mix(in srgb, #b94a3a 10%, tr
 
 /* Hover preview popover */
 .wiki-preview {
-  position: absolute; display: none; max-width: 22rem;
+  position: absolute; display: none; max-width: min(22rem, calc(100vw - 1.5rem));
+  max-height: min(60vh, 22rem); overflow-y: auto;
   padding: 0.75rem 1rem; background: var(--bg); color: var(--fg);
   border: 1px solid var(--rule); border-left: 3px solid var(--accent);
   border-radius: 4px; box-shadow: 0 6px 20px rgba(0,0,0,0.18);
@@ -902,4 +903,20 @@ code.fm-missing { color: #b94a3a; background: color-mix(in srgb, #b94a3a 10%, tr
 .wiki-preview-title { font-weight: 700; margin-bottom: 0.2rem; }
 .wiki-preview-subheading { color: var(--accent); font-size: 0.8rem; margin-bottom: 0.4rem; font-style: italic; }
 .wiki-preview-body { color: var(--muted); }
+/* Footer and close button are pinned-only; hidden on transient hover previews. */
+.wiki-preview-goto {
+  display: none; margin-top: 0.6rem; padding-top: 0.5rem;
+  border-top: 1px solid var(--rule);
+  font-weight: 600; color: var(--accent); text-decoration: none;
+}
+.wiki-preview-close {
+  display: none; position: absolute; top: 0.35rem; right: 0.4rem;
+  width: 1.4rem; height: 1.4rem; padding: 0; line-height: 1;
+  border: none; border-radius: 4px; background: transparent;
+  color: var(--muted); font-size: 1.15rem; cursor: pointer;
+}
+.wiki-preview-close:hover { background: var(--rule); color: var(--fg); }
+.wiki-preview.is-pinned .wiki-preview-goto { display: block; }
+.wiki-preview.is-pinned .wiki-preview-close { display: block; }
+.wiki-preview.is-pinned .wiki-preview-title { padding-right: 1.25rem; }
 `;

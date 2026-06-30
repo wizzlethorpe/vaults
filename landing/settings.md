@@ -21,6 +21,9 @@ default_image_width: 50vw
 # Center images in the article body. Set false to leave them flush left.
 center_images: true
 
+# Internal-link preview behavior: 'normal' (the default) hovers a preview popover and navigates on click; 'sticky' hovers a preview and pins it open on click (with a 'Go to page' link) instead of navigating; 'none' disables previews entirely so links just navigate.
+preview_mode: normal
+
 # Role assigned to pages with no 'role:' frontmatter. Empty string means the lowest-tier role (typically 'public'). Set to e.g. 'dm' for a private-by-default vault. Must be one of your configured roles.
 default_role: ""
 

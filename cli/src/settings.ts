@@ -18,6 +18,7 @@ export interface Settings {
   inline_title: boolean;
   default_image_width: string;
   center_images: boolean;
+  preview_mode: string;
   default_role: string;
   accent_color: string;
   bg_color: string;
@@ -77,6 +78,12 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     type: "boolean",
     description:
       "Center images in the article body. Set false to leave them flush left.",
+  },
+  preview_mode: {
+    default: "normal",
+    type: "string",
+    description:
+      "Internal-link preview behavior: 'normal' (the default) hovers a preview popover and navigates on click; 'sticky' hovers a preview and pins it open on click (with a 'Go to page' link) instead of navigating; 'none' disables previews entirely so links just navigate.",
   },
   default_role: {
     default: "",

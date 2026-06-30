@@ -364,6 +364,16 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
   if (hasHandlerJs) await writeFile(join(opts.outputDir, "_handlers.js"), handlerAssets.js);
   if (hasHandlerCss) await writeFile(join(opts.outputDir, "_handlers.css"), handlerAssets.css);
 
+  // Cache-busting token for the shared root assets (styles.css, user.css,
+  // _handlers.*). Browsers cache these heuristically and serve stale copies
+  // after a push until a hard refresh; stamping a content hash onto their
+  // URLs makes a changed asset a new URL, so it's re-fetched automatically.
+  // One combined hash keeps it simple; any shared-asset change busts all.
+  const assetVersion = createHash("md5")
+    .update(DEFAULT_CSS + themeOverride + userCss + handlerAssets.js + handlerAssets.css)
+    .digest("hex")
+    .slice(0, 10);
+
   // Foundry importer bundle: one ESM file the Foundry module fetches at
   // sync time, plus a tiny version manifest with the SHA-256 the host
   // verifies against its trust cache.
@@ -451,6 +461,7 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
       handlerRegistry,
       hasHandlerJs,
       hasHandlerCss,
+      assetVersion,
       footerHtml,
       concurrency,
       allWarnings: opts.allWarnings,
@@ -590,6 +601,8 @@ interface VariantArgs {
   hasHandlerJs: boolean;
   /** Set when /_handlers.css will be emitted at the deploy root. */
   hasHandlerCss: boolean;
+  /** Content-hash query token appended to shared asset URLs for cache busting. */
+  assetVersion: string;
   /** Pre-rendered footer HTML (empty string = footer hidden). */
   footerHtml: string;
   concurrency: number;
@@ -700,6 +713,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   }
 
   // Pass 2: write layouts + preview JSON.
+  const previewMode = previewModeOf(a.settings.preview_mode);
   const bodyMeta = new Map<string, BodyMeta>();
   await pMap(visibleMetas, a.concurrency, async (p) => {
     const r = rendered.get(p.path)!;
@@ -716,10 +730,12 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
       inlineTitle: a.settings.inline_title,
       defaultImageWidth: a.settings.default_image_width,
       centerImages: a.settings.center_images,
+      previewMode,
       backlinks,
       authConfigured: a.authConfigured,
       hasHandlerJs: a.hasHandlerJs,
       hasHandlerCss: a.hasHandlerCss,
+      assetVersion: a.assetVersion,
       footerHtml: a.footerHtml,
       theme: themeOf(a.settings.theme),
       ...(p.mtime != null ? { mtime: p.mtime } : {}),
@@ -740,14 +756,17 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
 
     bodyMeta.set(bodyPath, await collectBodyMeta(p, a.vaultPath));
 
-    const source = visibleSources.get(p.path)!;
-    const preview = await buildPreview(source, r.title, {
-      frontmatter: a.parsedSources.get(p.path)?.data ?? {},
-      registry: a.handlerRegistry,
-      renderContext: context,
-      pagePath: p.path,
-    });
-    await writeFile(join(a.variantDir, outputBase + ".preview.json"), JSON.stringify(preview));
+    // Preview JSON feeds the hover popover; "none" ships no popover, so skip it.
+    if (previewMode !== "none") {
+      const source = visibleSources.get(p.path)!;
+      const preview = await buildPreview(source, r.title, {
+        frontmatter: a.parsedSources.get(p.path)?.data ?? {},
+        registry: a.handlerRegistry,
+        renderContext: context,
+        pagePath: p.path,
+      });
+      await writeFile(join(a.variantDir, outputBase + ".preview.json"), JSON.stringify(preview));
+    }
   });
 
   progress.done(`${visibleMetas.length} rendered`);
@@ -760,9 +779,11 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     inlineTitle: a.settings.inline_title,
     defaultImageWidth: a.settings.default_image_width,
     centerImages: a.settings.center_images,
+    previewMode,
     authConfigured: a.authConfigured,
     hasHandlerJs: a.hasHandlerJs,
     hasHandlerCss: a.hasHandlerCss,
+    assetVersion: a.assetVersion,
     footerHtml: a.footerHtml,
     theme: themeOf(a.settings.theme),
   }));
@@ -910,6 +931,10 @@ const FOUNDRY_ID_RE = /^[A-Za-z0-9]{16}$/;
  *  "auto" for any unrecognised value rather than failing the build. */
 function themeOf(s: string): "auto" | "light" | "dark" {
   return s === "light" || s === "dark" ? s : "auto";
+}
+
+function previewModeOf(s: string): "none" | "normal" | "sticky" {
+  return s === "none" || s === "sticky" ? s : "normal";
 }
 
 const EMBED_RE = /!\[\[([^\[\]|#\n]+?)(?:\|[^\[\]#\n]*)?\]\]/g;

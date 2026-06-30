@@ -13,6 +13,10 @@ export interface LayoutInput {
   defaultImageWidth: string;
   /** Center images in the article body. */
   centerImages: boolean;
+  /** Internal-link preview behavior. "normal": hover preview, click navigates.
+   *  "sticky": hover preview, click pins it open (with a "Go to page" link).
+   *  "none": no previews at all. */
+  previewMode: "none" | "normal" | "sticky";
   /** Pages that link to this one. */
   backlinks: PageMeta[];
   /** True if this site has roles beyond the default (i.e. login UI is meaningful). */
@@ -21,6 +25,8 @@ export interface LayoutInput {
   hasHandlerJs: boolean;
   /** True if /_handlers.css was emitted (any handler declared a style asset). */
   hasHandlerCss: boolean;
+  /** Content-hash token appended to shared asset URLs (?v=…) for cache busting. */
+  assetVersion: string;
   /** Pre-rendered footer HTML (empty string = no footer). */
   footerHtml: string;
   /** Default theme: "auto" follows the OS preference; "light" / "dark" force.
@@ -64,9 +70,9 @@ export function renderLayout(input: LayoutInput): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(input.title)} | ${esc(input.vaultName)}</title>
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/styles.css">
-<link rel="stylesheet" href="/user.css">
-${input.hasHandlerCss ? `<link rel="stylesheet" href="/_handlers.css">` : ""}${input.hasHandlerJs ? `\n<script src="/_handlers.js" defer></script>` : ""}
+<link rel="stylesheet" href="/styles.css?v=${attr(input.assetVersion)}">
+<link rel="stylesheet" href="/user.css?v=${attr(input.assetVersion)}">
+${input.hasHandlerCss ? `<link rel="stylesheet" href="/_handlers.css?v=${attr(input.assetVersion)}">` : ""}${input.hasHandlerJs ? `\n<script src="/_handlers.js?v=${attr(input.assetVersion)}" defer></script>` : ""}
 ${renderSocialMeta(input)}
 ${THEME_BOOT_SCRIPT}
 </head>
@@ -104,7 +110,7 @@ ${THEME_BOOT_SCRIPT}
   </aside>
 </div>
 ${EXPLORER_INIT_SCRIPT}
-${HOVER_PREVIEW_SCRIPT}
+${input.previewMode === "none" ? "" : hoverPreviewScript(input.previewMode === "sticky")}
 ${TOC_SCRIPT}
 ${SEARCH_SCRIPT}
 ${LIGHTBOX_SCRIPT}
@@ -215,7 +221,11 @@ function renderBreadcrumbs(pagePath: string, vaultName: string): string {
   // Sentinel used by the 404 page; no real path to crumb out of.
   if (pagePath === "__404__.md") return "";
   const parts = pagePath.replace(/\.md$/i, "").split("/");
-  if (parts.length === 1 && parts[0] === "index") return "";
+  // Root homepage: no path to crumb, but show the vault name so the strip
+  // isn't blank. Reads "Forgotten Folk /" to match the path style below.
+  if (parts.length === 1 && parts[0] === "index") {
+    return `<nav class="crumbs"><span>${esc(vaultName)}</span> <span class="crumb-sep">/</span></nav>`;
+  }
   // Folder homepages end in /index; drop that trailing segment so the crumbs
   // read "Vault › DM Notes" instead of "Vault › DM Notes › index".
   if (parts.length > 1 && parts[parts.length - 1] === "index") parts.pop();
@@ -309,14 +319,18 @@ const EXPLORER_INIT_SCRIPT = `<script>
 })();
 </script>`;
 
-const HOVER_PREVIEW_SCRIPT = `<script>
+function hoverPreviewScript(sticky: boolean): string {
+  return `<script>
 (function () {
-  // No hover previews on touch devices or narrow viewports. Emulated
-  // hover events from a tap make the popover flicker on top of the link
-  // the user actually wants to follow.
-  if (window.matchMedia('(hover: none)').matches || window.matchMedia('(max-width: 1100px)').matches) return;
+  // Hovering an internal link shows a transient preview (pointer devices only)
+  // that fades when you move away. When PIN is on, clicking pins the preview
+  // open instead of navigating (the "Go to page" footer is then the way
+  // through, and it stays until you click elsewhere or press Escape); when off,
+  // clicks navigate normally and the preview is hover-only.
+  const PIN = ${sticky};
+  const HOVERABLE = window.matchMedia('(hover: hover)').matches;
   const cache = new Map();
-  let popover = null, showTimer = null, hideTimer = null, activeLink = null;
+  let popover = null, showTimer = null, hideTimer = null, activeLink = null, pinned = false;
   const HOVER_DELAY = 220, HIDE_DELAY = 180;
 
   function ensurePopover() {
@@ -324,7 +338,10 @@ const HOVER_PREVIEW_SCRIPT = `<script>
     popover = document.createElement('div');
     popover.className = 'wiki-preview';
     popover.addEventListener('mouseenter', () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } });
-    popover.addEventListener('mouseleave', schedHide);
+    popover.addEventListener('mouseleave', () => { if (!pinned) schedHide(); });
+    popover.addEventListener('click', (e) => {
+      if (e.target instanceof Element && e.target.closest('.wiki-preview-close')) hide();
+    });
     document.body.appendChild(popover);
     return popover;
   }
@@ -332,26 +349,43 @@ const HOVER_PREVIEW_SCRIPT = `<script>
     const rect = link.getBoundingClientRect();
     pop.style.visibility = 'hidden'; pop.style.display = 'block';
     const popRect = pop.getBoundingClientRect();
-    const m = 8;
-    let top = rect.bottom + window.scrollY + m;
-    if (rect.bottom + popRect.height + m > window.innerHeight) top = rect.top + window.scrollY - popRect.height - m;
-    let left = rect.left + window.scrollX;
-    if (left + popRect.width + m > window.innerWidth + window.scrollX) left = window.innerWidth + window.scrollX - popRect.width - m;
+    const m = 8, vh = window.innerHeight, vw = window.innerWidth;
+    // Prefer below; flip above only if it actually fits there; otherwise pin to
+    // whichever side has more room. Clamp into the viewport so a tall popover
+    // (CSS caps the height) never spills off the top or bottom.
+    let top;
+    if (rect.bottom + popRect.height + m <= vh) top = rect.bottom + m;
+    else if (rect.top - popRect.height - m >= 0) top = rect.top - popRect.height - m;
+    else top = (vh - rect.bottom >= rect.top) ? rect.bottom + m : m;
+    if (top + popRect.height + m > vh) top = vh - popRect.height - m;
+    if (top < m) top = m;
+    let left = rect.left;
+    if (left + popRect.width + m > vw) left = vw - popRect.width - m;
     if (left < m) left = m;
-    pop.style.top = top + 'px'; pop.style.left = left + 'px';
+    pop.style.top = (top + window.scrollY) + 'px';
+    pop.style.left = (left + window.scrollX) + 'px';
     pop.style.visibility = 'visible';
   }
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function render(data, anchor) {
+  function render(data, anchor, href) {
     // .summary is already sanitised HTML at build time; safe to inject.
     const section = anchor && data.headings && data.headings[anchor];
+    // Close button is always in the markup but only shown when pinned (CSS,
+    // keyed off .is-pinned); transient hover previews don't need it.
+    let html = '<button class="wiki-preview-close" type="button" aria-label="Close preview">×</button>';
     if (section) {
-      return '<div class="wiki-preview-title">' + esc(data.title) + '</div>' +
+      html += '<div class="wiki-preview-title">' + esc(data.title) + '</div>' +
              '<div class="wiki-preview-subheading">› ' + esc(section.title) + '</div>' +
              '<div class="wiki-preview-body">' + (section.summary || '') + '</div>';
+    } else {
+      html += '<div class="wiki-preview-title">' + esc(data.title) + '</div>' +
+             '<div class="wiki-preview-body">' + (data.summary || '') + '</div>';
     }
-    return '<div class="wiki-preview-title">' + esc(data.title) + '</div>' +
-           '<div class="wiki-preview-body">' + (data.summary || '') + '</div>';
+    // Footer and close button are always in the markup but only shown on a
+    // pinned popover (CSS, keyed off .is-pinned); a transient hover preview
+    // shows neither.
+    html += '<a class="wiki-preview-goto" href="' + esc(href) + '">Go to page →</a>';
+    return html;
   }
   async function fetchPreview(href) {
     if (cache.has(href)) return cache.get(href);
@@ -374,32 +408,69 @@ const HOVER_PREVIEW_SCRIPT = `<script>
     if (href.endsWith('.json') || href.endsWith('.css')) return false;
     return true;
   }
-  function schedHide() { hideTimer = window.setTimeout(() => { if (popover) popover.style.display = 'none'; activeLink = null; }, HIDE_DELAY); }
+  function hide() { if (popover) popover.style.display = 'none'; activeLink = null; pinned = false; }
+  function schedHide() { hideTimer = window.setTimeout(() => { if (!pinned) hide(); }, HIDE_DELAY); }
+  function anchorOf(href) { const i = href.indexOf('#'); return i === -1 ? '' : href.slice(i + 1); }
+
+  // Sticky mode: clicking an internal link pins the preview open (on every
+  // device) instead of navigating; the "Go to page" footer does that. Off:
+  // no click handling, links navigate normally.
+  if (PIN) {
+    document.addEventListener('click', async (e) => {
+      const t = e.target;
+      // Clicks inside the popover (notably "Go to page") follow their own link.
+      if (popover && t instanceof Node && popover.contains(t)) return;
+      const link = t instanceof Element ? t.closest('a') : null;
+      if (link && isInternal(link)) {
+        // Let the browser handle new-tab / new-window modifier clicks.
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+        e.preventDefault();
+        if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        activeLink = link;
+        const href = link.getAttribute('href');
+        const data = await fetchPreview(href);
+        if (activeLink !== link) return;
+        if (!data) { window.location.href = href; return; } // no preview, just go
+        pinned = true;
+        const pop = ensurePopover();
+        pop.classList.add('is-pinned');
+        pop.innerHTML = render(data, anchorOf(href), href);
+        position(pop, link);
+        return;
+      }
+      hide(); // click anywhere else dismisses a pinned preview
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+  }
+
+  if (!HOVERABLE) return; // hover previews are a pointer-device enhancement
+
   document.addEventListener('mouseover', (e) => {
     const link = e.target;
-    if (!isInternal(link)) return;
+    if (!isInternal(link) || pinned) return;
     if (link === activeLink) { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } return; }
     activeLink = link;
     if (showTimer) clearTimeout(showTimer);
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
     showTimer = window.setTimeout(async () => {
       const href = link.getAttribute('href');
-      const hashIdx = href.indexOf('#');
-      const anchor = hashIdx === -1 ? '' : href.slice(hashIdx + 1);
       const data = await fetchPreview(href);
-      if (!data || activeLink !== link) return;
+      if (!data || activeLink !== link || pinned) return;
       const pop = ensurePopover();
-      pop.innerHTML = render(data, anchor);
+      pop.classList.remove('is-pinned');
+      pop.innerHTML = render(data, anchorOf(href), href);
       position(pop, link);
     }, HOVER_DELAY);
   });
   document.addEventListener('mouseout', (e) => {
-    if (!isInternal(e.target)) return;
+    if (!isInternal(e.target) || pinned) return;
     if (showTimer) { clearTimeout(showTimer); showTimer = null; }
     schedHide();
   });
 })();
 </script>`;
+}
 
 const TOC_SCRIPT = `<script>
 (function () {
