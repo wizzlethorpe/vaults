@@ -35,7 +35,11 @@ Other features that don't need a dedicated page:
 - **Search**: every variant ships its own `_search-index.json`; the
   client-side search box in the sidebar uses it for fuzzy matching.
 - **Hover previews**: desktop browsers preview a page when you hover its
-  link, fetching the per-page `<path>.preview.json` lazily.
+  link, fetching the per-page `<path>.preview.json` lazily. The
+  `preview_mode` setting controls the behavior: `normal` (the default)
+  hovers a popover and navigates on click; `sticky` hovers a popover and
+  pins it open on click, with a "Go to page" link, instead of navigating;
+  `none` disables previews so links just navigate.
 - **Backlinks**: every page lists pages that link to it in the right
   sidebar, computed at build time.
 - **External links open in a new tab**: anything pointing off-host gets
