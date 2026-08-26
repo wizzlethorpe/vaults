@@ -6,7 +6,7 @@
 // the page's journal on top. Re-syncing updates the same doc in place,
 // so user edits to non-canonical fields (HP, conditions) survive.
 
-import { entryId, pageId, instanceId, folderId, subdocId } from "./ids.mjs";
+import { entryId, pageId, instanceId, folderId, subdocId, folderOfPath } from "./ids.mjs";
 import { localFileUrl } from "./media.mjs";
 import { MODULE_ID } from "./settings.mjs";
 import { BLANK_DOC_TYPES, docNameOf, parseFoundryBase } from "./foundry-base.mjs";
@@ -486,6 +486,27 @@ function splitFolderPath(subPath) {
   return typeof subPath === "string" ? subPath.split("/").map(s => s.trim()).filter(Boolean) : [];
 }
 
+/**
+ * Where a page's instantiated document is filed, under the vault's own root
+ * folder for that document type.
+ *
+ * Defaults to the page's vault directory, so the sidebar mirrors the vault
+ * the way journals already do (folder-as-JournalEntry). Previously the
+ * default was "" and every derived document landed in one flat pile at the
+ * vault root, which is why so many pages carried a `foundry.folder` that
+ * merely restated the directory they were already in.
+ *
+ * `foundry.folder` still overrides, for the cases where the two genuinely
+ * differ — most usefully when vault paths encode access rather than topic
+ * ("DM Notes/...") and mirroring would put that vocabulary in front of
+ * players, since Foundry folder names are visible for documents they can see.
+ */
+function instanceSubPath(vaultPath, meta) {
+  const override = meta?.foundry?.folder;
+  if (typeof override === "string" && override.trim()) return override;
+  return folderOfPath(vaultPath);
+}
+
 async function buildOverlay(vault, vaultPath, meta, docName, derived = {}) {
   const overlay = {
     // Prefer the page's frontmatter `title:` over the filename — the wiki
@@ -493,7 +514,7 @@ async function buildOverlay(vault, vaultPath, meta, docName, derived = {}) {
     // "Potion of Healing (Mossfoot Brew)" reads better in the Foundry
     // sidebar than "Healing Potion".
     name: meta.title || baseName(vaultPath),
-    folder: await ensureInstanceFolder(vault, docName, meta?.foundry?.folder),
+    folder: await ensureInstanceFolder(vault, docName, instanceSubPath(vaultPath, meta)),
     flags: { [MODULE_ID]: { vaultId: vault.id, path: vaultPath } },
   };
 

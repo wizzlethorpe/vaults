@@ -114,6 +114,52 @@ function addBasenameKeys(
   }
 }
 
+/**
+ * Warn when two pages would instantiate documents Foundry can't tell apart:
+ * same document type, same folder, same name.
+ *
+ * The vault's directory structure is the default folder, so the filesystem
+ * already stops two pages colliding in most cases — but not all. The Foundry
+ * document name is the page's `title:` when it has one, so two differently
+ * named files in one directory can still land on the same name, and a
+ * `foundry.folder` override can put pages from different directories in one
+ * folder. Neither is caught by anything else, and the result in Foundry is
+ * two identical-looking documents where the author expected one.
+ *
+ * Checked across every page rather than per variant: the Foundry sync reads
+ * one variant at the GM's tier, so pages of different roles still meet there.
+ */
+function warnFoundryDocCollisions(pages: PageMeta[]): void {
+  const seen = new Map<string, string>(); // key → first page path
+  for (const p of pages) {
+    const fo = p.frontmatter?.["foundry"];
+    if (!fo || typeof fo !== "object" || Array.isArray(fo)) continue;
+    const base = (fo as Record<string, unknown>)["base"];
+    const first = Array.isArray(base) ? base[0] : base;
+    if (typeof first !== "string" || !first) continue;
+    const docType = foundryBaseDocName(first);
+    if (!docType) continue;
+
+    const override = (fo as Record<string, unknown>)["folder"];
+    const folder = typeof override === "string" && override.trim()
+      ? override.trim().replace(/^\/+|\/+$/g, "")
+      : p.path.split("/").slice(0, -1).join("/");
+    const name = p.title || p.path.split("/").pop()!.replace(/\.md$/i, "");
+
+    const key = `${docType}\u0000${folder}\u0000${name}`;
+    const previous = seen.get(key);
+    if (previous === undefined) {
+      seen.set(key, p.path);
+      continue;
+    }
+    console.warn(
+      `  ${p.path}: would create a ${docType} named '${name}' in the same Foundry `
+      + `folder ('${folder || "(vault root)"}') as '${previous}'. Rename one, or `
+      + `separate them with foundry.folder.`,
+    );
+  }
+}
+
 export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   const start = Date.now();
   const concurrency = Math.max(2, availableParallelism());
@@ -475,6 +521,8 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     const cover = resolvePageImage(stripped, meta.frontmatter, imageIndex, settings.values.auto_image);
     if (cover) meta.coverImage = cover;
   }
+
+  warnFoundryDocCollisions(allPageMetas);
 
   // ── Per-role variant builds ─────────────────────────────────────────────
   const perRolePageCount: Record<string, number> = {};
