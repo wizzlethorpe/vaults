@@ -4,9 +4,28 @@ Working notes on where vaults goes next. Nothing here is committed to; it is the
 
 ## Recently landed
 
-Foundry instantiation now reports true outcomes. `applyInstance` returns `null` / `{ok:true, action}` / `{ok:false, reason}` instead of bare-returning on seven distinct failure paths, and `sync` counts outcomes rather than calls. Previously a page whose `foundry.base` produced nothing still incremented `instances`, so a world missing a required compendium reported "Sync complete, instantiated 40 documents" having created zero. Skips now raise a notification. Also: `_stats.compendiumSource` is stamped on the clone path (verified end to end against a live world), and `parseFoundryBase` no longer fails silently on an unrecognised base.
+Foundry instantiation tells the truth now. `applyInstance` returns an outcome
+instead of bare-returning on seven failure paths; `sync` counts outcomes, not
+calls; a `create()` that Foundry validated away is detected rather than
+counted as success; and failed pages keep their old hash so they are retried
+rather than recorded as synced forever. A role-gated callout leak (a
+capitalised role name meant the class selector never matched, so GM-only
+blocks were readable by players in Foundry) is fixed and verified in a live
+world.
 
-`foundry/test/` exists now, run by the root `test:foundry` script, covering the pure helpers.
+`foundry.base` accepts a priority list, so a vault degrades across worlds with
+different content installed, and cloning from a UUID now works for every
+instantiable type rather than only Actor and Item. Instantiated documents are
+filed under the page's vault directory by default, matching journals.
+
+Roles no longer imply passwords: a role can be granted by Patreon or OIDC
+alone, and the login page renders only the methods a deploy actually has.
+
+`settings.md` is the single source of truth for vault properties — the
+duplicate CLI flags and config keys are gone. Tokens carry their type and are
+refused on top-level navigation. `manifest.ts` and `foundry-meta.ts` are split
+out of build.ts. The generated middleware is executable in tests, and
+`foundry/test/` covers the pure helpers plus a golden id scheme.
 
 ## 1. Separating vaults from Foundry
 
@@ -241,8 +260,9 @@ creator + pack + exact filename rather than an id.
 
 ### Scope
 
-1. **Widen `CLONE_SUPPORTED_DOCS`.** No Moulinette involved; unlocks the
-   compendium half immediately.
+1. ~~**Widen `CLONE_SUPPORTED_DOCS`.**~~ Done. The restriction rested on a
+   reason that was not true of the code (the description embed is already
+   optional), and it was skipping every compendium Scene.
 2. **`@moulinette/<type>/<creator>/<pack>/<file>` as a priority-list rung**,
    resolved through `api.searchAssets` with an exact creator + pack +
    filename match, falling through on no match. Covers Map, Image, Audio.
@@ -305,29 +325,22 @@ than the storefront.
 
 ## Near-term work
 
-1. **Preflight for missing compendiums.** The manifest carries every `foundry.base`, so one pass before syncing can collect the distinct `Compendium.<pkg>` prefixes, check `game.modules` / `game.system`, and say "this vault needs dnd5e, which is not installed" once instead of failing per page. Note this is a **distribution** concern: every base in every one of our own vaults resolves against the installed module set, so it never fires locally. It matters when someone else installs a vault.
+1. **Sync does not reconcile world state.** It diffs the remote manifest
+   against `lastManifest`, so a document deleted in the world is invisible to
+   every later incremental sync: it reports "up to date" forever. Combined
+   with a failed instantiation this is how a world drifts quietly. Force Sync
+   is the only repair today. The fix is cheap — the loop already knows every
+   page carrying a `foundry.base`, and `collection.get(id)` is an in-memory
+   check, so running it over unchanged pages would let sync notice and
+   re-create what is missing.
 
-2. **`foundry.base` as a priority list.** Accept a list, tried in order, so a vault degrades gracefully across worlds with different content:
+2. **`compendiumSource` is create-only.** Existing documents never gain the
+   provenance trail retroactively, because the update path patches an existing
+   document rather than re-deriving it. Defensible, but decide whether
+   heal-on-update is wanted.
 
-   ```yaml
-   foundry:
-     base:
-       - Compendium.dnd-monster-manual.actors.Actor.mmAboleth0000000
-       - Compendium.dnd5e.actors24.Actor.mmAboleth0000000
-       - Actor:npc
-   ```
-
-   A string is a one-element list, so it is backwards compatible. Four design points:
-   - **Every entry must yield the same document type**, and that is statically checkable: a compendium UUID names its type in segment 3, a blank form names it outright. `links.mjs` resolves wikilink targets *without* a lookup, so it needs one answer per page. Validate in the CLI and hard-error on a mixed list.
-   - **Record which entry won** in `_stats.compendiumSource`, so two GMs with different content installed can see why their documents differ.
-   - **Evaluate the list at creation only.** On later syncs honour the recorded `compendiumSource` unless `forceFull`, or a GM who buys the Monster Manual after a fallback sync gets a document they have been editing silently re-based. Surface it instead ("3 documents could use a higher-priority base").
-   - **Warn when the last entry is not a blank form**, since only a blank tail makes the chain total.
-
-   Note this one small feature touches three parsers (`instance.mjs`, `links.mjs`, `foundry-compiler`) plus CLI validation. That is item 5 making its own case.
-
-3. **Sync does not reconcile world state.** It diffs the remote manifest against `lastManifest`, so a document deleted in the world is invisible to every later incremental sync: it reports "up to date" forever. Combined with a failed instantiation this is how a world drifts quietly. Force Sync is the only repair today.
-
-4. **`compendiumSource` is create-only.** Existing documents never gain the provenance trail retroactively, because the update path patches an existing document rather than re-deriving it. Defensible, but decide whether heal-on-update is wanted.
+3. **Moulinette rung for Map / Image / Audio.** See section 6 for the research
+   and the exact call chain.
 
 ## Smaller open items
 
