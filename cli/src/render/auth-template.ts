@@ -946,15 +946,21 @@ async function readRole(request, env) {
   // CORS-simple and don't trigger a preflight per file (Cloudflare rate-
   // limits OPTIONS bursts and a sync is hundreds of unique URLs).
   //
-  // Not honoured on a top-level navigation. A token in a URL is a shareable
-  // credential that lands in browser history, access logs and Referer, and
-  // bearers last 90 days — so a pasted link would quietly browse the whole
-  // site at someone else's role. The sync client never navigates: its
-  // requests are fetch()es, which browsers mark Sec-Fetch-Mode: cors.
-  // Fails open when the header is absent, which is fine: the case being
-  // prevented is a browser following a link, and browsers always send it.
+  // Only honoured on a request that says it is a subresource fetch. A token
+  // in a URL is a shareable credential that lands in browser history, access
+  // logs and Referer, and bearers last 90 days — so a pasted link must not
+  // quietly browse the site at someone else's role.
+  //
+  // Fails CLOSED: an absent Sec-Fetch-Mode means the token is ignored. The
+  // earlier version only rejected an explicit "navigate", which left the hole
+  // open for anything that does not send Fetch Metadata — a proxy that strips
+  // it, or a browser older than Chrome 76 / Firefox 90 / Safari 16.4. The
+  // query param exists purely so the sync client's cross-origin GETs stay
+  // CORS-simple, and that client is a browser, so it always sends the header.
+  // Anything that cannot has no reason to prefer the param: it can set an
+  // Authorization: Bearer header freely, which is checked above.
   const queryToken = new URL(request.url).searchParams.get("_token");
-  if (queryToken && !isTopLevelNavigation(request)) {
+  if (queryToken && isSubresourceFetch(request)) {
     const role = await verifyToken(queryToken, env.SESSION_SECRET, TOKEN_TYPE_BEARER);
     if (role && ROLES.includes(role)) return role;
   }
@@ -965,10 +971,15 @@ async function readRole(request, env) {
   return role && ROLES.includes(role) ? role : fallback;
 }
 
-/** True for a request the browser made by navigating to a URL. */
-function isTopLevelNavigation(request) {
-  return request.headers.get("Sec-Fetch-Mode") === "navigate"
-    || request.headers.get("Sec-Fetch-Dest") === "document";
+/**
+ * True only when the request explicitly identifies itself as a subresource
+ * fetch rather than a navigation. Absent headers count as "not a fetch", so
+ * the caller refuses rather than guesses.
+ */
+function isSubresourceFetch(request) {
+  const mode = request.headers.get("Sec-Fetch-Mode");
+  if (!mode || mode === "navigate") return false;
+  return request.headers.get("Sec-Fetch-Dest") !== "document";
 }
 
 // Format: <role>.<expiryUnix>.<hmacHex>

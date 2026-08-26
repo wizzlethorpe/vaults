@@ -176,6 +176,16 @@ describe("generated auth middleware", () => {
     assert.equal(await res.text(), "/_variants/dm/secret");
   });
 
+  it("ignores a URL token when the request sends no Fetch Metadata", async () => {
+    // Fails closed. Only rejecting an explicit "navigate" left the hole open
+    // for anything that does not send Sec-Fetch-* — a proxy that strips it, or
+    // a browser older than Chrome 76 / Firefox 90 / Safari 16.4. A client that
+    // cannot send those headers can send Authorization: Bearer instead.
+    const value = dmCookie.split("=")[1]!;
+    const res = await call(mw, `https://v.example/secret?_token=${value}`);
+    assert.equal(await res.text(), "/_variants/public/secret");
+  });
+
   it("refuses an off-site redirect through ?next=", async () => {
     const res = await call(mw, "https://v.example/login", {
       method: "POST",

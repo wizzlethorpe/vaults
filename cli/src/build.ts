@@ -1075,6 +1075,12 @@ async function copyReferencedImages(
   }
 }
 
+/** Collect the `@vault/...` paths a page's foundry block references, from both
+ *  `foundry.data_json` and `foundry.data`. A Scene's bulk asset refs
+ *  (backgrounds, ambient sounds, tiles) live in that JSON content, and a token's
+ *  ring subject lives in the inline `data` overlay; neither appears anywhere the
+ *  per-variant asset scanners look, so without this they never ship and Foundry
+ *  404s them. Returns vault-relative paths. */
 async function collectDataJsonVaultRefs(
   vaultPath: string,
   fm: Record<string, unknown>,

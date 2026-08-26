@@ -116,6 +116,15 @@ Plugins live in `cli/src/render/` and consume a `RenderContext`. New rendering f
 3. Typecheck (`pnpm typecheck` from root) and run an end-to-end build against a real vault before reporting done.
 4. Commit on the active branch and push when authorized.
 
+### Editing `render/auth-template.ts`
+
+The Pages Function is a **template literal**, so anything inside
+`renderAuthMiddleware`'s returned string — including comments — must not
+contain a backtick or `${`. A stray backtick in a comment closes the template
+and the file stops parsing, which reads as an unrelated syntax error dozens of
+lines away. `pnpm typecheck` catches it, as does any middleware test, but the
+error message never points at the comment.
+
 ### Testing a change to `foundry/scripts/`
 
 **The installed module does not run the sync code.** It is a host: UI, settings,
