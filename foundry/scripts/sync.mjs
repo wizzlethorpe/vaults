@@ -162,7 +162,24 @@ export async function sync(host, vault, { forceFull = false } = {}) {
   // backs with whatever storage it prefers (currently the vaultManifests
   // world setting).
   const lastSync = host.getVaultState(vault.id);
-  const local = forceFull ? new Map() : new Map(Object.entries(lastSync.lastManifest || {}));
+
+  // Every document in this world is addressed by an id derived from the
+  // scheme the CLI advertises. If that scheme ever changes, previously
+  // synced entries become unreachable — the diff would look clean while the
+  // module silently created a duplicate set beside them, and no amount of
+  // re-syncing would reconcile it. So a change forces a full pass, which
+  // re-derives every id and updates the documents we already own.
+  const remoteIdScheme = manifest.id_scheme || "v1";
+  const schemeChanged = !!lastSync.lastIdScheme && lastSync.lastIdScheme !== remoteIdScheme;
+  if (schemeChanged) {
+    console.warn(
+      `Vaults | ${vault.label}: document id scheme changed `
+      + `(${lastSync.lastIdScheme} → ${remoteIdScheme}); forcing a full re-sync so `
+      + `existing documents are re-derived rather than duplicated.`,
+    );
+  }
+  const fullPass = forceFull || schemeChanged;
+  const local = fullPass ? new Map() : new Map(Object.entries(lastSync.lastManifest || {}));
 
   const bodyPaths = files.filter((f) => f.path.endsWith(".body.html")).map((f) => f.path);
   const pathIndex = buildPathIndex(files);
@@ -230,7 +247,7 @@ export async function sync(host, vault, { forceFull = false } = {}) {
   }
 
   host.notify("info",
-    forceFull
+    fullPass
       ? host.localize("VAULTS.Sync.Initial", { count: toUpsert.length })
       : host.localize("VAULTS.Sync.Incremental", {
           add: toUpsert.length, mod: 0, del: toDelete.length,
@@ -287,7 +304,7 @@ export async function sync(host, vault, { forceFull = false } = {}) {
       // render. Only fires when the page declared foundry.base.
       if (pageMeta?.foundry?.base) {
         try {
-          const outcome = await applyInstance(vault, logicalPath, pageMeta, { forceFull });
+          const outcome = await applyInstance(vault, logicalPath, pageMeta, { forceFull: fullPass });
           // A declared base that produced no document returns { ok: false }
           // rather than throwing, so counting calls instead of outcomes would
           // report every skipped page as a success.
@@ -335,7 +352,11 @@ export async function sync(host, vault, { forceFull = false } = {}) {
     const previous = local.get(bodyPath);
     if (previous !== undefined) persisted.set(bodyPath, previous);
   }
-  await host.setVaultState(vault.id, { lastManifest: Object.fromEntries(persisted), lastMediaRefs: mediaRefs });
+  await host.setVaultState(vault.id, {
+    lastManifest: Object.fromEntries(persisted),
+    lastMediaRefs: mediaRefs,
+    lastIdScheme: remoteIdScheme,
+  });
 
   // Re-place existing entries whose leaf-collapse status changed since
   // the last sync (folder gained/lost subfolders). Cheap pass; only hits

@@ -54,7 +54,7 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
   await ensureSetup(vaultPath, cfg);
 
   // Multi-role deployments need SESSION_SECRET on the Pages project so the
-  // auth middleware can sign cookies. Reuse the secret in .vaultrc.json (the
+  // auth middleware can sign cookies. Reuse the secret in .vaults/.env (the
   // one preview also uses) so a logged-in browser session survives across
   // preview ↔ push.
   //
@@ -68,7 +68,7 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
       await saveSessionSecret(vaultPath, secret);
       console.log(opts.rotateSecret
         ? "Rotated SESSION_SECRET; all existing tokens are now invalid."
-        : "Generated SESSION_SECRET (saved to .vaultrc.json).");
+        : "Generated SESSION_SECRET (saved to .vaults/.env).");
     }
     await wranglerSecret(cfg.projectName!, "SESSION_SECRET", secret);
   }
@@ -96,11 +96,11 @@ async function ensureSetup(vaultPath: string, cfg: VaultConfig): Promise<void> {
     const name = await promptIfTty(
       `Cloudflare Pages project name [${suggested}]: `,
       suggested,
-      "No projectName in .vaultrc.json. Pass --project-name or run `vaults push` interactively.",
+      "No projectName in .vaults/config.json. Pass --project-name or run `vaults push` interactively.",
     );
     cfg.projectName = sanitizeProjectName(name);
     await saveConfig(vaultPath, cfg);
-    console.log(`  saved projectName='${cfg.projectName}' to .vaultrc.json`);
+    console.log(`  saved projectName='${cfg.projectName}' to .vaults/config.json`);
   }
 
   // 2. Wrangler authentication; wrangler whoami exits non-zero if logged out.

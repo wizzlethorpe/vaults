@@ -6,7 +6,13 @@
 //
 // Shape: a single Object setting keyed by vaultId →
 //   { lastManifest: { [path]: hash }, lastImageManifest: { [path]: hash },
-//     lastMediaRefs: { [bodyPath]: [assetPath] } }.
+//     lastMediaRefs: { [bodyPath]: [assetPath] },
+//     lastIdScheme: string }.
+//
+// lastIdScheme records the manifest's advertised document-id derivation. It
+// is deliberately absent from EMPTY: a vault synced before it existed reads
+// back undefined, which sync treats as "unknown, don't force anything",
+// rather than as a change from some default.
 //
 // One Object setting (vs N per-vault keys) keeps registration cheap. We
 // pay one read of the full map per access, which is fine because access

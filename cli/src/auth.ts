@@ -9,11 +9,6 @@ const ITERATIONS = 100_000;
 const SALT_BYTES = 16;
 const HASH_BYTES = 32; // SHA-256 output length
 
-export interface PasswordRecord {
-  saltHex: string;
-  hashHex: string;
-  iterations: number;
-}
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = webcrypto.getRandomValues(new Uint8Array(SALT_BYTES));

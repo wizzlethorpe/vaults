@@ -10,8 +10,3 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-// Historical alias retained for the bases plugin. The "sibling-import
-// avoidance" comment in bases.ts predates the current shape of slug.ts (which
-// has no imports of its own), so a direct re-export is fine — the alias is
-// kept so existing call sites don't churn.
-export { slugify as slugifySimple };

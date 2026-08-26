@@ -5,11 +5,12 @@
 // list). Unknown view types and unknown YAML keys warn but don't abort.
 
 import type { Plugin } from "unified";
-import type { Root, Code, Html } from "mdast";
+import type { Root, Html } from "mdast";
 import { visit } from "unist-util-visit";
 import yaml from "js-yaml";
 import type { PageMeta, RenderContext, RenderWarning } from "./types.js";
 import { slugify } from "./slug.js";
+import { htmlAttr, htmlEscape } from "../escape.js";
 
 const BASE_LANG_RE = /^bases?$/i;
 
@@ -94,7 +95,7 @@ export function renderBase(
   if (viewName) {
     const matched = views.filter((v) => v.name === viewName);
     if (matched.length === 0) {
-      return errorBlock(`Bases: no view named '${esc(viewName)}'.`);
+      return errorBlock(`Bases: no view named '${htmlEscape(viewName)}'.`);
     }
     views = matched;
   }
@@ -110,7 +111,7 @@ export function renderBase(
         blocks.push(renderListView(view, baseRows, doc));
       } else {
         if (warnings) warnings.push({ kind: "broken-link", target: `bases view type '${view.type}'` });
-        blocks.push(errorBlock(`Bases: view type '${esc(view.type)}' is not supported.`));
+        blocks.push(errorBlock(`Bases: view type '${htmlEscape(view.type)}' is not supported.`));
       }
     } catch (err) {
       // Errors here come from formula evaluation, expression parsing, or
@@ -135,7 +136,7 @@ function wrapAsTabs(blocks: string[], views: ViewSpec[]): string {
       + ` aria-selected="${isActive ? "true" : "false"}"`
       + ` tabindex="${isActive ? "0" : "-1"}"`
       + ` class="bases-tab${isActive ? " bases-tab-active" : ""}">`
-      + esc(label) + `</button>`;
+      + htmlEscape(label) + `</button>`;
   }).join("");
   const panels = blocks.map((html, i) =>
     `<div class="bases-tab-panel" role="tabpanel" data-bases-tab-panel="${i}"${i === 0 ? "" : " hidden"}>${html}</div>`,
@@ -623,14 +624,14 @@ function renderTableView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: 
   const tbl = rows.map((row) => columns.map((id) => valueForColumn(id, row, context)));
 
   const header = labels.map((l, i) =>
-    `<th data-col="${i}" tabindex="0">${esc(l)}</th>`
+    `<th data-col="${i}" tabindex="0">${htmlEscape(l)}</th>`
   ).join("");
   const body = tbl.map((cells, ri) => {
-    const tds = cells.map((c) => `<td data-raw="${escAttr(toSortKey(c.raw))}">${c.html}</td>`).join("");
+    const tds = cells.map((c) => `<td data-raw="${htmlAttr(toSortKey(c.raw))}">${c.html}</td>`).join("");
     return `<tr data-row="${ri}">${tds}</tr>`;
   }).join("");
 
-  const caption = view.name ? `<div class="bases-caption">${esc(view.name)}</div>` : "";
+  const caption = view.name ? `<div class="bases-caption">${htmlEscape(view.name)}</div>` : "";
   return `<div class="bases-block">
   ${caption}
   <div class="bases-toolbar">
@@ -671,23 +672,23 @@ function renderCardsView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: 
     const href = "/" + row.page.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/");
     const cover = findCoverImage(row, view.image, context);
     const coverHtml = cover
-      ? `<div class="bases-card-cover ${fitClass}${aspectClass ? " " + aspectClass : ""}"><img src="${escAttr(cover)}" alt="" loading="lazy"></div>`
+      ? `<div class="bases-card-cover ${fitClass}${aspectClass ? " " + aspectClass : ""}"><img src="${htmlAttr(cover)}" alt="" loading="lazy"></div>`
       : "";
     const metaHtml = metaCols
       .map((id) => renderValue(resolveIdentifier(id, row)))
       .filter(Boolean)
       .map((v) => `<div class="bases-card-meta">${v}</div>`)
       .join("");
-    return `<a class="bases-card" href="${escAttr(href)}">
+    return `<a class="bases-card" href="${htmlAttr(href)}">
       ${coverHtml}
       <div class="bases-card-body">
-        <div class="bases-card-title">${esc(row.page.title)}</div>
+        <div class="bases-card-title">${htmlEscape(row.page.title)}</div>
         ${metaHtml}
       </div>
     </a>`;
   }).join("");
 
-  const caption = view.name ? `<div class="bases-caption">${esc(view.name)}</div>` : "";
+  const caption = view.name ? `<div class="bases-caption">${htmlEscape(view.name)}</div>` : "";
   return `<div class="bases-block bases-cards-block">
   ${caption}
   <div class="bases-toolbar">
@@ -716,14 +717,14 @@ function renderListView(view: ViewSpec, allRows: Row[], doc: BaseDoc): string {
       .filter(Boolean)
       .join(' <span class="bases-list-sep">·</span> ');
     const metaSpan = meta ? `<span class="bases-list-meta">${meta}</span>` : "";
-    return `<li><a class="internal internal-link" href="${escAttr(href)}">${esc(row.page.title)}</a>${metaSpan}</li>`;
+    return `<li><a class="internal internal-link" href="${htmlAttr(href)}">${htmlEscape(row.page.title)}</a>${metaSpan}</li>`;
   }).join("");
 
   // Keep `doc` in the signature for symmetry with the other view renderers,
   // even though list rendering doesn't currently consult properties.
   void doc;
 
-  const caption = view.name ? `<div class="bases-caption">${esc(view.name)}</div>` : "";
+  const caption = view.name ? `<div class="bases-caption">${htmlEscape(view.name)}</div>` : "";
   return `<div class="bases-block bases-list-block">
   ${caption}
   <ul class="bases-list">${items}</ul>
@@ -776,7 +777,7 @@ function findCoverImage(row: Row, prop: string | undefined, context: RenderConte
   if (!raw) {
     // Body scan: when no cover is set explicitly or precomputed, take the
     // first image embed in the source.
-    const slug = slugifySimple(row.page.path.replace(/\.md$/i, ""));
+    const slug = slugify(row.page.path.replace(/\.md$/i, ""));
     const source = context.markdownContent.get(slug);
     if (source) {
       const m = COVER_IMG_RE.exec(source);
@@ -788,7 +789,7 @@ function findCoverImage(row: Row, prop: string | undefined, context: RenderConte
   // Strip a leading `![[` / trailing `]]` if the user set a wikilink-style
   // value (`cover: ![[portrait.webp]]`), then look up in the image index.
   raw = raw.replace(/^!\[\[/, "").replace(/\]\]$/, "").split("|")[0]!.trim();
-  const image = context.images.get(slugifySimple(raw.split("/").pop() || raw));
+  const image = context.images.get(slugify(raw.split("/").pop() || raw));
   if (image) return "/" + image.outputPath.split("/").map(encodeURIComponent).join("/");
   // Already a URL or path: use as-is.
   return raw.startsWith("http") ? raw : "/" + raw.split("/").map(encodeURIComponent).join("/");
@@ -824,17 +825,6 @@ function aspectRatioClass(value: string | number): string {
   return best[1];
 }
 
-// Mirror the slugify in build.ts without taking a dependency on the renderer's
-// slug.ts (which imports from a sibling module). Same algorithm.
-function slugifySimple(s: string): string {
-  return s
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/\.md$/i, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 interface Cell { html: string; raw: unknown; }
 
@@ -843,7 +833,7 @@ function valueForColumn(id: string, row: Row, context: RenderContext): Cell {
   if (id === "file.name" || id === "file.basename") {
     const title = row.page.title;
     const href = "/" + row.page.path.replace(/\.md$/i, "").split("/").map(encodeURIComponent).join("/");
-    return { html: `<a class="internal internal-link" href="${escAttr(href)}">${esc(title)}</a>`, raw: title };
+    return { html: `<a class="internal internal-link" href="${htmlAttr(href)}">${htmlEscape(title)}</a>`, raw: title };
   }
   const v = resolveIdentifier(id, row);
   return { html: renderValue(v), raw: v };
@@ -852,15 +842,15 @@ function valueForColumn(id: string, row: Row, context: RenderContext): Cell {
 function renderValue(v: unknown): string {
   if (v == null) return "";
   if (Array.isArray(v)) return v.map((x) => renderValue(x)).filter(Boolean).join(", ");
-  if (v instanceof Date) return esc(v.toISOString().slice(0, 10));
+  if (v instanceof Date) return htmlEscape(v.toISOString().slice(0, 10));
   if (typeof v === "boolean") return v ? "✓" : "";
   if (typeof v === "string") {
     // Render `[[wikilinks]]` in property values as plain styled text — full
     // wikilink resolution happens later in the wikilink plugin, which only
     // sees text nodes; the bases plugin emits HTML.
-    return esc(v);
+    return htmlEscape(v);
   }
-  return esc(String(v));
+  return htmlEscape(String(v));
 }
 
 function toSortKey(v: unknown): string {
@@ -883,12 +873,6 @@ function columnLabel(id: string, doc: BaseDoc): string {
 }
 
 function errorBlock(message: string): string {
-  return `<div class="bases-block bases-error">${esc(message)}</div>`;
+  return `<div class="bases-block bases-error">${htmlEscape(message)}</div>`;
 }
 
-function esc(s: unknown): string {
-  return String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
-}
-function escAttr(s: unknown): string {
-  return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-}

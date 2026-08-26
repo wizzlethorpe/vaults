@@ -25,7 +25,7 @@ import { resolvePageImage } from "./render/cover.js";
 import { DEFAULT_CSS, renderThemeOverride } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./settings.js";
-import { loadConfig, saveConfig, type VaultConfig } from "./config.js";
+import { loadConfig } from "./config.js";
 import matter from "gray-matter";
 import { renderAuthMiddleware, renderLoginPage } from "./render/auth-template.js";
 import { renderFooterHtml } from "./render/footer.js";
@@ -50,8 +50,6 @@ export interface BuildOptions {
 }
 
 export interface BuildResult {
-  files: ScannedFile[];
-  withinLimit: ScannedFile[];
   /** All roles built, in low → high order. */
   roles: string[];
   /** Per-role page count. */
@@ -606,8 +604,6 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
 
   console.log(`Built in ${formatDuration(Date.now() - start)}.`);
   return {
-    files,
-    withinLimit,
     roles,
     perRolePageCount,
     imageCount: imageFiles.length,
