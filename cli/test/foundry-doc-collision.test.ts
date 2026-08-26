@@ -74,6 +74,27 @@ describe("duplicate Foundry documents", () => {
     }), []);
   });
 
+  it("ignores a UUID base for a type the module cannot clone", async () => {
+    // instance.mjs clones from a UUID only for Actor and Item; a Scene UUID
+    // is skipped and no document is made, so a collision here would describe
+    // documents that never exist.
+    assert.deepEqual(await build({
+      "Scenes/A.md": '---\ntitle: Great Hall\nfoundry:\n  base: "Compendium.x.y.Scene.aaaaaaaaaaaaaaaa"\n---\nA.\n',
+      "Scenes/B.md": '---\ntitle: Great Hall\nfoundry:\n  base: "Compendium.x.y.Scene.bbbbbbbbbbbbbbbb"\n---\nB.\n',
+    }), []);
+  });
+
+  it("still flags them when a blank fallback means a document does appear", async () => {
+    // The UUID is skipped but the blank entry succeeds, so two Scenes really
+    // would land in one folder under one name.
+    const warnings = await build({
+      "Scenes/A.md": '---\ntitle: Great Hall\nfoundry:\n  base:\n  - "Compendium.x.y.Scene.aaaaaaaaaaaaaaaa"\n  - "Scene"\n---\nA.\n',
+      "Scenes/B.md": '---\ntitle: Great Hall\nfoundry:\n  base:\n  - "Compendium.x.y.Scene.bbbbbbbbbbbbbbbb"\n  - "Scene"\n---\nB.\n',
+    });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /Scene named 'Great Hall'/);
+  });
+
   it("ignores pages that instantiate nothing", async () => {
     assert.deepEqual(await build({
       "NPCs/Bob.md": "---\ntitle: Robert Vane\n---\nNo foundry block.\n",

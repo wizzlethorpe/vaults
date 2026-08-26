@@ -129,16 +129,38 @@ function addBasenameKeys(
  * Checked across every page rather than per variant: the Foundry sync reads
  * one variant at the GM's tier, so pages of different roles still meet there.
  */
+/**
+ * Whether a `foundry.base` will actually produce a document.
+ *
+ * A blank-document entry always does. A UUID entry only does for an Actor or
+ * an Item: the Foundry module clones from a UUID only for those two (see
+ * CLONE_SUPPORTED_DOCS in foundry/scripts/instance.mjs) and skips anything
+ * else. So a page whose only entry is `Compendium.<pkg>.<pack>.Scene.<id>`
+ * creates nothing, and warning that it collides with another such page would
+ * be describing documents that never exist.
+ *
+ * All entries name the same type by the time this runs, so `docType` answers
+ * for the whole list.
+ */
+const UUID_CLONEABLE_DOC_TYPES = ["Actor", "Item"];
+
+function willInstantiate(specs: string[], docType: string): boolean {
+  if (UUID_CLONEABLE_DOC_TYPES.includes(docType)) return true;
+  return specs.some((spec) => !spec.includes("."));
+}
+
 function warnFoundryDocCollisions(pages: PageMeta[]): void {
   const seen = new Map<string, string>(); // key → first page path
   for (const p of pages) {
     const fo = p.frontmatter?.["foundry"];
     if (!fo || typeof fo !== "object" || Array.isArray(fo)) continue;
     const base = (fo as Record<string, unknown>)["base"];
-    const first = Array.isArray(base) ? base[0] : base;
-    if (typeof first !== "string" || !first) continue;
-    const docType = foundryBaseDocName(first);
+    const specs = (Array.isArray(base) ? base : [base])
+      .filter((x): x is string => typeof x === "string" && x.length > 0);
+    if (specs.length === 0) continue;
+    const docType = foundryBaseDocName(specs[0]!);
     if (!docType) continue;
+    if (!willInstantiate(specs, docType)) continue;
 
     const override = (fo as Record<string, unknown>)["folder"];
     const folder = typeof override === "string" && override.trim()
