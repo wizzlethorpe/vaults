@@ -247,6 +247,13 @@ the `/asset/<id>` descriptor and then downloads, returning the local path.
 Calling `downloadAsset` directly with a browser asset throws `Invalid
 BaseURL?`, because it wants the descriptor's `base_url` / `file_url` / `deps`.
 
+**Verified in a live world** against a 61,819-asset library: `pack_id` is the
+marketplace product id (`/marketplace/product/10612/...` is pack 10612, The
+MAD Cartographer's Badlands Map Pack), the index carries `url` as the
+filepath, and a reference resolves through to a real downloaded file. The
+prettified-name problem is visible in the raw data too — `steam-1.webm`
+indexes as "Steam 1 (webm)".
+
 Everything that imports a *document* is internal, reached through the module
 object but with no contract:
 
@@ -317,9 +324,29 @@ creator + pack + exact filename rather than an id.
 
 ### Open questions
 
-- **`pack_ref` stability.** It is what the marketplace links by, so it is the
-  most durable handle on offer, but whether it survives a catalogue rebuild is
-  still unconfirmed.
+- **Re-releases fragment a pack across `pack_ref`s.** Verified against a live
+  library: The MAD Cartographer alone has 204 packs there, and the same name
+  recurs under different refs with different contents ("Badlands Map Pack" at
+  10612 and 11951, "Modular Caverns" at 2050, 8507 and 11973). This is the
+  strongest argument for keying on `pack_ref`: matching on creator + pack
+  *name*, as the first draft did, is genuinely ambiguous between two packs a
+  reader may both own.
+
+  The cost is that a reference pins to one release. A reader who owns only the
+  newer ref will not resolve a reference written against the older one. It
+  degrades correctly (no background, rather than a broken path) but it does
+  degrade, and there is no more stable handle on offer short of a supported
+  `resolveAsset` from the Moulinette developers.
+
+- **Resolved paths carry a pack version** — a download lands in
+  `moulinette-v2/cloud/<creator>/<pack>-12.5.1/...`. Harmless because we
+  resolve at sync time rather than storing paths in the vault, so a new
+  version heals on the next sync. It would matter if we ever cached the
+  resolution.
+
+- **Moulinette itself is on borrowed time against Foundry v15.** Its
+  `file-manager.ts` reaches for the global `FilePicker`, deprecated in v13 and
+  slated for removal in v15. Not ours to fix, but it dates this integration.
 - **Talk to the Moulinette developers.** The API we need is one method away
   from being supported; a documented `resolveAsset(creator, pack, file)` would
   remove the last internal dependency. Worth asking rather than reverse
