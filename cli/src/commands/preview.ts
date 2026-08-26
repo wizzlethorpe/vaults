@@ -9,8 +9,6 @@ import { defaultOutputDir, requireInitialisedVault } from "../paths.js";
 interface PreviewOptions {
   output?: string;
   port?: number;
-  imageQuality?: number;
-  vaultName?: string;
 }
 
 const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
@@ -32,9 +30,6 @@ export async function preview(vaultPath: string, opts: PreviewOptions): Promise<
   const result = await buildSite({
     vaultPath,
     outputDir,
-    vaultName: opts.vaultName ?? "Vault",
-    imageQuality: opts.imageQuality ?? 85,
-    maxFileBytes: DEFAULT_MAX_BYTES,
   });
   const summary = Object.entries(result.perRolePageCount)
     .map(([role, n]) => `${role}: ${n}`)

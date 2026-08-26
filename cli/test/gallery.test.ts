@@ -65,6 +65,9 @@ describe("gallery image staging", () => {
     const out = join(dir, "_out");
     const files: Record<string, string> = {
       ".vaultrc.json": JSON.stringify({ roles: ["public"], rolePasswords: {} }),
+      // image_quality: 0 skips sharp — the fixture below is placeholder bytes,
+      // not a real webp encoding.
+      "settings.md": "---\nimage_quality: 0\n---\n",
       "index.md": "---\ntitle: Home\n---\n# Home\n\n```gallery\nattachments/map.webp | A Map\n```\n",
       // 1x1 webp is not needed; the staging path copies whatever bytes exist.
       "attachments/map.webp": "FAKE WEBP BYTES",
@@ -77,7 +80,7 @@ describe("gallery image staging", () => {
     const origLog = console.log, origWarn = console.warn;
     console.log = () => {}; console.warn = () => {};
     try {
-      await buildSite({ vaultPath: dir, outputDir: out, vaultName: "T", imageQuality: 0, maxFileBytes: 1 << 30 });
+      await buildSite({ vaultPath: dir, outputDir: out });
       const exists = await stat(join(out, "attachments/map.webp")).then(() => true, () => false);
       assert.equal(exists, true, "gallery-referenced image must ship to the deploy");
     } finally {

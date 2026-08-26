@@ -42,12 +42,16 @@ import { formatDuration, pMap, Progress } from "./util.js";
 export interface BuildOptions {
   vaultPath: string;
   outputDir: string;
-  vaultName: string;
-  imageQuality: number;
-  maxFileBytes: number;
   /** Show every page with warnings instead of truncating at 20. */
   allWarnings?: boolean;
 }
+
+/** BuildOptions plus the vault properties read out of settings.md. */
+type ResolvedOptions = BuildOptions & {
+  vaultName: string;
+  imageQuality: number;
+  maxFileBytes: number;
+};
 
 export interface BuildResult {
   /** All roles built, in low → high order. */
@@ -74,27 +78,33 @@ export interface BuildResult {
  * Single-role builds (the default `public`-only case) collapse
  * `_variants/public/...` up to the root.
  */
-export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
+export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   const start = Date.now();
   const concurrency = Math.max(2, availableParallelism());
 
   // Run any pending schema / layout migrations before reading anything
   // else. The framework is idempotent: already-migrated vaults pay only
   // the cost of a few stat() calls. See cli/src/migrate/.
-  await runMigrations(opts.vaultPath);
+  await runMigrations(input.vaultPath);
 
   // ── Settings (user-editable) ─────────────────────────────────────────────
-  const settings = await loadSettings(opts.vaultPath);
+  const settings = await loadSettings(input.vaultPath);
   for (const w of settings.warnings) console.warn(`  ${w}`);
   if (settings.exists && settings.changed) {
-    await writeSettings(opts.vaultPath, settings.values);
+    await writeSettings(input.vaultPath, settings.values);
     console.log(`  rewrote ${SETTINGS_FILE} to canonical format`);
   }
-  opts = {
-    ...opts,
-    vaultName: opts.vaultName === "Vault" ? settings.values.vault_name : opts.vaultName,
-    imageQuality: opts.imageQuality === 85 ? settings.values.image_quality : opts.imageQuality,
-    maxFileBytes: opts.maxFileBytes === 25 * 1024 * 1024 ? settings.values.max_file_bytes : opts.maxFileBytes,
+  // settings.md is the single source of truth for vault properties (see the
+  // SCHEMA in settings.ts). These used to also be CLI flags, with "was the
+  // flag passed?" inferred by comparing against the flag's default — and the
+  // defaults matched the schema's, so `build -q 85` against an
+  // `image_quality: 40` vault silently produced 40. The flags are gone; the
+  // vault decides.
+  let opts: ResolvedOptions = {
+    ...input,
+    vaultName: settings.values.vault_name,
+    imageQuality: settings.values.image_quality,
+    maxFileBytes: settings.values.max_file_bytes,
   };
 
   // ── Custom handlers ──────────────────────────────────────────────────────

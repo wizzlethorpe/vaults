@@ -3,7 +3,7 @@
   "private": true,
   "description": "Monorepo: vaults CLI, Foundry VTT module, foundry-module compiler, and landing-site vault.",
   "scripts": {
-    "typecheck": "pnpm -r exec tsc --noEmit",
+    "typecheck": "pnpm -r exec tsc --noEmit && pnpm --filter @wizzlethorpe/vaults run typecheck:test",
     "test": "pnpm -r --if-present test && pnpm run test:foundry",
     "test:foundry": "node --test \"foundry/test/**/*.test.mjs\"",
     "build:cli": "pnpm --filter @wizzlethorpe/vaults run build",

@@ -36,9 +36,6 @@ async function build(v: Vault): Promise<void> {
     await buildSite({
       vaultPath: v.dir,
       outputDir: v.out,
-      vaultName: "Test",
-      imageQuality: 0,
-      maxFileBytes: 1 << 30,
     });
   } finally {
     console.log = origLog;

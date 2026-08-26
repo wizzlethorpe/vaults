@@ -11,8 +11,6 @@ import { escapeRegex } from "../escape.js";
 
 interface PushOptions {
   projectName?: string;
-  imageQuality?: number;
-  vaultName?: string;
   dryRun?: boolean;
   rotateSecret?: boolean;
   allWarnings?: boolean;
@@ -23,19 +21,14 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
   await runMigrations(vaultPath);
   const cfg = await loadConfig(vaultPath, {
     ...(opts.projectName ? { projectName: opts.projectName } : {}),
-    ...(opts.imageQuality != null ? { imageQuality: opts.imageQuality } : {}),
   });
 
-  const vaultName = opts.vaultName ?? "Vault";
   const outputDir = defaultOutputDir(vaultPath);
 
   console.log(`Building site from ${vaultPath}...`);
   const result = await buildSite({
     vaultPath,
     outputDir,
-    vaultName,
-    imageQuality: cfg.imageQuality,
-    maxFileBytes: cfg.maxFileBytes,
     allWarnings: opts.allWarnings,
   });
   const summary = Object.entries(result.perRolePageCount)

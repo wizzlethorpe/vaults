@@ -21,6 +21,13 @@ interface Vault { dir: string; out: string; }
 
 /** Build a temp vault from a path → contents map; caller must `cleanup`. */
 async function setupVault(files: Record<string, string | Buffer>): Promise<Vault> {
+  // settings.md is the source of truth for vault properties, so a test vault
+  // configures itself the way a user would. image_quality: 0 skips sharp,
+  // which these fixtures need: their "images" are placeholder bytes, not real
+  // encodings. Exercising the compression path wants real fixtures instead.
+  if (!("settings.md" in files)) {
+    files = { "settings.md": "---\nimage_quality: 0\n---\n", ...files };
+  }
   const dir = await mkdtemp(join(tmpdir(), "vault-role-"));
   const out = join(dir, "_out");
   for (const [path, content] of Object.entries(files)) {
@@ -48,11 +55,8 @@ async function build(v: Vault): Promise<void> {
     await buildSite({
       vaultPath: v.dir,
       outputDir: v.out,
-      vaultName: "Test",
       // 0 disables image compression; the test vaults below ship no images
       // anyway, but this also skips an unrelated sharp warm-up cost.
-      imageQuality: 0,
-      maxFileBytes: 1 << 30,
     });
   } finally {
     console.log = origLog;

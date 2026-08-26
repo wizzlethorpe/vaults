@@ -21,10 +21,6 @@ import type { OidcRoleRule } from "./render/oidc-match.js";
 export interface VaultConfig {
   /** Cloudflare Pages project name (used for `wrangler pages deploy`). */
   projectName?: string;
-  /** Image compression quality (1-100). Set 0 to disable conversion. */
-  imageQuality: number;
-  /** Hard cap on file size (bytes). Files above this are skipped with a warning. */
-  maxFileBytes: number;
   /**
    * Hex-encoded HMAC key used to sign session cookies. Generated on first
    * multi-role push. Stored in `.env` as SESSION_SECRET; surfaced here for
@@ -83,8 +79,6 @@ export interface OidcConfig {
 }
 
 const DEFAULT_CONFIG: VaultConfig = {
-  imageQuality: 85,
-  maxFileBytes: 25 * 1024 * 1024,
   roles: ["public"],
   rolePasswords: {},
 };

@@ -183,8 +183,6 @@ program
   .description("Render the vault to a local output directory")
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .option("-o, --output <dir>", "Output directory (default: <vault>/.vaults/cache/rendered)")
-  .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
-  .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
   .option("--all-warnings", "Print every page with warnings instead of truncating at 20")
   .action(wrap(build));
 
@@ -194,8 +192,6 @@ program
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .option("-o, --output <dir>", "Output directory (default: <vault>/.vaults/cache/rendered)")
   .option("-p, --port <n>", "Port for the preview server", (v) => parseInt(v, 10), 4173)
-  .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
-  .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
   .action(wrap(preview));
 
 program
@@ -232,8 +228,6 @@ program
   .description("Render and deploy the vault to Cloudflare Pages")
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .option("-p, --project-name <name>", "Cloudflare Pages project name")
-  .option("-q, --image-quality <n>", "WebP image quality (0 = no compression)", (v) => parseInt(v, 10))
-  .option("-n, --vault-name <name>", "Display name for the vault", "Vault")
   .option("--dry-run", "Render without deploying")
   .option("--rotate-secret", "Generate a fresh SESSION_SECRET, invalidating all issued tokens")
   .option("--all-warnings", "Print every page with warnings instead of truncating at 20")

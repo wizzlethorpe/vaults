@@ -200,9 +200,6 @@ describe("legacy vault builds after auto-migration", () => {
         await buildSite({
           vaultPath: v.dir,
           outputDir: join(v.dir, "_out"),
-          vaultName: "Legacy",
-          imageQuality: 0,
-          maxFileBytes: 1 << 30,
         });
       } finally {
         console.log = origLog;
