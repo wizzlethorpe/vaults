@@ -1109,11 +1109,15 @@ export function renderLoginPage(opts: {
       + `  </form>`;
   }
 
+  // Replacer *functions*, not strings: a string replacement interprets `$&`
+  // and friends, and oidcDisplayName is free text, so a provider named
+  // "Acme $& Co" would splice the placeholder back into the page.
+  const literal = (value: string) => () => value;
   return LOGIN_HTML
-    .replace("__PASSWORD_FORM__", form)
-    .replace("__PATREON_ROLES_ATTR__", patreonRoles.length > 0
-      ? ` data-patreon-roles="${htmlAttr(patreonRoles.join(","))}"` : "")
-    .replace("__OIDC_ATTR__", oidcDisplayName ? ` data-oidc="${htmlAttr(oidcDisplayName)}"` : "");
+    .replace("__PASSWORD_FORM__", literal(form))
+    .replace("__PATREON_ROLES_ATTR__", literal(patreonRoles.length > 0
+      ? ` data-patreon-roles="${htmlAttr(patreonRoles.join(","))}"` : ""))
+    .replace("__OIDC_ATTR__", literal(oidcDisplayName ? ` data-oidc="${htmlAttr(oidcDisplayName)}"` : ""));
 }
 
 const LOGIN_HTML = `<!doctype html>

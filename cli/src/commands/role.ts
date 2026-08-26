@@ -127,7 +127,11 @@ async function readPassword(opts: { allowEmpty?: boolean } = {}): Promise<string
     const pw = lines[0] ?? "";
     const confirm = lines[1] ?? "";
     if (!pw) {
-      if (opts.allowEmpty) return "";
+      // Only an entirely empty answer means "skip". A blank first line with
+      // something on the second is a malformed script (a stray leading
+      // newline), and silently skipping the password there would leave the
+      // role unreachable without saying so.
+      if (opts.allowEmpty && !confirm) return "";
       throw new Error("Empty password.");
     }
     if (pw !== confirm) throw new Error("Passwords don't match.");

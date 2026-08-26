@@ -71,6 +71,19 @@ describe("login page", () => {
     assert.match(html, /data-oidc="LMU"/);
   });
 
+  it("treats a display name containing $& literally", () => {
+    // String replacements interpret $& as "the matched text", so a naive
+    // .replace() would splice the __OIDC_ATTR__ placeholder back into the
+    // page. displayName is free text, so this is reachable.
+    const html = renderLoginPage({
+      passwordRoles: [],
+      patreonRoles: [],
+      oidcDisplayName: "Acme $& Co",
+    });
+    assert.doesNotMatch(html, /__OIDC_ATTR__/);
+    assert.match(html, /data-oidc="Acme \$&amp; Co"/);
+  });
+
   it("escapes a provider display name into the attribute", () => {
     // displayName is free text, unlike role names, so it can carry quotes.
     const html = renderLoginPage({
