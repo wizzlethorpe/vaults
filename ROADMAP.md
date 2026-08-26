@@ -140,6 +140,169 @@ Roughly 900 of 4,220 lines are already pure, and they are precisely the lines vf
 
 Blockers to plan for: the two id schemes are incompatible, so unifying forces a `forceFull` re-sync and orphans documents in existing worlds; `links.mjs` uses DOM (`createDocumentFragment`), free in a browser and needing a shim in Node; and vfmc covers 3 document types against the module's 8, so consolidation forces that reconciliation.
 
+## 6. Composing an adventure from other creators' content
+
+The goal: publish an adventure that uses The MAD Cartographer's maps, James
+RPG Art's scenes and Michael Ghelfi's ambience, where **the vault never
+contains any of it**. Each reader gets whatever their own subscriptions
+entitle them to, and the licensing question stays between them and the
+creator. Same principle as `foundry.base` already: ship a pointer and a diff,
+never a pixel. It is also why baking content into a distributable module was
+such a poor fit (see section 4) — the moment the artifact carries the
+content, you are redistributing it.
+
+### Most of this works today, or nearly
+
+Creators like The MAD Cartographer and Forgotten Adventures ship real Foundry
+modules with compendium packs, so their content is addressable by ordinary
+UUID and needs nothing new:
+
+```
+Compendium.mad-modcaverns.mad-modcaverns-maps.Scene.DiQAiq8wUMRGevDg
+Compendium.fa-battlemaps.maps.Scene.0M8gKipOIXQMqdEz
+```
+
+One real vault has 65 Scene packs indexed, 2,099 scenes between them. The
+priority list added in the `foundry.base` work is exactly the "use it if the
+reader owns it" mechanism.
+
+**The only blocker is ours.** `CLONE_SUPPORTED_DOCS` in instance.mjs is
+`{Actor, Item}`, so a Scene UUID is skipped with "clone-from-UUID only
+supports Actor, Item". Widening it — Scene, RollTable, Playlist, Cards —
+turns those 2,099 scenes into valid bases. Contained change, highest value
+per line of anything in this file.
+
+### Moulinette: research
+
+Creators often distribute through both channels, so Moulinette is not an
+alternative to compendium UUIDs, it is another rung on the same ladder:
+
+```yaml
+foundry:
+  base:
+    - Compendium.mad-modcaverns.mad-modcaverns-maps.Scene.DiQAiq8wUMRGevDg  # owns the module
+    - "@moulinette/map/The MAD Cartographer/Modular Caverns/cavern_01.webp"  # via Moulinette
+    - Scene                                                                  # neither
+  data:
+    grid: { size: 140 }        # the overlay applies at every rung
+```
+
+Note the ladder degrades in **fidelity**, not just availability: a compendium
+Scene clone brings walls, lighting and sounds; a Moulinette `Map` is an
+image, so you get a background and whatever `foundry.data` supplies.
+
+**Asset types** (numeric enum in the module bundle):
+
+```
+1 Scene   2 Map   3 Image   5 Actor   6 Item
+7 Audio   8 JournalEntry   9 Playlist   10 Macro   98 ScenePacker
+```
+
+**Supported vs internal.** `game.modules.get("moulinette").api` has exactly
+two methods, `searchUI()` and `searchAssets(terms, type)`, and searchAssets
+accepts only Image (3), Audio (7) and Map (2). It searches `mou-cloud-cached`,
+`mou-local`, `mou-gameicons` and `mou-bbc-sounds` — **only what the user can
+actually access**, which is entitlement-awareness for free.
+
+Everything that imports a *document* is internal, reached through the module
+object but with no contract:
+
+```
+collections.find(c => c.getId() == "<collection-id>").fromDropData(assetId, data)
+  → cloudclient.apiGET(`/asset/${assetId}`)      // descriptor
+  → downloadAsset(descriptor)                     // fetches the JSON
+  → utils.foundry.importActor(JSON.parse(...), folder, false)
+```
+
+Collection ids: `mou-cloud`, `mou-cloud-cached`, `mou-cloud-private`,
+`mou-compendiums`, `mou-local`, `mou-gameicons`, `mou-bbc-sounds`,
+`mou-fontawesome`. `getSessionId()` is published on the module object.
+
+**Three findings that shaped the scope:**
+
+- Moulinette asset ids are **integers**. `/asset/9` returns a descriptor;
+  `/asset/0` returns 404 and throws.
+- An imported document's `_stats.compendiumSource` does **not** carry one. It
+  records a product label like
+  `Compendium.the-fluffy-folio-volume-01.the-fluffy-folio-vol-01.9c3saETmlSzvyINU`
+  which does not resolve — no such pack is installed. It is also the legacy
+  4-segment UUID form, which breaks doc-type derivation (second-to-last
+  segment is the pack name, not a type).
+- **A malformed id fails silently and dangerously.** Asking for
+  `/asset/9c3saETmlSzvyINU` returned asset `9` — the server truncated at the
+  first non-digit and handed back an unrelated audio track from a different
+  creator. A reference that is wrong-but-digit-leading imports someone else's
+  content rather than erroring.
+
+That last point is why cloud **documents** are out of scope: a feature whose
+failure mode is "quietly inserts the wrong content into your world" is worse
+than no feature. Maps, images and audio avoid it entirely by being matched on
+creator + pack + exact filename rather than an id.
+
+### Scope
+
+1. **Widen `CLONE_SUPPORTED_DOCS`.** No Moulinette involved; unlocks the
+   compendium half immediately.
+2. **`@moulinette/<type>/<creator>/<pack>/<file>` as a priority-list rung**,
+   resolved through `api.searchAssets` with an exact creator + pack +
+   filename match, falling through on no match. Covers Map, Image, Audio.
+   One internal dependency remains — `downloadAsset`, because the local
+   `moulinette-v2/cloud/...` path is a download cache, not an entitlement
+   marker, so an entitled user who has not downloaded yet has no local file.
+3. **Not doing:** cloud documents (`Scene 1`, `Actor 5`, `Item 6`, …) via
+   `fromDropData`.
+
+### Open questions
+
+- **Id stability.** Unknown whether a Moulinette asset id survives a
+  catalogue reindex. Matching by name sidesteps it, but it is worth asking.
+- **Talk to the Moulinette developers.** The API we need is one method away
+  from being supported; a documented `resolveAsset(creator, pack, file)` would
+  remove the last internal dependency. Worth asking rather than reverse
+  engineering a minified bundle forever.
+- **The reverse direction.** How would a vault creator publish *their* assets
+  *into* Moulinette, so a vault becomes a Moulinette-visible source? That
+  inverts the integration and is a much larger question — it touches
+  discovery, which is the part of Moulinette's product that a decentralised
+  publishing model does not replace (see the note in section 7).
+
+## 7. Vaults as decentralised distribution
+
+An idea worth recording: vaults already has most of what a content
+marketplace sells.
+
+| Moulinette provides | vaults already has |
+|---|---|
+| Entitlement checking | Patreon/OIDC role gating, enforced by the middleware |
+| Per-user access to creator content | Role variants, one deploy per creator |
+| A client that pulls content into Foundry | The Foundry module, incremental sync |
+| Auth for that client | `/connect` bearer tokens, per vault |
+| Multiple creators in one world | Multi-vault registration (`listVaults()`) |
+
+There is an argument this is *structurally better* for entitlement: gating
+happens at the creator's own origin, so a non-subscriber is not filtered by a
+client module they could patch — the premium files are simply not in the
+variant the server returns.
+
+What is missing:
+
+- **Cross-vault addressing.** No way to say "this page's ambience lives in
+  vault X". The hard part is identity: vault ids derive from the URL, so a
+  creator changing domains would break every reference. A stable creator id
+  independent of hosting is painful to retrofit and should be settled early.
+- **Dependency declaration**, so vault A can tell the module "I use vault B
+  at URL X" and offer to register it.
+- **A catalogue.** This is the real gap and it is not technical. Moulinette's
+  actual product is search across creators; decentralised publishing gives
+  distribution and entitlement but no discovery. Building an index
+  recentralises exactly the part that matters.
+- **Hosting economics.** Cloudflare Pages caps a deploy at 20,000 files (the
+  reason the MCP prototype was dropped), and each creator carries their own
+  bandwidth. Fine for a rules vault, a real constraint for an asset library.
+
+So: aim to be the publishing substrate something else can index over, rather
+than the storefront.
+
 ## Near-term work
 
 1. **Preflight for missing compendiums.** The manifest carries every `foundry.base`, so one pass before syncing can collect the distinct `Compendium.<pkg>` prefixes, check `game.modules` / `game.system`, and say "this vault needs dnd5e, which is not installed" once instead of failing per page. Note this is a **distribution** concern: every base in every one of our own vaults resolves against the installed module set, so it never fires locally. It matters when someone else installs a vault.

@@ -132,21 +132,19 @@ function addBasenameKeys(
 /**
  * Whether a `foundry.base` will actually produce a document.
  *
- * A blank-document entry always does. A UUID entry only does for an Actor or
- * an Item: the Foundry module clones from a UUID only for those two (see
- * CLONE_SUPPORTED_DOCS in foundry/scripts/instance.mjs) and skips anything
- * else. So a page whose only entry is `Compendium.<pkg>.<pack>.Scene.<id>`
- * creates nothing, and warning that it collides with another such page would
- * be describing documents that never exist.
+ * Both forms do, for every type vaults can instantiate. This used to be
+ * narrower — the module cloned from a UUID only for Actor and Item, so a lone
+ * `Compendium.<pkg>.<pack>.Scene.<id>` created nothing and warning about a
+ * collision would have described documents that never exist. That restriction
+ * is gone (map packs ship their content as compendium Scenes, and those were
+ * all being skipped), so a well-formed base always produces a document and
+ * the only question left is whether the type is one we recognise.
  *
  * All entries name the same type by the time this runs, so `docType` answers
  * for the whole list.
  */
-const UUID_CLONEABLE_DOC_TYPES = ["Actor", "Item"];
-
-function willInstantiate(specs: string[], docType: string): boolean {
-  if (UUID_CLONEABLE_DOC_TYPES.includes(docType)) return true;
-  return specs.some((spec) => !spec.includes("."));
+function willInstantiate(_specs: string[], docType: string): boolean {
+  return canonicalFoundryType(docType) !== null;
 }
 
 function warnFoundryDocCollisions(pages: PageMeta[]): void {

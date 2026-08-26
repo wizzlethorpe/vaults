@@ -22,9 +22,16 @@ const DESCRIPTION_FIELDS = {
   },
 };
 
-// Document types supported by `foundry.base: <UUID>` (clone-from-template).
-// Cloning needs a description-embed path, so this stays the narrow set.
-const CLONE_SUPPORTED_DOCS = new Set(["Actor", "Item"]);
+// Cloning from a UUID is supported for every type vaults can instantiate —
+// the same set as the blank-document form, because the real constraint is
+// identical: the type needs a world collection to be created in.
+//
+// This was `{Actor, Item}` on the grounds that "cloning needs a
+// description-embed path". It does not: buildOverlay already skips the embed
+// silently when DESCRIPTION_FIELDS has no entry (that is the documented
+// behaviour for an unsupported *system*), and the clone happens regardless.
+// The narrower set only blocked the useful cases — most map packs ship their
+// content as compendium Scenes, and those were all being skipped.
 
 
 // Where each blank-supported doc lives in the world. Looked up lazily so a
@@ -253,8 +260,8 @@ async function resolveBase(candidates, vaultPath) {
     }
     const template = await safeFromUuid(parsed.uuid);
     if (!template) { tried.push(`${parsed.uuid} — did not resolve`); continue; }
-    if (!CLONE_SUPPORTED_DOCS.has(template.documentName)) {
-      tried.push(`${parsed.uuid} — is a ${template.documentName}; clone supports ${[...CLONE_SUPPORTED_DOCS].join(", ")}`);
+    if (!BLANK_DOC_TYPES.includes(template.documentName)) {
+      tried.push(`${parsed.uuid} — is a ${template.documentName}; vaults can instantiate ${BLANK_DOC_TYPES.join(", ")}`);
       continue;
     }
     // toObject() works on both compendium-loaded and world docs; pack-locking

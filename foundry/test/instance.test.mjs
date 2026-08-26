@@ -133,3 +133,28 @@ test("a list is only stranded when every pack is unreachable", async () => {
       "the system pack answers, so nothing is stranded");
   });
 });
+
+// ── clone-from-UUID coverage ─────────────────────────────────────────────
+
+test("every instantiable type can be cloned from a UUID, not just Actor and Item", async () => {
+  // Cloning was restricted to {Actor, Item} on the grounds that it needed a
+  // description-embed path. It does not — buildOverlay skips the embed
+  // silently when DESCRIPTION_FIELDS has no entry for the type, which is
+  // already the documented behaviour for an unsupported system. The
+  // restriction only blocked the useful cases: map packs ship their content
+  // as compendium Scenes, so every one of them was skipped.
+  const { BLANK_DOC_TYPES } = await import("../scripts/foundry-base.mjs");
+  for (const t of ["Actor", "Item", "Scene", "RollTable", "Playlist", "Cards", "Macro", "JournalEntry"]) {
+    assert.ok(BLANK_DOC_TYPES.includes(t), `${t} must be instantiable`);
+  }
+});
+
+test("a compendium Scene UUID reads as a Scene", async () => {
+  // The shape that matters for composing an adventure from map packs.
+  const { docNameFromBase } = await import("../scripts/foundry-base.mjs");
+  assert.equal(
+    docNameFromBase("Compendium.mad-modcaverns.mad-modcaverns-maps.Scene.DiQAiq8wUMRGevDg"),
+    "Scene",
+  );
+  assert.equal(docNameFromBase("Compendium.fa-battlemaps.maps.Scene.0M8gKipOIXQMqdEz"), "Scene");
+});

@@ -74,25 +74,26 @@ describe("duplicate Foundry documents", () => {
     }), []);
   });
 
-  it("ignores a UUID base for a type the module cannot clone", async () => {
-    // instance.mjs clones from a UUID only for Actor and Item; a Scene UUID
-    // is skipped and no document is made, so a collision here would describe
-    // documents that never exist.
-    assert.deepEqual(await build({
+  it("catches two Scene UUID bases colliding", async () => {
+    // Cloning from a UUID used to be Actor/Item only, so this pair created
+    // nothing and was deliberately not reported. Scenes are cloneable now —
+    // which is the point, since map packs ship their content as compendium
+    // Scenes — so two of them really would land in one folder under one name.
+    const warnings = await build({
       "Scenes/A.md": '---\ntitle: Great Hall\nfoundry:\n  base: "Compendium.x.y.Scene.aaaaaaaaaaaaaaaa"\n---\nA.\n',
       "Scenes/B.md": '---\ntitle: Great Hall\nfoundry:\n  base: "Compendium.x.y.Scene.bbbbbbbbbbbbbbbb"\n---\nB.\n',
-    }), []);
-  });
-
-  it("still flags them when a blank fallback means a document does appear", async () => {
-    // The UUID is skipped but the blank entry succeeds, so two Scenes really
-    // would land in one folder under one name.
-    const warnings = await build({
-      "Scenes/A.md": '---\ntitle: Great Hall\nfoundry:\n  base:\n  - "Compendium.x.y.Scene.aaaaaaaaaaaaaaaa"\n  - "Scene"\n---\nA.\n',
-      "Scenes/B.md": '---\ntitle: Great Hall\nfoundry:\n  base:\n  - "Compendium.x.y.Scene.bbbbbbbbbbbbbbbb"\n  - "Scene"\n---\nB.\n',
     });
     assert.equal(warnings.length, 1);
     assert.match(warnings[0]!, /Scene named 'Great Hall'/);
+  });
+
+  it("ignores a base naming a type vaults cannot instantiate", async () => {
+    // Foundry may resolve a Combat UUID, but vaults has no world collection
+    // for it, so no document is created and a collision is not a thing.
+    assert.deepEqual(await build({
+      "Things/A.md": '---\ntitle: Skirmish\nfoundry:\n  base: "Compendium.x.y.Combat.aaaaaaaaaaaaaaaa"\n---\nA.\n',
+      "Things/B.md": '---\ntitle: Skirmish\nfoundry:\n  base: "Compendium.x.y.Combat.bbbbbbbbbbbbbbbb"\n---\nB.\n',
+    }), []);
   });
 
   it("ignores pages that instantiate nothing", async () => {
