@@ -10,7 +10,7 @@ import { entryId, pageId, instanceId, folderId, subdocId, folderOfPath } from ".
 import { localFileUrl } from "./media.mjs";
 import { MODULE_ID } from "./settings.mjs";
 import { BLANK_DOC_TYPES, docNameOf, parseFoundryBase } from "./foundry-base.mjs";
-import { resolveMoulinetteRefs } from "./moulinette.mjs";
+import { resolveMoulinetteDocument, resolveMoulinetteRefs } from "./moulinette.mjs";
 
 // Where the rendered article HTML lands inside each system's document, keyed
 // by (game.system.id, document name). Missing entries still create the clone;
@@ -102,8 +102,12 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
   // Two reasons: the existing-document check can then happen before any
   // fromUuid, so an update still works when the template's package is gone;
   // and links.mjs has to reach the same answer statically for wikilinks.
-  const docNames = new Set(candidates.map(docNameOf));
-  const docName = candidates.length > 0 ? docNameOf(candidates[0]) : null;
+  const docNames = new Set(candidates.map(docNameOf).filter(Boolean));
+  // The first candidate that *names* a type. A Moulinette rung names none —
+  // only the reader's index knows what one of those is, and the CLI has to
+  // reach the same answer with no lookup — so the type comes from a later
+  // rung, which the CLI guarantees exists.
+  const docName = [...docNames][0] ?? null;
   if (!docName) {
     console.warn(`Vaults | foundry.base: ${vaultPath} → could not read a document type from ${JSON.stringify(fm.base)}. Skipping.`);
     return { ok: false, reason: "unparseable" };
@@ -265,6 +269,26 @@ async function resolveBase(candidates, vaultPath) {
         );
       }
       return { data: parsed.subtype ? { type: parsed.subtype } : {}, from: null };
+    }
+    if (parsed.kind === "moulinette") {
+      // Document data, not a path: a Moulinette Scene is a template the same
+      // way a compendium Scene is. Slow, because the download brings the
+      // scene's map, tiles and ambience with it.
+      const data = await resolveMoulinetteDocument(
+        parsed.ref,
+        (msg) => console.warn(`Vaults | moulinette: ${vaultPath}: ${msg}`),
+      );
+      if (!data) { tried.push(`@moulinette/${parsed.ref} — did not resolve`); continue; }
+      delete data._id;
+      // No compendiumSource: the document came from the reader's Moulinette
+      // library, and there is no UUID in this world that names it.
+      if (tried.length > 0) {
+        console.info(
+          `Vaults | foundry.base: ${vaultPath} → using @moulinette/${parsed.ref}; `
+          + `earlier candidate(s) skipped:\n  ` + tried.join("\n  "),
+        );
+      }
+      return { data, from: `@moulinette/${parsed.ref}` };
     }
     const template = await safeFromUuid(parsed.uuid);
     if (!template) { tried.push(`${parsed.uuid} — did not resolve`); continue; }

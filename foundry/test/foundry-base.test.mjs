@@ -32,10 +32,20 @@ export const CASES = [
   ["Actor.abc1234567890123", "Actor"],
   // Embedded UUID: still second-to-last.
   ["Actor.abc1234567890123.Item.def4567890123456", "Item"],
-  // Priority list: the first entry answers for the page. importer.mjs used to
-  // return null for any array, so the "Open in Foundry" link vanished.
+  // Priority list: the first entry that *names* a type answers for the page.
+  // importer.mjs used to return null for any array, so the "Open in Foundry"
+  // link vanished.
   [["Compendium.a.b.Actor.cccccccccccccccc", "Actor:npc"], "Actor"],
   [["Actor:npc"], "Actor"],
+  // A Moulinette reference names no type on its own: only the reader's index
+  // knows what that asset is, and this has to answer at build time too. Its
+  // file segment ends in ".json", so the UUID rule would otherwise claim it
+  // and report the type as "scene" from the directory name.
+  ["@moulinette/11938/json/scene/05-boar-s-tears-day.json", null],
+  ["@moulinette/", null],
+  // So the type comes from a later rung — which is also the entry that makes
+  // the page work for a reader without the pack.
+  [["@moulinette/11938/json/scene/05-boar-s-tears-day.json", "Scene"], "Scene"],
   // Not a base at all.
   ["", null],
   [null, null],

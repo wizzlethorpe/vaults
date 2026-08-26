@@ -44,6 +44,12 @@ function canonicalType(raw) {
  */
 export function parseFoundryBase(spec) {
   if (typeof spec !== "string" || !spec) return null;
+  // Checked before the UUID rule: a Moulinette reference contains dots (its
+  // file segment ends in .json), so the dot test would claim it as a UUID.
+  if (spec.startsWith("@moulinette/")) {
+    const ref = spec.slice("@moulinette/".length);
+    return ref ? { kind: "moulinette", ref } : null;
+  }
   if (spec.includes(".")) return { kind: "uuid", uuid: spec };
   const [typeRaw, subtype] = spec.split(":");
   const docName = canonicalType(typeRaw);
@@ -60,6 +66,12 @@ export function parseFoundryBase(spec) {
 export function docNameOf(parsed) {
   if (!parsed) return null;
   if (parsed.kind === "blank") return parsed.docName;
+  // A Moulinette reference names no type. Its path happens to read
+  // `json/scene/...`, but that is one creator's export convention, not a
+  // contract, and the type is only knowable by looking the asset up in the
+  // reader's index — which the CLI, where this also runs, cannot do. The
+  // type comes from another rung instead; see docNameFromBase.
+  if (parsed.kind === "moulinette") return null;
   const parts = parsed.uuid.split(".");
   if (parts.length < 2) return null;
   // Canonicalise so a hand-typed `actor.abc…` agrees with `Actor:npc`; fall
@@ -75,6 +87,14 @@ export function docNameOf(parsed) {
  * rejects a mixed one), so its first entry answers for the page.
  */
 export function docNameFromBase(base) {
-  const first = Array.isArray(base) ? base[0] : base;
-  return docNameOf(parseFoundryBase(first));
+  const specs = Array.isArray(base) ? base : [base];
+  // The first entry that *names* a type, not simply the first entry. A
+  // Moulinette rung names none, so a list led by one would otherwise report
+  // no type and drop the whole base. The CLI rejects a list whose entries
+  // disagree, so the first answer is the only answer.
+  for (const spec of specs) {
+    const docName = docNameOf(parseFoundryBase(spec));
+    if (docName) return docName;
+  }
+  return null;
 }

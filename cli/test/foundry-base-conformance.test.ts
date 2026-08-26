@@ -19,12 +19,17 @@ describe("foundry.base doc-type conformance", () => {
   it("matches the Foundry module on every case", () => {
     const mismatches: string[] = [];
     for (const [input, expected] of CASES) {
-      // The CLI's helper takes a single spec; a list is answered by its first
-      // entry, which is the rule build.ts applies when validating one.
-      const spec = Array.isArray(input) ? input[0] : input;
-      const actual = typeof spec === "string" && spec.length > 0
-        ? foundryBaseDocName(spec)
-        : null;
+      // The CLI's helper takes a single spec; a list is answered by the first
+      // entry that names a type, which is the rule build.ts applies when
+      // validating one. Not simply the first entry: a Moulinette rung names
+      // none, and a list led by one still has a type further down.
+      const specs = Array.isArray(input) ? input : [input];
+      let actual: string | null = null;
+      for (const spec of specs) {
+        if (typeof spec !== "string" || spec.length === 0) continue;
+        const docName = foundryBaseDocName(spec);
+        if (docName) { actual = docName; break; }
+      }
       if (actual !== expected) {
         mismatches.push(`${JSON.stringify(input)}: cli=${JSON.stringify(actual)} module=${JSON.stringify(expected)}`);
       }

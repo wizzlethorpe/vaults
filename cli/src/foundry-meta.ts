@@ -71,6 +71,11 @@ export function warnFoundryDocCollisions(pages: PageMeta[]): void {
  * both sides agree on where a wikilink to the page points.
  */
 export function foundryBaseDocName(spec: string): string | null {
+  // A Moulinette reference names no type. Checked before the UUID rule
+  // because its file segment ends in ".json", which the dot test would
+  // otherwise read as a UUID. The type comes from another entry in the list;
+  // normalizeFoundryBase makes sure one is there.
+  if (spec.startsWith("@moulinette/")) return null;
   if (spec.includes(".")) {
     const parts = spec.split(".");
     if (parts.length < 2) return null;
@@ -140,12 +145,24 @@ function normalizeFoundryBase(base: unknown, pagePath: string): string | string[
 
   const types = new Map<string, string>(); // docName → first spec that named it
   for (const spec of specs) {
+    // A Moulinette entry is deliberately typeless: only the reader's own
+    // library knows whether that asset is a Scene or an Actor, and this runs
+    // at build time with no library to ask.
+    if (spec.startsWith("@moulinette/")) continue;
     const docName = foundryBaseDocName(spec);
     if (!docName) {
       console.warn(`  ${pagePath}: foundry.base entry "${spec}" names no document type; ignoring foundry.base.`);
       return null;
     }
     if (!types.has(docName)) types.set(docName, spec);
+  }
+  if (types.size === 0) {
+    console.warn(
+      `  ${pagePath}: foundry.base names only Moulinette references, which carry no document `
+      + `type. Add an entry naming the type (e.g. "Scene") — it is also what the page falls `
+      + `back to for a reader without that pack. Ignoring foundry.base.`,
+    );
+    return null;
   }
   if (types.size > 1) {
     const detail = [...types].map(([t, spec]) => `${t} (from "${spec}")`).join(", ");
@@ -159,7 +176,7 @@ function normalizeFoundryBase(base: unknown, pagePath: string): string | string[
   // A list whose last entry is a UUID can still fail on a world that lacks
   // every package named. A blank-doc tail is what makes the chain total.
   const last = specs[specs.length - 1]!;
-  if (specs.length > 1 && last.includes(".")) {
+  if (specs.length > 1 && (last.includes(".") || last.startsWith("@moulinette/"))) {
     console.warn(
       `  ${pagePath}: foundry.base list ends with "${last}", so it can still resolve to nothing. `
       + `End with a blank-document entry (e.g. "${[...types.keys()][0]}:npc" or "${[...types.keys()][0]}") `

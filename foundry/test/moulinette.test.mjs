@@ -16,7 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseMoulinetteRef, resolveMoulinetteRefs } from "../scripts/moulinette.mjs";
+import { parseMoulinetteRef, resolveMoulinetteDocument, resolveMoulinetteRefs } from "../scripts/moulinette.mjs";
 
 test("parses a reference into pack_ref and filepath", () => {
   assert.deepEqual(parseMoulinetteRef("@moulinette/10698/scenes/abandoned-mine-entrance.webp"), {
@@ -41,6 +41,8 @@ test("rejects what it cannot act on", () => {
 async function withMoulinette(assets, fn, {
   active = true,
   select = async (a) => "local/" + a.url,
+  download = async () => ({ status: "success", path: "local", message: "{}" }),
+  apiGET = async () => ({ id: 1 }),
   collections,
 } = {}) {
   const prev = globalThis.game;
@@ -50,10 +52,13 @@ async function withMoulinette(assets, fn, {
       get: (id) => (id !== "moulinette" ? undefined : {
         active,
         cache,
+        cloudclient: { apiGET },
+        getSessionId: () => "session",
         collections: collections ?? [{
           getId: () => "mou-cloud-cached",
           initialize: async () => { cache.allAssets = assets; },
           selectAsset: select,
+          downloadAsset: download,
         }],
       }),
     },
@@ -166,6 +171,7 @@ test("loads the index once and resolves each distinct reference once", async () 
           getId: () => "mou-cloud-cached",
           initialize: async () => { initialized++; cache.allAssets = [GHELFI]; },
           selectAsset: async (a) => { selected++; return "local/" + a.url; },
+          downloadAsset: async () => ({ status: "success", path: "local" }),
         }],
       }),
     },
@@ -203,4 +209,62 @@ test("warns once about a malformed reference repeated across a document", async 
     assert.equal(warnings.length, 1);
     assert.match(warnings[0], /expected @moulinette/);
   });
+});
+
+// --- documents (foundry.base) -------------------------------------------
+//
+// A Moulinette Scene is a *template*, not a picture of one, so it resolves to
+// document data rather than to a path. It cannot go through selectAsset: for a
+// .json asset that returns the containing folder, and the document itself
+// arrives as `message`.
+
+const SCENE_REF = "11938/json/scene/05-boar-s-tears-day.json";
+const SCENE_ASSET = { pack_id: 11938, url: "json/scene/05-boar-s-tears-day.json", id: 7 };
+
+test("resolves a document reference to parsed data, not a path", async () => {
+  await withMoulinette([SCENE_ASSET], async () => {
+    const data = await resolveMoulinetteDocument(SCENE_REF, () => {});
+    assert.equal(data.name, "05. Boar's Tears (Day)");
+    assert.equal(data.walls.length, 153);
+  }, {
+    download: async () => ({
+      status: "success",
+      path: "local/folder",
+      message: JSON.stringify({ name: "05. Boar's Tears (Day)", walls: new Array(153).fill({}) }),
+    }),
+  });
+});
+
+test("asks for the asset by the id found in the index, never a written one", async () => {
+  // The hazard that kept documents out of scope was a hand-authored id: the
+  // cloud API truncates one at the first non-digit and returns a different
+  // creator's asset. Looking the id up removes it.
+  let asked = null;
+  await withMoulinette([SCENE_ASSET], async () => {
+    await resolveMoulinetteDocument(SCENE_REF, () => {});
+    assert.equal(asked, "/asset/7");
+  }, { apiGET: async (path) => { asked = path; return { id: 7 }; } });
+});
+
+test("a media asset is not a document, and says so", async () => {
+  await withMoulinette([GHELFI], async () => {
+    const warnings = [];
+    const data = await resolveMoulinetteDocument("442/Tavern (Loop).ogg", (m) => warnings.push(m));
+    assert.equal(data, null);
+    assert.match(warnings.join("\n"), /is not a document/);
+  }, { download: async () => ({ status: "success", path: "local/x.ogg" }) });
+});
+
+test("an unsubscribed reader gets null, not a throw", async () => {
+  await withMoulinette([], async () => {
+    assert.equal(await resolveMoulinetteDocument(SCENE_REF, () => {}), null);
+  });
+});
+
+test("unparseable document JSON is reported, not thrown", async () => {
+  await withMoulinette([SCENE_ASSET], async () => {
+    const warnings = [];
+    assert.equal(await resolveMoulinetteDocument(SCENE_REF, (m) => warnings.push(m)), null);
+    assert.match(warnings.join("\n"), /could not read/);
+  }, { download: async () => ({ status: "success", message: "{not json" }) });
 });
