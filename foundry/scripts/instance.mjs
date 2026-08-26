@@ -200,14 +200,28 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
     return { ok: false, reason: "create-failed" };
   }
 
+  // create() resolving is not proof a document exists. Foundry validates in
+  // ClientDatabaseBackend##preCreateDocumentArray and, when a document fails,
+  // notifies the GM and `continue`s past it — the batch completes, the promise
+  // resolves, and nothing was written. Counting that as success is how a sync
+  // reports "instantiated 36 documents" with 35 in the world.
+  const created = collection.get(id);
+  if (!created) {
+    console.warn(
+      `Vaults | foundry.base: ${vaultPath} → ${docName} ${id} was rejected on create; `
+      + `no document exists. Foundry logged the validation error separately (look for `
+      + `"DataModelValidationError" above).`,
+    );
+    return { ok: false, reason: "create-rejected" };
+  }
+
   // Scene thumbnails: V14's Scene._preCreate already attempts this, but it
   // only fires when `canvas.ready && initialLevel.background.src` — neither
   // is reliably true mid-sync (no scene is being viewed; the cache file
   // might still be settling). An explicit post-create pass is idempotent
   // and means the scene's sidebar tile actually shows the map.
   if (docName === "Scene") {
-    const created = collection.get(id);
-    if (created && !created.thumb) {
+    if (!created.thumb) {
       try {
         const { thumb } = await created.createThumbnail();
         if (thumb) await created.update({ thumb });
