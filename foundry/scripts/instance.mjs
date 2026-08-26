@@ -168,6 +168,20 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
     // doc already absorbed the previous data_json on its create.
     const base = tokenFloor ? deepMerge(structuredClone(tokenFloor), dataJson ?? {}) : dataJson;
     const updatePatch = base ? deepMerge(structuredClone(base), overlay) : overlay;
+    // The existing document knows its own dimensions; the patch may not
+    // mention them at all. Re-placing the note each sync also puts it back
+    // if a GM moved it, which is the same "the vault is the source of truth"
+    // rule the rest of the overlay follows.
+    if (docName === "Scene") {
+      // Geometry is read separately so the patch is not padded out with
+      // dimensions the update never meant to change.
+      await attachJournalNote(updatePatch, {
+        width: updatePatch.width ?? existing.width,
+        height: updatePatch.height ?? existing.height,
+        padding: updatePatch.padding ?? existing.padding,
+        grid: updatePatch.grid ?? { size: existing.grid?.size },
+      }, vault, vaultPath, meta);
+    }
     // A GM who drags a doc into their own folder should keep it there, so an
     // ordinary sync leaves placement alone. A force-sync is the "put it back
     // the way the vault says" button, and does move it.
@@ -195,6 +209,9 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
   if (dataJson) deepMerge(baseData, dataJson);
   baseData._id = id;
   deepMerge(baseData, overlay);
+  // After the merges, so the note is placed against the geometry the scene
+  // actually ends up with rather than whatever the frontmatter happened to say.
+  if (docName === "Scene") await attachJournalNote(baseData, baseData, vault, vaultPath, meta);
   if (baseItems && baseData.items !== baseItems) {
     baseData.items = mergeItemsById(baseItems, baseData.items);
   }
@@ -611,51 +628,55 @@ async function buildOverlay(vault, vaultPath, meta, docName, derived = {}) {
     deepMerge(overlay, cloned);
   }
 
-  // Auto-add a Map Note that links the scene back to its source journal
-  // page, tucked into the padding margin off the top-left corner so it's
-  // discoverable but doesn't collide with map content. User-supplied notes
-  // in foundry.data.notes survive — we append, not replace.
-  if (docName === "Scene") {
-    const note = await buildJournalNote(vault, vaultPath, meta);
-    if (note) overlay.notes = [...(overlay.notes ?? []), note];
-  }
   return overlay;
 }
 
 /**
- * Build a Map Note linking back to the source page's JournalEntryPage. It
- * sits in the padding margin just off the map's top-left corner: half a grid
- * cell left of the grid-aligned image origin, and half a cell below the top
- * edge, sized to a single grid square. The image origin is grid-aligned the
- * same way Foundry computes it (ceil(padding * dim / gridSize) cells), per
- * axis. Reads scene dims from the merged overlay (which already has fm.data
- * layered in) so author-overridden width/height/padding/grid flow through.
+ * Append a Map Note linking the scene back to its source journal page, into
+ * `sceneData` in place.
+ *
+ * It sits in the padding margin just off the map's top-left corner: half a
+ * grid cell left of the grid-aligned image origin, and half a cell below the
+ * top edge, sized to one grid square. The origin is grid-aligned the way
+ * Foundry computes it, `ceil(padding * dim / gridSize)` cells per axis.
+ *
+ * Geometry is read from the scene data itself, after the base template,
+ * data_json and overlay have all been merged. It used to be read from the
+ * page's frontmatter, which is only right when the page carries the whole
+ * scene in `data_json`. A Scene cloned from a compendium UUID — or resolved
+ * from a Moulinette document — gets its width, height, grid and padding from
+ * the template, and frontmatter may say nothing at all. The note was then
+ * placed against 4000x3000 at grid 100 defaults and landed somewhere
+ * arbitrary on a map of any other size.
+ *
+ * User-supplied notes survive: we append rather than replace.
  */
-async function buildJournalNote(vault, vaultPath, meta) {
-  // Scene dimensions live in the page's data_json (the extracted scene),
-  // with any inline foundry.data taking precedence. They are NOT on the
-  // overlay object the rest of buildOverlay assembles, so read them straight
-  // from the meta — otherwise every field falls back to a placeholder default
-  // and the note is mis-placed and mis-sized.
-  const fm = meta?.foundry ?? {};
-  const cfg = { ...(fm.data_json ?? {}), ...(fm.data ?? {}) };
-  const width = Number(cfg.width) || 4000;
-  const height = Number(cfg.height) || 3000;
-  const padding = Number(cfg.padding ?? 0.25);
-  const gridSize = Number(cfg.grid?.size) || 100;
-  const iconSize = gridSize;
+export function notePosition(geom) {
+  const width = Number(geom.width) || 4000;
+  const height = Number(geom.height) || 3000;
+  const padding = Number(geom.padding ?? 0.25);
+  const gridSize = Number(geom.grid?.size) || 100;
+  return {
+    x: gridSize * (Math.ceil((width / gridSize) * padding) - 0.5),
+    y: gridSize * (Math.ceil((height / gridSize) * padding) + 0.5),
+  };
+}
+
+async function attachJournalNote(sceneData, geom, vault, vaultPath, meta) {
+  const gridSize = Number(geom.grid?.size) || 100;
+  const { x, y } = notePosition(geom);
   const eId = await entryId(vault.id, vaultPath);
   const idOverride = meta?.foundry?.id;
   const pId = typeof idOverride === "string" && idOverride
     ? idOverride
     : await pageId(vault.id, vaultPath);
-  return {
+  const note = {
     _id: await subdocId(vault.id, vaultPath, "/notes/__journalLink__"),
     entryId: eId,
     pageId: pId,
-    x: gridSize * (Math.ceil((width / gridSize) * padding) - 0.5),
-    y: gridSize * (Math.ceil((height / gridSize) * padding) + 0.5),
-    iconSize,
+    x,
+    y,
+    iconSize: gridSize,
     texture: {
       src: "icons/svg/book.svg",
       anchorX: 0.5,
@@ -665,7 +686,9 @@ async function buildJournalNote(vault, vaultPath, meta) {
     },
     text: "",
   };
+  sceneData.notes = [...(sceneData.notes ?? []), note];
 }
+
 
 /**
  * Walk an arbitrary value and assign deterministic _ids to objects that

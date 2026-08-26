@@ -247,3 +247,44 @@ test("a pinned foundry.id is honoured instead of the derived one", async () => {
     assert.deepEqual(missing, []);
   });
 });
+
+// --- the journal-link Map Note -----------------------------------------
+//
+// The note is placed half a grid cell off the map's grid-aligned top-left
+// corner. Its geometry used to be read from the page's frontmatter, which is
+// only right when the page carries the whole scene in `data_json`. A Scene
+// cloned from a compendium UUID, or resolved from a Moulinette document, takes
+// its width, height, grid and padding from the template, and the frontmatter
+// may say nothing at all — so the note was placed against 4000x3000 at grid
+// 100 and landed somewhere arbitrary on a map of any other size.
+
+import { notePosition } from "../scripts/instance.mjs";
+
+test("places the note against the scene's own geometry", () => {
+  // 2100x2100 at grid 140, padding 0.25: origin is ceil(15 * 0.25) = 4 cells,
+  // so 560. Half a cell left of that is 490, half a cell below is 630.
+  assert.deepEqual(
+    notePosition({ width: 2100, height: 2100, padding: 0.25, grid: { size: 140 } }),
+    { x: 490, y: 630 },
+  );
+});
+
+test("a differently-sized scene gets a different corner", () => {
+  // The bug: this is what every template-derived Scene used to get, whatever
+  // its real size, because the frontmatter carried no dimensions.
+  assert.deepEqual(
+    notePosition({}),
+    { x: 950, y: 850 },
+    "the fallback, which should now only apply when nothing knows better",
+  );
+  assert.deepEqual(
+    notePosition({ width: 4200, height: 2800, padding: 0.25, grid: { size: 140 } }),
+    { x: 1050, y: 770 },
+  );
+});
+
+test("rounds the origin up to a whole cell, as Foundry does", () => {
+  // 2100/140 * 0.25 = 3.75 cells of padding, and Foundry uses 4.
+  const { x } = notePosition({ width: 2100, height: 2100, padding: 0.25, grid: { size: 140 } });
+  assert.equal(x, 140 * 3.5, "not 140 * (3.75 - 0.5)");
+});
