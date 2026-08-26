@@ -7,13 +7,13 @@
 // Actor while every inbound link addressed a nonexistent "actor".
 //
 // foundry/scripts/foundry-base.mjs is canonical and owns the case table. This
-// asserts the CLI against the same one. The two implementations stay separate
+// asserts cli/src/foundry-meta.ts against the same one. The two implementations stay separate
 // only because the CLI is a TypeScript package with rootDir: ./src.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CASES } from "../../foundry/test/foundry-base.test.mjs";
-import { foundryBaseDocName } from "../src/build.js";
+import { foundryBaseDocName } from "../src/foundry-meta.js";
 
 describe("foundry.base doc-type conformance", () => {
   it("matches the Foundry module on every case", () => {

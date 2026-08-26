@@ -6,17 +6,17 @@ import { dirname, join } from "node:path";
 import { availableParallelism } from "node:os";
 import picomatch from "picomatch";
 import { scanVault, type ScannedFile } from "./scan.js";
+import { buildManifest, type AssetAdvertisement, type BodyMeta } from "./manifest.js";
+import { collectBodyMeta, loadDataJson, warnFoundryDocCollisions } from "./foundry-meta.js";
 import { compressImage } from "./images.js";
 import {
   IMAGE_EXT_RE,
   PASSTHROUGH_EXT_RE,
   COMPRESSIBLE_EXT_RE,
-  contentTypeForExt,
 } from "./render/extensions.js";
 import { buildFavicon } from "./favicon.js";
 import { renderMarkdown, type PreParsedFrontmatter } from "./render/pipeline.js";
 import { extractH1 } from "./render/frontmatter.js";
-import { CLI_VERSION, MANIFEST_VERSION, ID_SCHEME } from "./version.js";
 import { renderLayout, render404 } from "./render/layout.js";
 import { writeFoundryImporter } from "./foundry-importer.js";
 import { slugify } from "./render/slug.js";
@@ -114,71 +114,6 @@ function addBasenameKeys(
   }
 }
 
-/**
- * Warn when two pages would instantiate documents Foundry can't tell apart:
- * same document type, same folder, same name.
- *
- * The vault's directory structure is the default folder, so the filesystem
- * already stops two pages colliding in most cases — but not all. The Foundry
- * document name is the page's `title:` when it has one, so two differently
- * named files in one directory can still land on the same name, and a
- * `foundry.folder` override can put pages from different directories in one
- * folder. Neither is caught by anything else, and the result in Foundry is
- * two identical-looking documents where the author expected one.
- *
- * Checked across every page rather than per variant: the Foundry sync reads
- * one variant at the GM's tier, so pages of different roles still meet there.
- */
-/**
- * Whether a `foundry.base` will actually produce a document.
- *
- * Both forms do, for every type vaults can instantiate. This used to be
- * narrower — the module cloned from a UUID only for Actor and Item, so a lone
- * `Compendium.<pkg>.<pack>.Scene.<id>` created nothing and warning about a
- * collision would have described documents that never exist. That restriction
- * is gone (map packs ship their content as compendium Scenes, and those were
- * all being skipped), so a well-formed base always produces a document and
- * the only question left is whether the type is one we recognise.
- *
- * All entries name the same type by the time this runs, so `docType` answers
- * for the whole list.
- */
-function willInstantiate(_specs: string[], docType: string): boolean {
-  return canonicalFoundryType(docType) !== null;
-}
-
-function warnFoundryDocCollisions(pages: PageMeta[]): void {
-  const seen = new Map<string, string>(); // key → first page path
-  for (const p of pages) {
-    const fo = p.frontmatter?.["foundry"];
-    if (!fo || typeof fo !== "object" || Array.isArray(fo)) continue;
-    const base = (fo as Record<string, unknown>)["base"];
-    const specs = (Array.isArray(base) ? base : [base])
-      .filter((x): x is string => typeof x === "string" && x.length > 0);
-    if (specs.length === 0) continue;
-    const docType = foundryBaseDocName(specs[0]!);
-    if (!docType) continue;
-    if (!willInstantiate(specs, docType)) continue;
-
-    const override = (fo as Record<string, unknown>)["folder"];
-    const folder = typeof override === "string" && override.trim()
-      ? override.trim().replace(/^\/+|\/+$/g, "")
-      : p.path.split("/").slice(0, -1).join("/");
-    const name = p.title || p.path.split("/").pop()!.replace(/\.md$/i, "");
-
-    const key = `${docType}\u0000${folder}\u0000${name}`;
-    const previous = seen.get(key);
-    if (previous === undefined) {
-      seen.set(key, p.path);
-      continue;
-    }
-    console.warn(
-      `  ${p.path}: would create a ${docType} named '${name}' in the same Foundry `
-      + `folder ('${folder || "(vault root)"}') as '${previous}'. Rename one, or `
-      + `separate them with foundry.folder.`,
-    );
-  }
-}
 
 export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   const start = Date.now();
@@ -1029,248 +964,6 @@ async function copyKatexAssets(destDir: string): Promise<void> {
  *     embed: false                          # default true
  *     data: { … deep-merged into the doc }
  */
-/**
- * The document type a `foundry.base` spec names, read off the string without
- * resolving anything. Every UUID form puts the type second-to-last
- * (`Actor.<id>`, `Compendium.<pkg>.<pack>.Actor.<id>`), and a blank-doc spec
- * (`Actor:npc`) carries it outright. `links.mjs` derives it the same way, so
- * both sides agree on where a wikilink to the page points.
- */
-export function foundryBaseDocName(spec: string): string | null {
-  if (spec.includes(".")) {
-    const parts = spec.split(".");
-    if (parts.length < 2) return null;
-    const raw = parts[parts.length - 2];
-    // Unknown types pass through: vaults can't instantiate a Combat, but
-    // Foundry may still resolve the UUID, and reporting the type beats
-    // claiming the spec names none.
-    return canonicalFoundryType(raw) ?? raw ?? null;
-  }
-  // Blank-document form. An unrecognised type is not a base at all, so it is
-  // rejected rather than passed through — matching the Foundry module, which
-  // would create nothing for it.
-  return canonicalFoundryType(spec.split(":")[0]);
-}
-
-/**
- * Fold a type segment to its canonical spelling, or null if vaults doesn't
- * instantiate it.
- *
- * Case matters downstream and is hand-typed here: `base: actor:npc` is
- * supported, but Foundry's `@UUID[...]` enricher does a case-sensitive
- * lookup. Returning "actor" made the CLI treat it as a different type from
- * "Actor" — so a list mixing the two failed the same-type check and had its
- * whole foundry.base dropped. Kept in step with
- * foundry/scripts/foundry-base.mjs by cli/test/foundry-base-conformance.test.ts.
- */
-function canonicalFoundryType(raw: string | undefined): string | null {
-  if (!raw) return null;
-  return FOUNDRY_BLANK_DOC_TYPES.find((t) => t.toLowerCase() === raw.toLowerCase()) ?? null;
-}
-
-const FOUNDRY_BLANK_DOC_TYPES = [
-  "Actor", "Item", "Scene", "JournalEntry",
-  "RollTable", "Macro", "Cards", "Playlist",
-];
-
-/**
- * Validate `foundry.base` and normalize it for the manifest: a single string
- * stays a string (so an older Foundry module keeps working), a list of two or
- * more stays a list. Returns null when the value can't be used, having said
- * why — the build continues, and the page syncs as a journal with no document.
- *
- * Every entry must name the same document type. The module reads that type
- * off the spec rather than off a resolved template, and `links.mjs` has to
- * reach the same answer with no lookup at all, so a list that disagrees with
- * itself has no single answer to give.
- */
-function normalizeFoundryBase(base: unknown, pagePath: string): string | string[] | null {
-  const raw = Array.isArray(base) ? base : [base];
-  const specs: string[] = [];
-  for (const entry of raw) {
-    if (typeof entry !== "string" || entry.trim().length === 0) {
-      console.warn(
-        `  ${pagePath}: foundry.base entries must be non-empty strings (a UUID like `
-        + `"Compendium.<pkg>.<pack>.Actor.<id>", or a type like "Actor:npc"); `
-        + `got ${entry === null ? "null" : typeof entry}. Ignoring foundry.base — this page `
-        + `will sync as a journal but create no document.`,
-      );
-      return null;
-    }
-    specs.push(entry.trim());
-  }
-  if (specs.length === 0) {
-    console.warn(`  ${pagePath}: foundry.base is an empty list; ignoring.`);
-    return null;
-  }
-
-  const types = new Map<string, string>(); // docName → first spec that named it
-  for (const spec of specs) {
-    const docName = foundryBaseDocName(spec);
-    if (!docName) {
-      console.warn(`  ${pagePath}: foundry.base entry "${spec}" names no document type; ignoring foundry.base.`);
-      return null;
-    }
-    if (!types.has(docName)) types.set(docName, spec);
-  }
-  if (types.size > 1) {
-    const detail = [...types].map(([t, spec]) => `${t} (from "${spec}")`).join(", ");
-    console.warn(
-      `  ${pagePath}: every foundry.base entry must name the same document type, got ${detail}. `
-      + `Ignoring foundry.base — this page will sync as a journal but create no document.`,
-    );
-    return null;
-  }
-
-  // A list whose last entry is a UUID can still fail on a world that lacks
-  // every package named. A blank-doc tail is what makes the chain total.
-  const last = specs[specs.length - 1]!;
-  if (specs.length > 1 && last.includes(".")) {
-    console.warn(
-      `  ${pagePath}: foundry.base list ends with "${last}", so it can still resolve to nothing. `
-      + `End with a blank-document entry (e.g. "${[...types.keys()][0]}:npc" or "${[...types.keys()][0]}") `
-      + `to guarantee a document.`,
-    );
-  }
-
-  return specs.length === 1 ? specs[0]! : specs;
-}
-
-async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<BodyMeta> {
-  const fm = p.frontmatter ?? {};
-  const out: BodyMeta = { role: p.role };
-
-  const basename = p.path.split("/").pop()!.replace(/\.md$/i, "");
-  if (p.title && p.title !== basename) out.title = p.title;
-
-  const fo = fm["foundry"];
-  if (fo && typeof fo === "object" && !Array.isArray(fo)) {
-    const block: Record<string, unknown> = {};
-    // `base` is one spec, or a priority list the module tries in order so a
-    // vault degrades across worlds with different content installed. A
-    // malformed base is dropped with a warning rather than failing the build,
-    // same as foundry.id below. Silence here is worse than it looks: the
-    // module never receives the key, so it can't report the page either, and
-    // the page syncs as a journal with no Actor/Item and no explanation.
-    const base = (fo as Record<string, unknown>)["base"];
-    if (base !== undefined && base !== null) {
-      const normalized = normalizeFoundryBase(base, p.path);
-      if (normalized !== null) block.base = normalized;
-    }
-    const embed = (fo as Record<string, unknown>)["embed"];
-    if (typeof embed === "boolean") block.embed = embed;
-    // foundry.sync: false keeps the page out of Foundry altogether — no
-    // JournalEntryPage, no derived doc. The page still renders on the wiki.
-    // Unlike `embed`, which only suppresses the article inside a derived
-    // doc's description, this drops the page from the sync set entirely.
-    const sync = (fo as Record<string, unknown>)["sync"];
-    if (typeof sync === "boolean") block.sync = sync;
-    // foundry.journal: false makes the derived doc without the JournalEntryPage
-    // that normally accompanies it. For a page that exists to carry a Scene or
-    // an Actor and has no article worth reading in the sidebar.
-    const journal = (fo as Record<string, unknown>)["journal"];
-    if (typeof journal === "boolean") block.journal = journal;
-    // foundry.link: "doc" makes wikilinks to this page resolve to the document
-    // it instantiates rather than to its journal page. Implied by
-    // `journal: false`, where there is no journal page to link to.
-    const link = (fo as Record<string, unknown>)["link"];
-    if (link === "doc" || link === "journal") block.link = link;
-    const data = (fo as Record<string, unknown>)["data"];
-    if (data && typeof data === "object" && !Array.isArray(data)) block.data = data;
-    // foundry.folder: a "/"-separated folder path the instantiated doc is
-    // filed under, nested inside the vault's own sidebar folder. Absent
-    // means the vault folder itself, which is where everything used to land.
-    const folder = (fo as Record<string, unknown>)["folder"];
-    if (typeof folder === "string" && folder.trim().length > 0) block.folder = folder.trim();
-    // foundry.id: an explicit Foundry document id for this page. When set,
-    // overrides the SHA1-derived id used for both the JournalEntryPage and
-    // (if foundry.base is present) the instantiated derived doc. Lets users
-    // hardcode UUIDs that other Foundry-side code (macros, scene flags,
-    // module integrations) needs to reference. Foundry ids are 16 chars from
-    // [A-Za-z0-9]; a malformed value is dropped with a warning rather than
-    // failing the build.
-    const idVal = (fo as Record<string, unknown>)["id"];
-    if (typeof idVal === "string") {
-      const trimmed = idVal.trim();
-      if (FOUNDRY_ID_RE.test(trimmed)) block.id = trimmed;
-      else if (trimmed.length > 0) {
-        console.warn(`  ${p.path}: foundry.id "${trimmed}" is not a valid Foundry id (16 chars [A-Za-z0-9]); ignoring`);
-      }
-    }
-    // foundry.data_json: vault-relative path to a JSON file. Read + parse
-    // at build time and inline into the meta as `data_json`. The Foundry
-    // module deep-merges it onto the base doc BEFORE foundry.data, so a
-    // user can layer hand-tuned overrides on top of an exported sheet.
-    // Folding the parsed object into meta means the body-row hash already
-    // changes when the JSON content does — no separate change-detection.
-    const dataJsonPath = (fo as Record<string, unknown>)["data_json"];
-    if (typeof dataJsonPath === "string" && dataJsonPath.trim().length > 0) {
-      const parsed = await loadDataJson(vaultPath, dataJsonPath.trim(), p.path);
-      if (parsed !== null) block.data_json = parsed;
-    }
-    if (Object.keys(block).length > 0) out.foundry = block;
-  }
-
-  if (p.coverImage) out.image = p.coverImage;
-
-  return out;
-}
-
-/** Read + parse a vault-relative JSON file referenced by `foundry.data_json`.
- *  Warns on missing / unparseable file and returns null so the page renders
- *  without the overlay rather than failing the build. */
-async function loadDataJson(
-  vaultPath: string,
-  relPath: string,
-  pagePath: string,
-): Promise<unknown | null> {
-  const abs = join(vaultPath, relPath);
-  try {
-    const raw = await readFile(abs, "utf8");
-    return JSON.parse(raw) as unknown;
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") {
-      console.warn(`  ${pagePath}: foundry.data_json "${relPath}" not found, skipping`);
-    } else {
-      console.warn(`  ${pagePath}: foundry.data_json "${relPath}" failed to parse: ${(err as Error).message}`);
-    }
-    return null;
-  }
-}
-
-/** Collect the `@vault/...` paths a page's foundry block references, from both
- *  `foundry.data_json` and `foundry.data`. A Scene's bulk asset refs
- *  (backgrounds, ambient sounds, tiles) live in that JSON content, and a token's
- *  ring subject lives in the inline `data` overlay; neither appears anywhere the
- *  per-variant asset scanners look, so without this they never ship and Foundry
- *  404s them. Returns vault-relative paths. */
-async function collectDataJsonVaultRefs(
-  vaultPath: string,
-  fm: Record<string, unknown>,
-  pagePath: string,
-): Promise<string[]> {
-  const fo = fm["foundry"];
-  if (!fo || typeof fo !== "object" || Array.isArray(fo)) return [];
-  const block = fo as Record<string, unknown>;
-  const out: string[] = [];
-  const collect = (from: unknown) => forEachString(from, (s) => {
-    const path = vaultRefPath(s);
-    if (path) out.push(path);
-  });
-
-  const rel = block["data_json"];
-  if (typeof rel === "string" && rel.trim()) {
-    const parsed = await loadDataJson(vaultPath, rel.trim(), pagePath);
-    if (parsed !== null) collect(parsed);
-  }
-  collect(block["data"]);
-  return out;
-}
-
-/** Foundry document ids: exactly 16 chars from [A-Za-z0-9]. Validated when
- *  authors set `foundry.id` to override the SHA1-derived default. */
-const FOUNDRY_ID_RE = /^[A-Za-z0-9]{16}$/;
 
 /** Coerce settings.theme to the layout's narrowed union, defaulting to
  *  "auto" for any unrecognised value rather than failing the build. */
@@ -1380,6 +1073,29 @@ async function copyReferencedImages(
       console.warn(`  warning: could not copy image ${outputPath}: ${(err as Error).message}`);
     }
   }
+}
+
+async function collectDataJsonVaultRefs(
+  vaultPath: string,
+  fm: Record<string, unknown>,
+  pagePath: string,
+): Promise<string[]> {
+  const fo = fm["foundry"];
+  if (!fo || typeof fo !== "object" || Array.isArray(fo)) return [];
+  const block = fo as Record<string, unknown>;
+  const out: string[] = [];
+  const collect = (from: unknown) => forEachString(from, (s) => {
+    const path = vaultRefPath(s);
+    if (path) out.push(path);
+  });
+
+  const rel = block["data_json"];
+  if (typeof rel === "string" && rel.trim()) {
+    const parsed = await loadDataJson(vaultPath, rel.trim(), pagePath);
+    if (parsed !== null) collect(parsed);
+  }
+  collect(block["data"]);
+  return out;
 }
 
 // `[label](path/to/file.ext)` style markdown link. Captures the URL part.
@@ -1835,192 +1551,6 @@ function kindLabel(kind: string): string {
  * JournalEntry ownership against a per-vault dmRole setting); other fields
  * are present only when the corresponding frontmatter is set.
  */
-export interface BodyMeta {
-  /** Page's resolved role tier (e.g. "public" / "patron" / "dm"). */
-  role: string;
-  /**
-   * Page's display title (frontmatter `title:`, or H1 fallback). Emitted only
-   * when it differs from the file's basename — saves a few bytes per page on
-   * vaults that don't customise titles. The Foundry side uses this as the
-   * JournalEntry/Actor/Item display name; falls back to the basename when
-   * absent.
-   */
-  title?: string;
-  /**
-   * Foundry-instantiation block. `foundry.base` names a template
-   * (compendium UUID or `Type[:subtype]`); `foundry.data` is the
-   * deep-merge overlay applied to the resulting doc; `foundry.sync`
-   * (default true) controls whether the page reaches Foundry at all;
-   * `foundry.journal` (default true) controls whether it also gets a
-   * JournalEntryPage, as opposed to only the derived doc;
-   * `foundry.embed` (default true) controls whether the page's article
-   * auto-embeds into the doc's description field; `foundry.id` (16 chars [A-Za-z0-9])
-   * pins both the JournalEntryPage id and the instantiated doc id to
-   * an explicit value instead of the SHA1-derived default. Forwarded
-   * verbatim to clients — the CLI validates shape but doesn't interpret
-   * the values themselves.
-   */
-  foundry?: Record<string, unknown>;
-  /** Resolved cover image (served URL). Used as the reskinned actor/item img. */
-  image?: string;
-}
-
-interface ManifestEntry {
-  path: string;
-  hash: string;
-  size: number;
-  mtime: number;
-  content_type: string;
-  /** Set only on .body.html rows that carry per-page metadata. */
-  meta?: BodyMeta;
-}
-
-/**
- * Walk the variant directory and produce a manifest of every file with its MD5
- * hash + size + mtime + content type. Shared assets (anything OUTSIDE the
- * variant dir but inside the deploy root) are listed too; clients use a
- * single manifest to diff the entire site, not just the role-specific bits.
- */
-interface AssetAdvertisement {
-  hasHandlerJs: boolean;
-  hasHandlerCss: boolean;
-  hasFoundryJs: boolean;
-  hasFoundryCss: boolean;
-}
-
-interface Manifest {
-  /** Schema/protocol version. Increment on breaking shape changes; clients
-   *  ignore unknown additive fields. Currently 1. */
-  manifest_version: typeof MANIFEST_VERSION;
-  /** CLI version that built this deploy. Clients can warn on major skew. */
-  cli_version: string;
-  /** Document-id derivation scheme; advertised so a future change can be
-   *  detected by clients holding entries derived under the prior scheme. */
-  id_scheme: typeof ID_SCHEME;
-  name: string;
-  auth: { required: boolean; roles: string[] };
-  /** Paths to handler asset bundles, when emitted. Clients fetch these
-   *  instead of guessing well-known paths so future renames don't break. */
-  assets?: {
-    browser?: { js?: string; css?: string };
-    foundry?: { js?: string; css?: string };
-  };
-  files: ManifestEntry[];
-}
-
-async function buildManifest(
-  rootDir: string,
-  variantDir: string,
-  bodyMeta: Map<string, BodyMeta>,
-  authRequired: boolean,
-  roles: string[],
-  vaultName: string,
-  assets: AssetAdvertisement,
-): Promise<Manifest> {
-  const files: ManifestEntry[] = [];
-  const seen = new Set<string>();
-
-  // Variant-specific files: use pathBase=variantDir so paths come out as
-  // "index.html", not "_variants/<role>/index.html". This matches the public
-  // URL the client uses; the auth middleware does the variant rewrite.
-  await walkAndIndex(variantDir, variantDir, files, seen, [], bodyMeta);
-
-  // Shared assets under the deploy root (attachments, css). Skip the variant
-  // tree itself and anything inside `functions/` (Function code isn't served).
-  if (rootDir !== variantDir) {
-    await walkAndIndex(rootDir, rootDir, files, seen, [
-      "_variants", "functions", ".image-staging", ".other-staging",
-    ], bodyMeta);
-  }
-
-  files.sort((a, b) => a.path.localeCompare(b.path));
-  // `auth.required` lets clients (Foundry, MCP) tell up-front whether the
-  // deploy has middleware. Single-role builds collapse to a pure-static
-  // deploy with no /_batch / /_connect endpoints — clients fall back to
-  // direct CDN GETs in that case. `auth.roles` ships the role order
-  // (lowest→highest) so clients can rank a page's tier against a chosen
-  // cutoff (e.g. Foundry's per-vault dmRole).
-  // `name` is the vault's display name (settings.md `vault_name`); clients
-  // like the Foundry module use it as the default label + root folder when
-  // a user adds the vault, so they get something readable instead of a
-  // host-derived slug.
-  // Asset advertisement so clients (Foundry, MCP) fetch the right paths
-  // instead of guessing well-known names — lets us move things later.
-  const assetBlock: Manifest["assets"] = {};
-  if (assets.hasHandlerJs || assets.hasHandlerCss) {
-    assetBlock.browser = {
-      ...(assets.hasHandlerJs ? { js: "/_handlers.js" } : {}),
-      ...(assets.hasHandlerCss ? { css: "/_handlers.css" } : {}),
-    };
-  }
-  if (assets.hasFoundryJs || assets.hasFoundryCss) {
-    assetBlock.foundry = {
-      ...(assets.hasFoundryJs ? { js: "/_handlers.foundry.js" } : {}),
-      ...(assets.hasFoundryCss ? { css: "/_handlers.foundry.css" } : {}),
-    };
-  }
-  return {
-    manifest_version: MANIFEST_VERSION,
-    cli_version: CLI_VERSION,
-    id_scheme: ID_SCHEME,
-    name: vaultName,
-    auth: { required: authRequired, roles },
-    ...(Object.keys(assetBlock).length > 0 ? { assets: assetBlock } : {}),
-    files,
-  };
-}
-
-async function walkAndIndex(
-  dir: string,
-  pathBase: string,
-  out: ManifestEntry[],
-  seen: Set<string>,
-  skipDirNames: string[],
-  bodyMeta: Map<string, BodyMeta>,
-): Promise<void> {
-  const entries = await readdir(dir, { withFileTypes: true });
-  for (const ent of entries) {
-    if (ent.name === "_manifest.json") continue;
-    const abs = join(dir, ent.name);
-    if (ent.isDirectory()) {
-      if (skipDirNames.includes(ent.name)) continue;
-      await walkAndIndex(abs, pathBase, out, seen, skipDirNames, bodyMeta);
-      continue;
-    }
-    if (!ent.isFile()) continue;
-    const path = relative(pathBase, abs).split(/[/\\]/).join("/");
-    if (seen.has(path)) continue;
-    seen.add(path);
-    const body = await readFile(abs);
-    const info = await stat(abs);
-    const meta = bodyMeta.get(path);
-    // Fold meta JSON into the hash so meta-only edits (e.g. a foundry.base
-    // tweak with no body change) still bump the row hash and trigger sync.
-    const hasher = createHash("md5").update(body);
-    if (meta) hasher.update("\x00meta:" + stableStringify(meta));
-    out.push({
-      path,
-      hash: hasher.digest("hex"),
-      size: info.size,
-      mtime: Math.floor(info.mtimeMs / 1000),
-      content_type: contentTypeForExt(ent.name),
-      ...(meta ? { meta } : {}),
-    });
-  }
-}
-
-/**
- * Deterministic JSON encoder. Object keys are sorted recursively so two
- * frontmatters with the same shape but different key order produce the same
- * hash; otherwise the manifest would churn on every YAML reformat.
- */
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return "[" + value.map(stableStringify).join(",") + "]";
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableStringify(obj[k])).join(",") + "}";
-}
 
 /**
  * Strip an HTML body to plain text. Used to feed the search index from
