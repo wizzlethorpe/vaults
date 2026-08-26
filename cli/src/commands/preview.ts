@@ -11,8 +11,6 @@ interface PreviewOptions {
   port?: number;
 }
 
-const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
-
 /**
  * Builds the site, then runs `wrangler pages dev` against the output. Wrangler
  * spawns a local Workers runtime; functions (auth middleware, MCP) execute
