@@ -185,11 +185,11 @@ One real vault has 65 Scene packs indexed, 2,099 scenes between them. The
 priority list added in the `foundry.base` work is exactly the "use it if the
 reader owns it" mechanism.
 
-**The only blocker is ours.** `CLONE_SUPPORTED_DOCS` in instance.mjs is
-`{Actor, Item}`, so a Scene UUID is skipped with "clone-from-UUID only
-supports Actor, Item". Widening it — Scene, RollTable, Playlist, Cards —
-turns those 2,099 scenes into valid bases. Contained change, highest value
-per line of anything in this file.
+**This used to be blocked on our side** and no longer is: cloning from a UUID
+was limited to Actor and Item, so every compendium Scene was skipped. It is
+now gated on the same list as the blank-document form (`BLANK_DOC_TYPES` in
+foundry/scripts/foundry-base.mjs), because the real constraint is identical —
+the type needs a world collection to be created in.
 
 ### Moulinette: research
 
@@ -260,9 +260,10 @@ creator + pack + exact filename rather than an id.
 
 ### Scope
 
-1. ~~**Widen `CLONE_SUPPORTED_DOCS`.**~~ Done. The restriction rested on a
-   reason that was not true of the code (the description embed is already
-   optional), and it was skipping every compendium Scene.
+1. ~~**Allow cloning from a UUID for every instantiable type.**~~ Done. The
+   old Actor/Item-only restriction rested on a reason that was not true of the
+   code (the description embed is already optional), and it was skipping every
+   compendium Scene.
 2. **`@moulinette/<type>/<creator>/<pack>/<file>` as a priority-list rung**,
    resolved through `api.searchAssets` with an exact creator + pack +
    filename match, falling through on no match. Covers Map, Image, Audio.

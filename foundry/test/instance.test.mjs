@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { missingBasePackages } from "../scripts/instance.mjs";
-import { parseFoundryBase } from "../scripts/foundry-base.mjs";
+import { BLANK_DOC_TYPES, docNameFromBase, parseFoundryBase } from "../scripts/foundry-base.mjs";
 
 test("parses a compendium UUID as a clone base", () => {
   const uuid = "Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa";
@@ -136,22 +136,23 @@ test("a list is only stranded when every pack is unreachable", async () => {
 
 // ── clone-from-UUID coverage ─────────────────────────────────────────────
 
-test("every instantiable type can be cloned from a UUID, not just Actor and Item", async () => {
-  // Cloning was restricted to {Actor, Item} on the grounds that it needed a
+test("the instantiable-type list covers every type a clone might name", () => {
+  // Not a test of cloning itself — resolveBase needs fromUuid, a collection
+  // and Document.create, none of which exist outside Foundry, so the create
+  // path is still only verifiable against a live world. What this pins is the
+  // list resolveBase gates on, which is what the restriction actually was:
+  // cloning was limited to {Actor, Item} on the grounds that it needed a
   // description-embed path. It does not — buildOverlay skips the embed
-  // silently when DESCRIPTION_FIELDS has no entry for the type, which is
-  // already the documented behaviour for an unsupported system. The
-  // restriction only blocked the useful cases: map packs ship their content
-  // as compendium Scenes, so every one of them was skipped.
-  const { BLANK_DOC_TYPES } = await import("../scripts/foundry-base.mjs");
+  // silently when DESCRIPTION_FIELDS has no entry, which is already the
+  // documented behaviour for an unsupported system. The narrow set only
+  // blocked the useful cases, since map packs ship compendium Scenes.
   for (const t of ["Actor", "Item", "Scene", "RollTable", "Playlist", "Cards", "Macro", "JournalEntry"]) {
     assert.ok(BLANK_DOC_TYPES.includes(t), `${t} must be instantiable`);
   }
 });
 
-test("a compendium Scene UUID reads as a Scene", async () => {
+test("a compendium Scene UUID reads as a Scene", () => {
   // The shape that matters for composing an adventure from map packs.
-  const { docNameFromBase } = await import("../scripts/foundry-base.mjs");
   assert.equal(
     docNameFromBase("Compendium.mad-modcaverns.mad-modcaverns-maps.Scene.DiQAiq8wUMRGevDg"),
     "Scene",
