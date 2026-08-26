@@ -78,6 +78,42 @@ export interface BuildResult {
  * Single-role builds (the default `public`-only case) collapse
  * `_variants/public/...` up to the root.
  */
+/**
+ * Add basename-slug keys to an asset index, first-write-wins in the vault's
+ * sorted path order.
+ *
+ * Obsidian resolves `![[map.png]]` by basename, so two files with the same
+ * name in different folders compete for one key. Writing the key from inside
+ * the concurrent staging pass meant whichever finished second won, and that
+ * varied between builds on identical input — a page could silently get a
+ * different image run to run. Doing it here, sequentially over the sorted
+ * list, makes the winner deterministic and lets us say which files collided.
+ * (Full-path keys stay in the staging pass; those are unique by definition.)
+ */
+function addBasenameKeys(
+  index: Map<string, ImageEntry>,
+  files: ScannedFile[],
+  label: string,
+): void {
+  const claimed = new Map<string, string>(); // slug → winning source path
+  for (const f of files) {
+    const entry = index.get(f.path);
+    if (!entry) continue; // staging failed for this file; nothing to point at
+    const slug = slugify(f.path.split("/").pop()!);
+    const winner = claimed.get(slug);
+    if (winner === undefined) {
+      claimed.set(slug, f.path);
+      index.set(slug, entry);
+      continue;
+    }
+    console.warn(
+      `  ${label} name collision: '${f.path}' and '${winner}' share a filename. `
+      + `Bare references like the basename resolve to '${winner}'; `
+      + `use the folder path to reach the other.`,
+    );
+  }
+}
+
 export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   const start = Date.now();
   const concurrency = Math.max(2, availableParallelism());
@@ -323,13 +359,14 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       // key is what stops identically-named assets in different scene folders
       // (e.g. a shared `Water Fountain (Loop).ogg`) from colliding under one
       // basename slug and staging only one of them.
-      const entry = { sourcePath: f.path, outputPath: compressed.outputPath };
-      imageIndex.set(slugify(f.path.split("/").pop()!), entry);
-      imageIndex.set(f.path, entry);
+      // Full-path key only; basename keys are added afterwards, in sorted
+      // order, so a duplicated filename resolves deterministically.
+      imageIndex.set(f.path, { sourcePath: f.path, outputPath: compressed.outputPath });
     }, (done, total) => progress.update(done, total));
 
     progress.done(`${imageFiles.length} processed (${cacheHits} cached, ${imageFiles.length - cacheHits} compressed)`);
   }
+  addBasenameKeys(imageIndex, imageFiles, "image");
 
   // ── Passthrough files (audio, video, PDF, epub) ────────────────────────
   // Staged once and copied into a variant only when a visible page in that
@@ -348,12 +385,11 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       // Dual-keyed like imageIndex: basename slug for body refs, full
       // vault-relative path for `@vault/PATH` refs (ambient sounds in
       // data_json), so same-named files in different folders don't collide.
-      const entry = { sourcePath: f.path, outputPath: f.path };
-      passthroughIndex.set(slugify(f.path.split("/").pop()!), entry);
-      passthroughIndex.set(f.path, entry);
+      passthroughIndex.set(f.path, { sourcePath: f.path, outputPath: f.path });
     }, (done, total) => progress.update(done, total));
     progress.done(`${stagedPassthroughs.length} staged`);
   }
+  addBasenameKeys(passthroughIndex, stagedPassthroughs, "passthrough");
 
   // Shared CSS bundle.
   //
