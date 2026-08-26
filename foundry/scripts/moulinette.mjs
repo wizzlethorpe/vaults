@@ -8,97 +8,98 @@
 //
 // Reference form:
 //
-//   @moulinette/<type>/<creator>/<pack>/<file>
-//   @moulinette/audio/Michael Ghelfi/Ambiences/Tavern (Loop).ogg
+//   @moulinette/<pack_ref>/<filepath>
+//   @moulinette/10698/scenes/abandoned-mine-entrance.webp
 //
-// Only `map`, `image` and `audio` are supported, because those are the three
-// types Moulinette's own public API accepts. Documents (Actor, Item, Scene-as-
-// JSON) are deliberately excluded: reaching them means an integer asset id and
-// an internal drag/drop path, and the cloud API truncates a malformed id at
-// the first non-digit and returns a *different* asset rather than erroring —
-// a reference that drifts would silently import someone else's content.
+// `pack_ref` is the number in a Moulinette marketplace URL: the module builds
+// those as `/marketplace/product/<pack_ref>/<creator-slug>/<pack-slug>`, and
+// only the first segment is an identifier — the two slugs are display names
+// run through `.slugify()` for readability, so they change when a creator
+// renames a pack. Keying on `pack_ref` + filepath means a reference stays
+// valid across renames, and resolves to the same asset for every reader.
+//
+// This deliberately does not go through the module's public `api.searchAssets`.
+// That searches, and searching is the wrong tool three times over: it matches
+// against a *prettified* display name (`abandoned-mine-entrance.webp` indexes
+// as "Abandoned Mine Entrance (webp)", so the filename never matches), it
+// returns only the first page of 100, and it ranks by relevance, which would
+// let two readers resolve one reference to different assets. Instead we read
+// the same index the browser reads — `/all-assets`, which the cached cloud
+// collection loads once into `cache.allAssets` — and match exactly.
 //
 // Everything here is best-effort. A reader with no Moulinette module, no
 // subscription, or an asset that has moved gets an unresolved reference, and
 // the caller drops the field rather than failing the sync.
 
-/** Moulinette's numeric asset-type enum, for the three types we resolve. */
-const ASSET_TYPES = { map: 2, image: 3, audio: 7 };
-
 export const MOULINETTE_PREFIX = "@moulinette/";
 
+/** The collection that fetches `/all-assets`: the reader's whole entitled index. */
+const CACHED_COLLECTION = "mou-cloud-cached";
+
 /**
- * Parse a reference into its parts, or null when it isn't one / is malformed.
- * The file segment may itself contain slashes: creators nest their packs.
+ * Parse a reference into `{ pack, file }`, or null when it isn't one.
+ * The file segment keeps its slashes: creators nest folders inside a pack.
  */
 export function parseMoulinetteRef(s) {
   if (typeof s !== "string" || !s.startsWith(MOULINETTE_PREFIX)) return null;
-  const rest = s.slice(MOULINETTE_PREFIX.length);
-  const parts = rest.split("/");
-  if (parts.length < 4) return null;
-  const [typeRaw, creator, pack, ...fileParts] = parts;
-  const type = ASSET_TYPES[String(typeRaw).toLowerCase()];
-  if (!type || !creator || !pack || fileParts.length === 0) return null;
-  return { type, typeName: String(typeRaw).toLowerCase(), creator, pack, file: fileParts.join("/") };
+  const [pack, ...fileParts] = s.slice(MOULINETTE_PREFIX.length).split("/");
+  const file = fileParts.join("/");
+  if (!pack || !file) return null;
+  return { pack, file };
 }
 
-/** The Moulinette module, or null when it isn't installed / active. */
-function moulinette() {
+/**
+ * The reader's asset index, loaded once. Returns null when Moulinette isn't
+ * installed, or when its internals have moved far enough that we can't read
+ * them — `collections` and `cache` are not a public API, so this checks for
+ * what it needs rather than assuming.
+ */
+async function loadIndex(log) {
   const mod = game.modules?.get("moulinette");
-  return mod?.active && mod.api ? mod : null;
+  if (!mod?.active) return null;
+  const collection = mod.collections?.find((c) => c.getId?.() === CACHED_COLLECTION);
+  if (!collection?.initialize || !collection.selectAsset) {
+    log("Moulinette is installed but its asset index is not where we expect; skipping");
+    return null;
+  }
+  try {
+    // Populates mod.cache.allAssets; a no-op once it is warm.
+    await collection.initialize();
+  } catch (err) {
+    log(`could not load the Moulinette index: ${err?.message ?? err}`);
+    return null;
+  }
+  return { collection, assets: mod.cache?.allAssets ?? [] };
 }
 
 /**
  * Resolve one reference to a local file path, or null.
  *
- * Search *locates*; the exact creator + pack + filename comparison *decides*.
- * Matching on search relevance alone would let two readers resolve the same
- * reference to different assets, which for a shared adventure is worse than
- * not resolving at all.
+ * `selectAsset` fetches the full descriptor by id and downloads it, returning
+ * where it landed. The local cloud tree is a download *cache*, not proof of
+ * entitlement: an entitled reader who has never opened this asset has no file
+ * yet, so resolving has to be able to fetch.
  */
-async function resolveOne(ref, log) {
-  const mod = moulinette();
-  if (!mod) return null;
+async function resolveOne(ref, index, log) {
+  const matches = index.assets.filter(
+    (a) => String(a?.pack_id) === ref.pack && a?.url === ref.file,
+  );
+  if (matches.length === 0) {
+    log(`no asset ${ref.file} in pack ${ref.pack} — not subscribed, or it moved`);
+    return null;
+  }
 
-  let results;
   try {
-    // Search on the bare filename: Moulinette matches on terms, and the
-    // creator/pack are used to disambiguate rather than to search.
-    const terms = ref.file.split("/").pop().replace(/\.[a-z0-9]+$/i, "");
-    results = await mod.api.searchAssets(terms, ref.type);
+    const path = await index.collection.selectAsset(matches[0]);
+    // Scene and Scene Packer assets download as JSON and report no path.
+    // They are documents, not media, and a data tree wants a file.
+    if (!path) {
+      log(`${ref.pack}/${ref.file} is not a media asset; only files can be referenced`);
+      return null;
+    }
+    return path;
   } catch (err) {
-    log(`search failed for ${ref.creator}/${ref.pack}/${ref.file}: ${err?.message ?? err}`);
-    return null;
-  }
-
-  const candidates = (results?.assets ?? []).filter((a) =>
-    a.creator === ref.creator
-    && a.pack === ref.pack
-    && typeof a.filepath === "string"
-    && (a.filepath === ref.file || a.filepath.endsWith("/" + ref.file)));
-
-  if (candidates.length === 0) {
-    log(`no match for ${ref.creator} / ${ref.pack} / ${ref.file} — not subscribed, or it moved`);
-    return null;
-  }
-  if (candidates.length > 1) {
-    log(`${candidates.length} assets match ${ref.creator}/${ref.pack}/${ref.file}; using the first`);
-  }
-
-  const asset = candidates[0];
-  const collection = mod.collections?.find((c) => c.getId() === asset.collection);
-  if (!collection?.downloadAsset) {
-    log(`collection '${asset.collection}' cannot download; Moulinette's API may have changed`);
-    return null;
-  }
-  try {
-    // The local moulinette-v2/cloud/... tree is a download *cache*, not an
-    // entitlement marker: an entitled reader who has never opened this asset
-    // has no local file yet, so resolving has to be able to fetch it.
-    const dl = await collection.downloadAsset(asset);
-    return dl?.path || null;
-  } catch (err) {
-    log(`download failed for ${ref.creator}/${ref.pack}/${ref.file}: ${err?.message ?? err}`);
+    log(`download failed for ${ref.pack}/${ref.file}: ${err?.message ?? err}`);
     return null;
   }
 }
@@ -126,14 +127,17 @@ export async function resolveMoulinetteRefs(value, warn) {
     warn(msg);
   };
 
+  // Loaded on the first reference, so a vault with none pays nothing.
+  let index;
   const lookup = async (s) => {
     if (cache.has(s)) return cache.get(s);
     const ref = parseMoulinetteRef(s);
     let path = null;
     if (!ref) {
-      log(`malformed reference '${s}' — expected @moulinette/<map|image|audio>/<creator>/<pack>/<file>`);
+      log(`malformed reference '${s}' — expected @moulinette/<pack_ref>/<filepath>`);
     } else {
-      path = await resolveOne(ref, log);
+      if (index === undefined) index = await loadIndex(log);
+      if (index) path = await resolveOne(ref, index, log);
     }
     cache.set(s, path);
     if (path) stats.resolved++; else stats.unresolved++;

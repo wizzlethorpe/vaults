@@ -1,48 +1,60 @@
 // @moulinette/... reference parsing and resolution.
 //
-// The resolver itself needs Moulinette's module object, so the tests stub the
-// two things it touches: api.searchAssets and a collection's downloadAsset.
-// That is enough to cover the parts that decide behaviour — which assets are
-// considered a match, and what happens to a reference that resolves to
-// nothing — without a live entitled Foundry.
+// The resolver reads Moulinette's cached asset index, so the tests stub the
+// three things it touches: the module's `collections` entry, the `cache`
+// the collection's `initialize()` fills, and `selectAsset`. That covers the
+// parts that decide behaviour — which assets count as a match, and what
+// happens to a reference that resolves to nothing — without a live entitled
+// Foundry.
+//
+// The stub mirrors the real shapes deliberately: assets carry `pack_id` (the
+// pack_ref) and `url` (the filepath), and `selectAsset` returns a path string
+// rather than an object. An earlier version of this resolver searched instead
+// of indexing, and stubs that guessed the shapes hid three bugs that a live
+// world would have hit immediately.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { parseMoulinetteRef, resolveMoulinetteRefs } from "../scripts/moulinette.mjs";
 
-test("parses a well-formed reference", () => {
-  assert.deepEqual(parseMoulinetteRef("@moulinette/audio/Michael Ghelfi/Ambiences/Tavern (Loop).ogg"), {
-    type: 7, typeName: "audio", creator: "Michael Ghelfi", pack: "Ambiences", file: "Tavern (Loop).ogg",
+test("parses a reference into pack_ref and filepath", () => {
+  assert.deepEqual(parseMoulinetteRef("@moulinette/10698/scenes/abandoned-mine-entrance.webp"), {
+    pack: "10698", file: "scenes/abandoned-mine-entrance.webp",
   });
-  assert.equal(parseMoulinetteRef("@moulinette/map/MAD/Caverns/cavern_01.webp")?.type, 2);
-  assert.equal(parseMoulinetteRef("@moulinette/image/X/Y/z.png")?.type, 3);
 });
 
-test("keeps slashes inside the file segment, since packs nest", () => {
-  const ref = parseMoulinetteRef("@moulinette/audio/MG/Vol1/SFX/Basic/Water Fountain (Loop).ogg");
+test("keeps slashes inside the file segment, since packs nest folders", () => {
+  const ref = parseMoulinetteRef("@moulinette/442/SFX/Basic/Water Fountain (Loop).ogg");
+  assert.equal(ref?.pack, "442");
   assert.equal(ref?.file, "SFX/Basic/Water Fountain (Loop).ogg");
-  assert.equal(ref?.pack, "Vol1");
 });
 
 test("rejects what it cannot act on", () => {
   assert.equal(parseMoulinetteRef("@vault/attachments/x.webp"), null, "a different prefix");
-  assert.equal(parseMoulinetteRef("@moulinette/audio/OnlyTwo"), null, "too few segments");
-  // Documents are deliberately unsupported: reaching them needs an integer
-  // asset id, and a malformed one returns a *different* creator's asset.
-  assert.equal(parseMoulinetteRef("@moulinette/actor/X/Y/z.json"), null, "unsupported type");
+  assert.equal(parseMoulinetteRef("@moulinette/10698"), null, "no file segment");
+  assert.equal(parseMoulinetteRef("@moulinette/"), null, "nothing at all");
   assert.equal(parseMoulinetteRef(null), null);
 });
 
-/** Stub the module surface resolveOne reaches for. */
-async function withMoulinette(assets, fn, { active = true, download = (a) => ({ path: "local/" + a.filepath }) } = {}) {
+/** Stub the module surface the resolver reaches for. */
+async function withMoulinette(assets, fn, {
+  active = true,
+  select = async (a) => "local/" + a.url,
+  collections,
+} = {}) {
   const prev = globalThis.game;
+  const cache = { allAssets: null };
   globalThis.game = {
     modules: {
       get: (id) => (id !== "moulinette" ? undefined : {
         active,
-        api: { searchAssets: async () => ({ assets }) },
-        collections: [{ getId: () => "mou-cloud-cached", downloadAsset: async (a) => download(a) }],
+        cache,
+        collections: collections ?? [{
+          getId: () => "mou-cloud-cached",
+          initialize: async () => { cache.allAssets = assets; },
+          selectAsset: select,
+        }],
       }),
     },
   };
@@ -51,85 +63,144 @@ async function withMoulinette(assets, fn, { active = true, download = (a) => ({ 
   try { return await fn(); } finally { globalThis.game = prev; }
 }
 
-const GHELFI = {
-  creator: "Michael Ghelfi", pack: "Ambiences",
-  filepath: "Tavern (Loop).ogg", collection: "mou-cloud-cached", _id: 42,
-};
-const REF = "@moulinette/audio/Michael Ghelfi/Ambiences/Tavern (Loop).ogg";
+/** Shapes match the real index: pack_id is the pack_ref, url is the filepath. */
+const GHELFI = { pack_id: 442, url: "Tavern (Loop).ogg", id: 42 };
+const REF = "@moulinette/442/Tavern (Loop).ogg";
 
 test("resolves a reference to a local path", async () => {
   await withMoulinette([GHELFI], async () => {
-    const data = { sounds: [{ name: "Tavern", path: REF }] };
-    const stats = await resolveMoulinetteRefs(data, () => {});
-    assert.deepEqual(data, { sounds: [{ name: "Tavern", path: "local/Tavern (Loop).ogg" }] });
+    const doc = { sounds: [{ name: "Ambience", path: REF }] };
+    const stats = await resolveMoulinetteRefs(doc, () => {});
+    assert.equal(doc.sounds[0].path, "local/Tavern (Loop).ogg");
     assert.deepEqual(stats, { resolved: 1, unresolved: 0 });
   });
 });
 
-test("requires creator AND pack to match, not just the filename", async () => {
-  // Search is fuzzy; the exact comparison is what makes two readers resolve
-  // the same reference to the same asset.
-  const impostor = { ...GHELFI, creator: "Someone Else" };
-  await withMoulinette([impostor], async () => {
-    const data = { sounds: [{ name: "Tavern", path: REF }] };
-    await resolveMoulinetteRefs(data, () => {});
-    assert.deepEqual(data.sounds, [], "a same-named asset from another creator must not match");
+test("matches on pack_ref and filepath, not on a name that merely looks close", async () => {
+  // The filename never appears in the indexed display name — Moulinette
+  // prettifies `cavern_01.webp` into "Cavern 01 (webp)" — which is exactly
+  // why this matches on the filepath instead.
+  const other = { pack_id: 442, url: "Tavern (Oneshot).ogg", id: 43 };
+  const wrongPack = { pack_id: 999, url: "Tavern (Loop).ogg", id: 44 };
+  await withMoulinette([other, wrongPack, GHELFI], async () => {
+    const doc = { path: REF };
+    await resolveMoulinetteRefs(doc, () => {});
+    assert.equal(doc.path, "local/Tavern (Loop).ogg");
   });
 });
 
-test("an unresolved reference drops the entry that held it", async () => {
-  // A Playlist sound with no path is worse than no sound.
+test("a pack_ref that differs only by type still matches", async () => {
+  // The index carries pack_id as a number, the reference is text.
+  await withMoulinette([{ pack_id: "442", url: "Tavern (Loop).ogg", id: 42 }], async () => {
+    const doc = { path: REF };
+    await resolveMoulinetteRefs(doc, () => {});
+    assert.equal(doc.path, "local/Tavern (Loop).ogg");
+  });
+});
+
+test("an unresolved reference takes its container, one level up", async () => {
   await withMoulinette([], async () => {
-    const data = { name: "Ambience", sounds: [{ name: "Tavern", path: REF }, { name: "Local", path: "ok.ogg" }] };
-    const stats = await resolveMoulinetteRefs(data, () => {});
-    assert.deepEqual(data.sounds, [{ name: "Local", path: "ok.ogg" }]);
-    assert.equal(data.name, "Ambience", "the rest of the document survives");
-    assert.deepEqual(stats, { resolved: 0, unresolved: 1 });
+    const doc = {
+      name: "Tavern",
+      background: { src: REF },
+      sounds: [{ name: "Ambience", path: REF }, { name: "Kept", path: "local/x.ogg" }],
+    };
+    const stats = await resolveMoulinetteRefs(doc, () => {});
+    assert.equal(doc.background, undefined, "a background with no src is dropped");
+    assert.deepEqual(doc.sounds.map((s) => s.name), ["Kept"], "the pathless sound is dropped");
+    assert.equal(doc.name, "Tavern", "but the document itself survives");
+    assert.equal(stats.unresolved, 1);
   });
 });
 
-test("an unresolved nested key drops its container, not the document", async () => {
-  await withMoulinette([], async () => {
-    const data = { name: "Cavern", background: { src: "@moulinette/map/MAD/Caverns/c.webp" }, grid: { size: 140 } };
-    await resolveMoulinetteRefs(data, () => {});
-    assert.equal(data.background, undefined, "a background with no src is worse than none");
-    assert.deepEqual(data.grid, { size: 140 }, "one unresolved map must not discard the scene");
-    assert.equal(data.name, "Cavern");
-  });
-});
-
-test("does nothing when Moulinette is absent or inactive", async () => {
+test("a Scene or Scene Packer asset resolves to no path and is treated as unresolved", async () => {
+  // Those download as JSON and report an empty path. A data tree wants a file.
   await withMoulinette([GHELFI], async () => {
-    const data = { path: REF };
-    const stats = await resolveMoulinetteRefs(data, () => {});
-    assert.equal(data.path, undefined);
-    assert.deepEqual(stats, { resolved: 0, unresolved: 1 });
+    const warnings = [];
+    const doc = { path: REF };
+    await resolveMoulinetteRefs(doc, (m) => warnings.push(m));
+    assert.equal(doc.path, undefined);
+    assert.match(warnings.join("\n"), /not a media asset/);
+  }, { select: async () => "" });
+});
+
+test("a missing or inactive module leaves the reference unresolved, not thrown", async () => {
+  await withMoulinette([GHELFI], async () => {
+    const doc = { path: REF };
+    const stats = await resolveMoulinetteRefs(doc, () => {});
+    assert.equal(doc.path, undefined);
+    assert.equal(stats.unresolved, 1);
   }, { active: false });
 });
 
-test("warns once per distinct problem, not once per reference", async () => {
-  await withMoulinette([], async () => {
+test("a module whose internals moved warns once and resolves nothing", async () => {
+  await withMoulinette([GHELFI], async () => {
     const warnings = [];
-    const data = { a: { p: REF }, b: { p: REF }, c: { p: REF } };
-    await resolveMoulinetteRefs(data, (m) => warnings.push(m));
-    assert.equal(warnings.length, 1, "an adventure repeats the same track across pages");
-  });
+    const doc = { a: REF, b: REF };
+    await resolveMoulinetteRefs(doc, (m) => warnings.push(m));
+    assert.equal(warnings.length, 1, "one warning, not one per reference");
+    assert.match(warnings[0], /not where we expect/);
+  }, { collections: [{ getId: () => "mou-local" }] });
 });
 
-test("survives a download that throws", async () => {
+test("a failed download is reported, not thrown", async () => {
   await withMoulinette([GHELFI], async () => {
-    const data = { path: REF };
-    const stats = await resolveMoulinetteRefs(data, () => {});
-    assert.equal(data.path, undefined);
-    assert.equal(stats.unresolved, 1);
-  }, { download: () => { throw new Error("network"); } });
+    const warnings = [];
+    const doc = { path: REF };
+    await resolveMoulinetteRefs(doc, (m) => warnings.push(m));
+    assert.equal(doc.path, undefined);
+    assert.match(warnings.join("\n"), /download failed/);
+  }, { select: async () => { throw new Error("offline"); } });
 });
 
-test("leaves @vault/ and plain paths alone", async () => {
-  await withMoulinette([GHELFI], async () => {
-    const data = { a: "@vault/attachments/x.webp", b: "icons/svg/d20.svg", c: 42, d: null };
-    const stats = await resolveMoulinetteRefs(data, () => {});
-    assert.deepEqual(data, { a: "@vault/attachments/x.webp", b: "icons/svg/d20.svg", c: 42, d: null });
+test("loads the index once and resolves each distinct reference once", async () => {
+  let initialized = 0, selected = 0;
+  const cache = { allAssets: null };
+  const prev = globalThis.game;
+  globalThis.game = {
+    modules: {
+      get: () => ({
+        active: true,
+        cache,
+        collections: [{
+          getId: () => "mou-cloud-cached",
+          initialize: async () => { initialized++; cache.allAssets = [GHELFI]; },
+          selectAsset: async (a) => { selected++; return "local/" + a.url; },
+        }],
+      }),
+    },
+  };
+  try {
+    const doc = { a: REF, b: REF, nested: { c: REF } };
+    const stats = await resolveMoulinetteRefs(doc, () => {});
+    assert.equal(initialized, 1, "index loaded once");
+    assert.equal(selected, 1, "one download for three identical references");
+    // Counts distinct assets, not occurrences: the number that matters for a
+    // sync summary is how much the reader actually got.
+    assert.equal(stats.resolved, 1);
+    assert.equal(doc.nested.c, "local/Tavern (Loop).ogg");
+  } finally { globalThis.game = prev; }
+});
+
+test("a vault with no references never touches Moulinette", async () => {
+  let touched = false;
+  const prev = globalThis.game;
+  globalThis.game = { modules: { get: () => { touched = true; return undefined; } } };
+  try {
+    const doc = { img: "@vault/attachments/map.webp", name: "Keep" };
+    const stats = await resolveMoulinetteRefs(doc, () => {});
+    assert.equal(touched, false, "the index is loaded lazily");
+    assert.equal(doc.img, "@vault/attachments/map.webp", "@vault/ is left for its own rewriter");
     assert.deepEqual(stats, { resolved: 0, unresolved: 0 });
+  } finally { globalThis.game = prev; }
+});
+
+test("warns once about a malformed reference repeated across a document", async () => {
+  await withMoulinette([GHELFI], async () => {
+    const warnings = [];
+    const doc = { a: "@moulinette/10698", b: "@moulinette/10698" };
+    await resolveMoulinetteRefs(doc, (m) => warnings.push(m));
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /expected @moulinette/);
   });
 });
