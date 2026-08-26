@@ -187,7 +187,7 @@ export async function sync(host, vault, { forceFull = false } = {}) {
     host.notify("warn", host.localize("VAULTS.Sync.MissingPackages", { packages: summary }));
     console.warn(
       `Vaults | ${vault.label}: foundry.base points into package(s) this world can't read: ${summary}. `
-      + `Those pages will sync as journals but create no Actor/Item.`,
+      + `Those pages will sync as journals but instantiate no document.`,
     );
   }
 

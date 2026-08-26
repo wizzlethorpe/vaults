@@ -113,7 +113,17 @@ function discoverPages(vault: string, decls: PackDecl[]): Page[] {
         // UUID against, so it compiles only the blank-document form and the
         // page's own data — a UUID entry is a live-sync idiom and is reported
         // as such rather than producing a confusing type error.
-        const specs = (Array.isArray(fo.base) ? fo.base : [fo.base]).map(String);
+        const raw = Array.isArray(fo.base) ? fo.base : [fo.base];
+        const specs = raw.filter((s): s is string => typeof s === "string" && s.trim().length > 0);
+        if (specs.length !== raw.length) {
+          // Coercing here (`String(42)` → "42") would sail past the blank-doc
+          // check and produce a nonsense document type downstream.
+          console.warn(
+            `  [skip] ${pack.folder}/${entry.name}: every foundry.base entry must be a `
+            + `non-empty string; got ${JSON.stringify(fo.base)}.`,
+          );
+          continue;
+        }
         const blank = specs.find((s) => !s.includes("."));
         if (!blank) {
           console.warn(

@@ -5,7 +5,7 @@
   "scripts": {
     "typecheck": "pnpm -r exec tsc --noEmit",
     "test": "pnpm -r --if-present test && pnpm run test:foundry",
-    "test:foundry": "node --test foundry/test/*.test.mjs",
+    "test:foundry": "node --test \"foundry/test/**/*.test.mjs\"",
     "build:cli": "pnpm --filter @wizzlethorpe/vaults run build",
     "build:compiler": "pnpm --filter @wizzlethorpe/vaults-foundry-compiler run build"
   },

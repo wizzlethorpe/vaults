@@ -364,15 +364,28 @@ export async function missingBasePackages(metas) {
   // an inactive module still resolves, and `game.modules.get(id).active` would
   // report a working package as missing.
   //
-  // Probed once per pack rather than per page: reachability is a property of
-  // the pack, and a vault can name hundreds of documents inside one.
+  // Probed per pack rather than per page: reachability is a property of the
+  // pack, and a vault can name hundreds of documents inside one. A few specs
+  // each rather than one, so a single stale document id can't condemn a pack
+  // that is actually fine and produce a false report for every other page
+  // pointing into it.
+  const PROBES_PER_PACK = 3;
   const packOf = (spec) => spec.split(".").slice(1, 3).join(".");
-  const probe = new Map(); // "pkg.pack" → a representative spec
+  const probes = new Map(); // "pkg.pack" → up to PROBES_PER_PACK specs
   for (const specs of pageSpecs) {
-    for (const spec of specs) if (!probe.has(packOf(spec))) probe.set(packOf(spec), spec);
+    for (const spec of specs) {
+      const pack = packOf(spec);
+      const chosen = probes.get(pack) ?? [];
+      if (chosen.length < PROBES_PER_PACK && !chosen.includes(spec)) chosen.push(spec);
+      probes.set(pack, chosen);
+    }
   }
   const reachable = new Map();
-  for (const [pack, spec] of probe) reachable.set(pack, !!(await safeFromUuid(spec)));
+  for (const [pack, specs] of probes) {
+    let ok = false;
+    for (const spec of specs) if (await safeFromUuid(spec)) { ok = true; break; }
+    reachable.set(pack, ok);
+  }
 
   const missing = new Map();
   for (const specs of pageSpecs) {

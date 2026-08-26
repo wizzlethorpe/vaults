@@ -66,10 +66,12 @@ export function buildPathIndex(manifestFiles) {
 }
 
 /**
- * `foundry.base` → the document type it creates, without needing a lookup:
- * a compendium UUID names it in the fourth segment
- * (`Compendium.<pkg>.<pack>.Actor.<id>`), and a blank-doc base is the type
- * itself, optionally with a subtype (`Macro`, `Actor:character`).
+ * `foundry.base` → the document type it creates, without needing a lookup.
+ * Every UUID form puts the type second-to-last (`Actor.<id>`,
+ * `Compendium.<pkg>.<pack>.Actor.<id>`, `Actor.<id>.Item.<id>`), and a
+ * blank-doc base is the type itself, optionally with a subtype (`Macro`,
+ * `Actor:character`). A priority list names one type across all its entries,
+ * so its first entry answers for the page.
  */
 function docNameFromBase(base) {
   // A priority list names one document type across all its entries (the CLI

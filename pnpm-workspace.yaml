@@ -5,7 +5,8 @@
 # force pnpm to create unwanted node_modules and tsconfig.references.
 #
 # Because foundry/ has no package.json, `pnpm -r test` can't see its tests.
-# The root `test:foundry` script runs them directly instead.
+# The root `test:foundry` script runs them directly instead (with the glob
+# quoted, so Node expands it rather than the shell).
 packages:
   - cli
   - foundry-compiler

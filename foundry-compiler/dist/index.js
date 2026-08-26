@@ -79,7 +79,27 @@ function discoverPages(vault, decls) {
                     console.warn(`  [skip] ${pack.folder}/${entry.name}: no foundry.base/id`);
                     continue;
                 }
-                const docType = String(fo.base).split(":")[0];
+                // `base` may be a priority list. vfmc has no Foundry to resolve a
+                // UUID against, so it compiles only the blank-document form and the
+                // page's own data — a UUID entry is a live-sync idiom and is reported
+                // as such rather than producing a confusing type error.
+                const raw = Array.isArray(fo.base) ? fo.base : [fo.base];
+                const specs = raw.filter((s) => typeof s === "string" && s.trim().length > 0);
+                if (specs.length !== raw.length) {
+                    // Coercing here (`String(42)` → "42") would sail past the blank-doc
+                    // check and produce a nonsense document type downstream.
+                    console.warn(`  [skip] ${pack.folder}/${entry.name}: every foundry.base entry must be a `
+                        + `non-empty string; got ${JSON.stringify(fo.base)}.`);
+                    continue;
+                }
+                const blank = specs.find((s) => !s.includes("."));
+                if (!blank) {
+                    console.warn(`  [skip] ${pack.folder}/${entry.name}: foundry.base names only compendium UUIDs `
+                        + `(${specs.join(", ")}), which need a running Foundry to resolve. `
+                        + `Add a blank-document entry (e.g. "Actor:npc") to make this page compilable.`);
+                    continue;
+                }
+                const docType = blank.split(":")[0];
                 const subfolder = path.relative(root, dir).split(path.sep).join("/");
                 pages.push({
                     pack, body, foundry: fo, docType, subfolder,

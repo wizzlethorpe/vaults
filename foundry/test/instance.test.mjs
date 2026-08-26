@@ -43,17 +43,20 @@ test("returns null for non-string input", () => {
 // missingBasePackages touches `game`, so it needs the smallest possible stub.
 // This is the seam where a fuller Foundry mock layer would start.
 // missingBasePackages asks Foundry whether a pack answers, so the stub is a
-// fromUuid that resolves only the packs named in `reachablePacks`. Package ids
-// are given as "pkg.pack" — the same granularity the real probe uses, and the
-// level at which a system's redirect table operates.
-async function withPacks(reachablePacks, fn) {
+// fromUuid built from a map of "pack you ask for" → "pack that answers". That
+// shape is what lets a test express a *redirect*: dnd5e maps
+// dnd-monster-manual.actors onto dnd5e.actors24, so asking for the former
+// resolves even though that module is inactive, and the document that comes
+// back carries the latter's uuid. A pack absent from the map does not resolve.
+async function withPacks(packMap, fn) {
   const prevGame = globalThis.game;
   const prevFromUuid = globalThis.fromUuid;
-  const packs = new Set(reachablePacks);
   globalThis.game = { system: { id: "dnd5e" } };
   globalThis.fromUuid = async (uuid) => {
-    const pack = uuid.split(".").slice(1, 3).join(".");
-    return packs.has(pack) ? { documentName: "Actor", uuid } : null;
+    const asked = uuid.split(".").slice(1, 3).join(".");
+    const answers = packMap[asked];
+    if (!answers) return null;
+    return { documentName: "Actor", uuid: uuid.replace(asked, answers) };
   };
   // Must await: restoring the globals synchronously would pull fromUuid out
   // from under the probe loop after its first suspension.
@@ -68,29 +71,40 @@ const mmGuard = "Compendium.dnd-monster-manual.actors.Actor.mmGuard000000000";
 const sysGuard = "Compendium.dnd5e.actors24.Actor.mmGuard000000000";
 
 test("reports a pack nothing can resolve, with a page count", async () => {
-  await withPacks([], async () => {
+  await withPacks({}, async () => {
     assert.deepEqual([...await missingBasePackages([page(mmGuard), page(mmGuard)])],
       [["dnd-monster-manual", 2]]);
   });
 });
 
 test("a reachable pack is not missing", async () => {
-  await withPacks([MM], async () => {
+  await withPacks({ [MM]: MM }, async () => {
     assert.equal((await missingBasePackages([page(mmGuard)])).size, 0);
   });
 });
 
-test("a redirected pack is not reported missing even though its module is inactive", async () => {
+test("a pack reachable only by redirect is not reported missing", async () => {
   // dnd5e maps Compendium.dnd-monster-manual.actors onto Compendium.dnd5e.actors24,
-  // so fromUuid answers for a module that is installed but disabled. Inferring
-  // reachability from game.modules would call this missing; probing does not.
-  await withPacks([MM], async () => {
+  // so fromUuid answers for a module that is installed but disabled. The MM pack
+  // is deliberately NOT itself in the map: it resolves purely via the redirect.
+  // Inferring reachability from game.modules would call this missing.
+  await withPacks({ [MM]: SYS }, async () => {
     assert.equal((await missingBasePackages([page(mmGuard)])).size, 0);
+  });
+});
+
+test("a pack is only unreachable when every probed spec fails", async () => {
+  // One stale document id shouldn't condemn a pack that other pages use fine,
+  // so reachability probes several specs per pack before giving up.
+  await withPacks({ [MM]: MM }, async () => {
+    const stale = "Compendium.dnd-monster-manual.actors.Actor.staleaaaaaaaaaa1";
+    const missing = await missingBasePackages([page(stale), page(mmGuard)]);
+    assert.equal(missing.size, 0, "the second spec resolves, so the pack is reachable");
   });
 });
 
 test("blank and world-document bases are never reported", async () => {
-  await withPacks([], async () => {
+  await withPacks({}, async () => {
     const missing = await missingBasePackages([
       page("Actor:npc"),
       page("Actor.abc1234567890123"),
@@ -103,17 +117,17 @@ test("blank and world-document bases are never reported", async () => {
 });
 
 test("a list with a blank fallback can't strand the page", async () => {
-  await withPacks([], async () => {
+  await withPacks({}, async () => {
     assert.equal((await missingBasePackages([page([mmGuard, "Actor:npc"])])).size, 0);
   });
 });
 
 test("a list is only stranded when every pack is unreachable", async () => {
-  await withPacks([], async () => {
+  await withPacks({}, async () => {
     assert.deepEqual([...await missingBasePackages([page([mmGuard, sysGuard])])].sort(),
       [["dnd-monster-manual", 1], ["dnd5e", 1]]);
   });
-  await withPacks([SYS], async () => {
+  await withPacks({ [SYS]: SYS }, async () => {
     assert.equal((await missingBasePackages([page([mmGuard, sysGuard])])).size, 0,
       "the system pack answers, so nothing is stranded");
   });
