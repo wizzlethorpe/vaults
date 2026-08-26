@@ -651,7 +651,7 @@ function renderTableView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: 
 
 const COVER_IMG_RE = /!\[\[([^\[\]\n|#]+\.(?:png|jpe?g|webp|gif|svg|avif|tiff?))(?:\|[^\]]*)?\]\]/i;
 
-function renderCardsView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: RenderContext): string {
+function renderCardsView(view: ViewSpec, allRows: Row[], _doc: BaseDoc, context: RenderContext): string {
   let rows = allRows;
   if (view.filters) rows = rows.filter((row) => evalFilter(view.filters!, row));
 
@@ -828,7 +828,7 @@ function aspectRatioClass(value: string | number): string {
 
 interface Cell { html: string; raw: unknown; }
 
-function valueForColumn(id: string, row: Row, context: RenderContext): Cell {
+function valueForColumn(id: string, row: Row, _context: RenderContext): Cell {
   // file.name renders as a link to the page.
   if (id === "file.name" || id === "file.basename") {
     const title = row.page.title;

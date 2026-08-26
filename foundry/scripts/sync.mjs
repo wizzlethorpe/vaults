@@ -274,7 +274,10 @@ export async function sync(host, vault, { forceFull = false } = {}) {
     return {
       ok: true, refreshHandlerAssets: false,
       added: 0, modified: 0, removed: 0, imageStats, instances: 0, skipped: [], failed: [],
-      missingDocuments: [],
+      // The drift list is computed above this return, so report it here too —
+      // an up-to-date sync with missing documents is exactly the case a caller
+      // most wants to see.
+      missingDocuments: missingDocs,
     };
   }
 

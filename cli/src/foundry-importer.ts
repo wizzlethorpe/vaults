@@ -7,11 +7,9 @@
 // esbuild on the user's machine and doesn't need the foundry/ source tree,
 // which isn't part of the npm package.
 
-import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CLI_VERSION } from "./version.js";
 
 // scripts/bundle-importer.mjs always emits the bundle into dist/. This module
 // runs from dist/ once published, but from src/ under tsx (tests) — resolve to
@@ -28,7 +26,6 @@ const BUNDLE_PATH = join(distDir, "foundry-importer.bundle.js");
  */
 export async function writeFoundryImporter(outputDir: string): Promise<void> {
   const source = await readFile(BUNDLE_PATH, "utf8");
-  const sha256 = createHash("sha256").update(source).digest("hex");
   const dir = join(outputDir, "_foundry");
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, "importer.js"), source);

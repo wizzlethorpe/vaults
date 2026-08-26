@@ -5,6 +5,10 @@
     "moduleResolution": "bundler",
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    // Three separate review findings in one week were unused symbols left
+    // behind by a refactor. The compiler can just say so.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,

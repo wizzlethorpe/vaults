@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { readDotEnv, writeDotEnv } from "./dotenv.js";
 import { warnSensitive } from "./sensitive.js";
 import type { OidcRoleRule } from "./render/oidc-match.js";

@@ -1,7 +1,6 @@
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { relative } from "node:path";
 import { dirname, join } from "node:path";
 import { availableParallelism } from "node:os";
 import picomatch from "picomatch";
@@ -12,7 +11,7 @@ import {
   copyReferencedImages,
   copyReferencedPassthroughs,
 } from "./asset-refs.js";
-import { buildManifest, type AssetAdvertisement, type BodyMeta } from "./manifest.js";
+import { buildManifest, type BodyMeta } from "./manifest.js";
 import { collectBodyMeta, warnFoundryDocCollisions } from "./foundry-meta.js";
 import { compressImage } from "./images.js";
 import {

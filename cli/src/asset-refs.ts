@@ -11,10 +11,10 @@
 // block bodies, and `@vault/PATH` strings inside foundry frontmatter (a
 // Scene background, a Playlist's sounds) that no prose scanner would see.
 
-import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { battlemapLayerPaths } from "./render/handlers/builtin/battlemap.js";
-import { IMAGE_EXT_RE, PASSTHROUGH_EXT_RE } from "./render/extensions.js";
+import { IMAGE_EXT_RE } from "./render/extensions.js";
 import { slugify } from "./render/slug.js";
 import type { ImageEntry, PageMeta } from "./render/types.js";
 import { loadDataJson } from "./foundry-meta.js";
