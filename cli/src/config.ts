@@ -242,12 +242,34 @@ export async function saveSessionSecret(vaultPath: string, secret: string): Prom
   await saveConfig(vaultPath, cfg);
 }
 
+/**
+ * Read `.vaults/config.json`, or `{}` when the vault has none yet.
+ *
+ * Only a missing file means "no config". Every other failure throws, because
+ * `{}` here is indistinguishable from a fresh vault and merges into the
+ * defaults — `roles: ["public"]`, no password hashes. One unreadable or
+ * malformed config would therefore build a single public variant with no auth
+ * middleware and publish every gated page, reporting success the whole way;
+ * the next `push` would then write those defaults back over the real roles,
+ * hashes, and OAuth config. This is a system boundary, so it validates here.
+ */
 async function readFileConfig(vaultPath: string): Promise<Partial<VaultConfig>> {
+  const path = configPath(vaultPath);
+  let raw: string;
   try {
-    const raw = await readFile(configPath(vaultPath), "utf8");
+    raw = await readFile(path, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw new Error(`Could not read ${path}: ${(err as Error).message}`);
+  }
+  try {
     return JSON.parse(raw) as Partial<VaultConfig>;
-  } catch {
-    return {};
+  } catch (err) {
+    throw new Error(
+      `${path} is not valid JSON: ${(err as Error).message}\n`
+      + `  Fix or delete the file. Deleting it resets this vault to a single `
+      + `public role and discards its password hashes and OAuth config.`,
+    );
   }
 }
 

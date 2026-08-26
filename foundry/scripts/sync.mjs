@@ -71,6 +71,8 @@ async function orderByBaseDeps(vault, paths, bodyMetaIndex) {
  *     imageStats, instances,
  *     skipped,                         // [{ path, reason }] declared a
  *                                      // foundry.base but got no document
+ *     failed,                          // [{ path, reason }] page didn't sync;
+ *                                      // its hash is not recorded, so it retries
  *   }
  */
 export async function sync(host, vault, { forceFull = false } = {}) {
@@ -223,7 +225,7 @@ export async function sync(host, vault, { forceFull = false } = {}) {
     host.notify("info", host.localize("VAULTS.Sync.NothingToDo"));
     return {
       ok: true, refreshHandlerAssets: false,
-      added: 0, modified: 0, removed: 0, imageStats, instances: 0, skipped: [],
+      added: 0, modified: 0, removed: 0, imageStats, instances: 0, skipped: [], failed: [],
     };
   }
 
@@ -249,6 +251,11 @@ export async function sync(host, vault, { forceFull = false } = {}) {
   let added = 0, modified = 0, instances = 0;
   // Pages that declared foundry.base but produced no document: { path, reason }.
   const skipped = [];
+  // Body paths whose sync failed. Their hash must not be recorded as synced:
+  // the next run diffs the manifest against what we persist here, so a failed
+  // page that looks synced is never fetched again and the failure becomes
+  // permanent, with every later sync reporting "already up to date".
+  const failedPages = new Map(); // bodyPath → reason
   // Carried forward for pages we didn't touch, replaced for the ones we did,
   // and dropped for pages that left the manifest.
   const mediaRefs = {};
@@ -257,6 +264,7 @@ export async function sync(host, vault, { forceFull = false } = {}) {
     const html = bodies.get(bodyPath);
     if (html == null) {
       console.warn(`Vaults | server returned no content for ${bodyPath}`);
+      failedPages.set(bodyPath, "no content returned");
       continue;
     }
     const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
@@ -292,21 +300,42 @@ export async function sync(host, vault, { forceFull = false } = {}) {
       }
     } catch (err) {
       console.warn(`Vaults | upsert failed for ${logicalPath}:`, err);
+      failedPages.set(bodyPath, err?.message || "upsert threw");
     }
   }
 
   let removed = 0;
+  const failedDeletes = new Set();
   for (const bodyPath of toDelete) {
     const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
     try { await deleteFile(vault, logicalPath); removed++; }
-    catch (err) { console.warn(`Vaults | delete failed for ${logicalPath}:`, err); }
+    catch (err) {
+      console.warn(`Vaults | delete failed for ${logicalPath}:`, err);
+      // Same reasoning as a failed upsert, mirrored: the path is absent from
+      // the manifest, so recording that absence would drop it out of the
+      // delete set and strand the journal in the world for good.
+      failedDeletes.add(bodyPath);
+    }
     // Tear down the derived Actor/Item too. Best-effort; only acts on docs
     // we created (vault flag check inside).
     try { await deleteInstance(vault, logicalPath); }
     catch (err) { console.warn(`Vaults | delete instance failed for ${logicalPath}:`, err); }
   }
 
-  await host.setVaultState(vault.id, { lastManifest: Object.fromEntries(remote), lastMediaRefs: mediaRefs });
+  // Record what actually synced, not what the manifest offered. A path that
+  // failed keeps its previous hash (or none at all), so it stays in the diff
+  // and is retried on the next run.
+  const persisted = new Map(remote);
+  for (const bodyPath of failedPages.keys()) {
+    const previous = local.get(bodyPath);
+    if (previous === undefined) persisted.delete(bodyPath);
+    else persisted.set(bodyPath, previous);
+  }
+  for (const bodyPath of failedDeletes) {
+    const previous = local.get(bodyPath);
+    if (previous !== undefined) persisted.set(bodyPath, previous);
+  }
+  await host.setVaultState(vault.id, { lastManifest: Object.fromEntries(persisted), lastMediaRefs: mediaRefs });
 
   // Re-place existing entries whose leaf-collapse status changed since
   // the last sync (folder gained/lost subfolders). Cheap pass; only hits
@@ -328,6 +357,11 @@ export async function sync(host, vault, { forceFull = false } = {}) {
   if (instances > 0) console.info(`Vaults | ${vault.label} instantiated ${instances} document(s) from page foundry.base.`);
   // A silent skip here used to look like a clean sync: the journal pages land,
   // the actors never do, and the only trace is a console warning. Surface it.
+  if (failedPages.size > 0) {
+    host.notify("warn", host.localize("VAULTS.Sync.PagesFailed", { count: failedPages.size }));
+    console.warn(`Vaults | ${vault.label} failed to sync ${failedPages.size} page(s); they stay in the diff and retry next sync:`,
+      [...failedPages].map(([path, reason]) => ({ path, reason })));
+  }
   if (skipped.length > 0) {
     host.notify("warn", host.localize("VAULTS.Sync.InstancesSkipped", { count: skipped.length }));
     console.warn(`Vaults | ${vault.label} no document created for ${skipped.length} page(s):`, skipped);
@@ -339,6 +373,7 @@ export async function sync(host, vault, { forceFull = false } = {}) {
   return {
     ok: true, refreshHandlerAssets: true,
     added, modified, removed, imageStats, instances, skipped,
+    failed: [...failedPages].map(([path, reason]) => ({ path, reason })),
   };
 }
 

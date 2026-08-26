@@ -68,7 +68,13 @@ async function upsertFolder(id, name, parentId) {
     }
     return existing;
   }
-  return Folder.create({ _id: id, name, type: "JournalEntry", folder: parentId }, { keepId: true });
+  await Folder.create({ _id: id, name, type: "JournalEntry", folder: parentId }, { keepId: true });
+  // A rejected folder is not thrown either, and ensureFolderChain returns the
+  // id it *asked* for — so every entry beneath it would be created pointing at
+  // a folder that doesn't exist and land at the sidebar root instead.
+  const created = game.folders.get(id);
+  if (!created) throw new Error(`Folder ${id} ("${name}") was rejected on create`);
+  return created;
 }
 
 /**
@@ -188,7 +194,13 @@ export async function upsertFile(vault, path, body, index, meta, folderInfo, med
 
     const existingPage = existing.pages.get(pId);
     if (existingPage) await existingPage.update(pageData);
-    else await existing.createEmbeddedDocuments("JournalEntryPage", [pageData], { keepId: true });
+    else {
+      await existing.createEmbeddedDocuments("JournalEntryPage", [pageData], { keepId: true });
+      // Same contract as the create below: a rejected embedded document is
+      // reported to the GM and skipped, not thrown, so the page can be absent
+      // with the promise resolved.
+      if (!existing.pages.get(pId)) throw new Error(`JournalEntryPage ${pId} was rejected on create`);
+    }
     return "modified";
   }
 
@@ -204,6 +216,12 @@ export async function upsertFile(vault, path, body, index, meta, folderInfo, med
     // via reconcile.
     ...(pageOwnership !== null ? { ownership: { default: pageOwnership } } : {}),
   }, { keepId: true });
+  // create() resolving is not proof the document exists: Foundry validates in
+  // ClientDatabaseBackend##preCreateDocumentArray and, on failure, notifies the
+  // GM and continues past it — the batch completes and nothing was written.
+  // Without this check the caller counts an "added" page that isn't there, and
+  // records its hash as synced so it is never retried.
+  if (!game.journal.get(eId)) throw new Error(`JournalEntry ${eId} was rejected on create`);
   return "added";
 }
 

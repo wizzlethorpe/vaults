@@ -295,7 +295,7 @@ function wrapRestrictedCalloutsAsSecret(doc, vault) {
 
   let touched = false;
   for (const role of restrictedRoles) {
-    for (const el of doc.querySelectorAll(".callout.callout-" + cssEscape(role))) {
+    for (const el of doc.querySelectorAll(calloutSelectorFor(role))) {
       const section = doc.createElement("section");
       section.className = "secret";
       el.parentNode.insertBefore(section, el);
@@ -304,6 +304,22 @@ function wrapRestrictedCalloutsAsSecret(doc, vault) {
     }
   }
   return touched;
+}
+
+/**
+ * Selector matching a role-gated callout for `role`.
+ *
+ * **The role name has to be lower-cased.** The CLI emits the class from
+ * `type.toLowerCase()` (see cli/src/render/callouts.ts), class selectors are
+ * case-sensitive in the no-quirks document DOMParser gives us, and role names
+ * may legally contain capitals — `role add` validates with a case-insensitive
+ * pattern and stores the name verbatim. Matching a configured role of "DM"
+ * against the emitted `callout-dm` therefore found nothing, and the callout
+ * was never wrapped in `<section class="secret">`: GM-only blocks on
+ * player-visible pages were readable by players in Foundry.
+ */
+export function calloutSelectorFor(role) {
+  return ".callout.callout-" + cssEscape(String(role).toLowerCase());
 }
 
 // CSS.escape isn't available in every Foundry runtime; keep this small
