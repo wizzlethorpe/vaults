@@ -26,6 +26,21 @@ import { hashPassword } from "../src/auth.js";
 
 const SECRET = "0".repeat(64);
 
+/**
+ * Mint a token the way the middleware does, so a test can present one it did
+ * not receive: `typ` null produces the untyped pre-upgrade form.
+ */
+async function forgeToken(typ: string | null, role: string, ttl: number): Promise<string> {
+  const exp = Math.floor(Date.now() / 1000) + ttl;
+  const payload = typ === null ? `${role}.${exp}` : `${typ}.${role}.${exp}`;
+  const key = await crypto.subtle.importKey(
+    "raw", Buffer.from(SECRET, "hex"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  const hex = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${payload}.${hex}`;
+}
+
 interface Middleware {
   onRequest(ctx: { request: Request; env: Record<string, unknown>; next: () => Response | Promise<Response> }): Promise<Response>;
 }
@@ -81,7 +96,9 @@ describe("generated auth middleware", () => {
     });
     assert.equal(res.status, 302);
     const setCookie = res.headers.get("Set-Cookie") ?? "";
-    assert.match(setCookie, /vault_role=dm\./);
+    // Typed: "s" marks it a session cookie, so it cannot be replayed as a
+    // 90-day bearer.
+    assert.match(setCookie, /vault_role=s\.dm\./);
     dmCookie = setCookie.split(";")[0]!;
   });
 
@@ -110,6 +127,53 @@ describe("generated auth middleware", () => {
     // Without this, anyone could fetch any tier's pages by guessing a role.
     const res = await call(mw, "https://v.example/_variants/dm/secret", { headers: { Cookie: dmCookie } });
     assert.equal(res.status, 404);
+  });
+
+  it("refuses a session cookie presented as a bearer token", async () => {
+    // The two were byte-identical in format before they carried a type, so
+    // a 7-day session cookie could be replayed as a 90-day bearer.
+    const value = dmCookie.split("=")[1]!;
+    const res = await call(mw, "https://v.example/secret", {
+      headers: { Authorization: `Bearer ${value}` },
+    });
+    assert.equal(await res.text(), "/_variants/public/secret", "must fall back to the default role");
+  });
+
+  it("ignores a URL token on a top-level navigation", async () => {
+    // A token in a URL is shareable and long-lived; a pasted link must not
+    // browse the site as another role.
+    const value = dmCookie.split("=")[1]!;
+    const res = await call(mw, `https://v.example/secret?_token=${value}`, {
+      headers: { "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document" },
+    });
+    assert.equal(await res.text(), "/_variants/public/secret");
+  });
+
+  it("sends Referrer-Policy so a URL token cannot leak through Referer", async () => {
+    const res = await call(mw, "https://v.example/secret");
+    assert.equal(res.headers.get("Referrer-Policy"), "no-referrer");
+    assert.equal(res.headers.get("X-Content-Type-Options"), "nosniff");
+  });
+
+  it("still honours a URL token on a machine fetch, which is what it is for", async () => {
+    // The Foundry sync passes its bearer this way so per-file cross-origin
+    // GETs stay CORS-simple; browsers mark those Sec-Fetch-Mode: cors.
+    const bearer = await forgeToken("b", "dm", 3600);
+    const res = await call(mw, `https://v.example/secret?_token=${bearer}`, {
+      headers: { "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty" },
+    });
+    assert.equal(await res.text(), "/_variants/dm/secret");
+  });
+
+  it("still accepts an untyped token issued before the upgrade", async () => {
+    // Compatibility window: tokens minted by an older deploy have no type
+    // segment and must keep working, or every existing bearer and session
+    // breaks on push. They age out within 90 days on their own.
+    const legacy = await forgeToken(null, "dm", 3600);
+    const res = await call(mw, "https://v.example/secret", {
+      headers: { Authorization: `Bearer ${legacy}` },
+    });
+    assert.equal(await res.text(), "/_variants/dm/secret");
   });
 
   it("refuses an off-site redirect through ?next=", async () => {

@@ -67,6 +67,11 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 // Bearer tokens (used by Foundry, MCP clients) get a much longer lifetime
 // since refreshing means reopening a browser-based approval flow.
 const BEARER_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
+// Tokens carry their purpose so the two are not interchangeable: without
+// this a 7-day session cookie and a 90-day bearer were byte-identical in
+// format, so either could be replayed as the other.
+const TOKEN_TYPE_SESSION = "s";
+const TOKEN_TYPE_BEARER = "b";
 const PBKDF2_DEFAULT_ITERATIONS = 100000;
 // Same shape as a real PBKDF2 hash (iterations:saltHex:hashHex with the
 // expected lengths) but with all-zero salt + hash. Used to keep the
@@ -78,6 +83,25 @@ const DUMMY_PASSWORD_HASH = "100000:" + "0".repeat(32) + ":" + "0".repeat(64);
 // ── Public middleware entry ────────────────────────────────────────────────
 
 export const onRequest = async (ctx) => {
+  return withSecurityHeaders(await handleRequest(ctx));
+};
+
+/**
+ * Headers every response gets, added at the one exit so redirects and error
+ * responses are covered too.
+ *
+ * Referrer-Policy is load-bearing here rather than hygiene: the Foundry sync
+ * passes its bearer as ?_token= in the URL, and without this any external
+ * link on a page fetched that way would carry the token in the Referer.
+ */
+function withSecurityHeaders(response) {
+  const out = new Response(response.body, response);
+  out.headers.set("Referrer-Policy", "no-referrer");
+  out.headers.set("X-Content-Type-Options", "nosniff");
+  return out;
+}
+
+const handleRequest = async (ctx) => {
   const { request, env, next } = ctx;
   const url = new URL(request.url);
 
@@ -405,7 +429,7 @@ async function handleConnectApprove(request, env) {
     return new Response("Not signed in.", { status: 401 });
   }
 
-  const token = await signToken(role, env.SESSION_SECRET, BEARER_MAX_AGE);
+  const token = await signToken(role, env.SESSION_SECRET, BEARER_MAX_AGE, TOKEN_TYPE_BEARER);
   const html = renderConnectCopyPage({ token, role, app });
   return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
@@ -914,35 +938,49 @@ async function readRole(request, env) {
   const auth = request.headers.get("Authorization") || "";
   const bearerMatch = /^Bearer\\s+(.+)$/i.exec(auth);
   if (bearerMatch) {
-    const role = await verifyToken(bearerMatch[1], env.SESSION_SECRET);
+    const role = await verifyToken(bearerMatch[1], env.SESSION_SECRET, TOKEN_TYPE_BEARER);
     if (role && ROLES.includes(role)) return role;
   }
 
   // ?_token=<token>; used by the Foundry module so cross-origin GETs stay
   // CORS-simple and don't trigger a preflight per file (Cloudflare rate-
   // limits OPTIONS bursts and a sync is hundreds of unique URLs).
+  //
+  // Not honoured on a top-level navigation. A token in a URL is a shareable
+  // credential that lands in browser history, access logs and Referer, and
+  // bearers last 90 days — so a pasted link would quietly browse the whole
+  // site at someone else's role. The sync client never navigates: its
+  // requests are fetch()es, which browsers mark Sec-Fetch-Mode: cors.
+  // Fails open when the header is absent, which is fine: the case being
+  // prevented is a browser following a link, and browsers always send it.
   const queryToken = new URL(request.url).searchParams.get("_token");
-  if (queryToken) {
-    const role = await verifyToken(queryToken, env.SESSION_SECRET);
+  if (queryToken && !isTopLevelNavigation(request)) {
+    const role = await verifyToken(queryToken, env.SESSION_SECRET, TOKEN_TYPE_BEARER);
     if (role && ROLES.includes(role)) return role;
   }
 
   const cookie = parseCookie(request.headers.get("Cookie") || "")[COOKIE_NAME];
   if (!cookie) return fallback;
-  const role = await verifyToken(cookie, env.SESSION_SECRET);
+  const role = await verifyToken(cookie, env.SESSION_SECRET, TOKEN_TYPE_SESSION);
   return role && ROLES.includes(role) ? role : fallback;
 }
 
+/** True for a request the browser made by navigating to a URL. */
+function isTopLevelNavigation(request) {
+  return request.headers.get("Sec-Fetch-Mode") === "navigate"
+    || request.headers.get("Sec-Fetch-Dest") === "document";
+}
+
 // Format: <role>.<expiryUnix>.<hmacHex>
-async function signToken(role, secret, maxAgeSeconds) {
+async function signToken(role, secret, maxAgeSeconds, typ) {
   const exp = Math.floor(Date.now() / 1000) + maxAgeSeconds;
-  const payload = role + "." + exp;
+  const payload = typ + "." + role + "." + exp;
   const sig = await hmac(payload, secret);
   return payload + "." + sig;
 }
 
 async function signSessionCookie(role, secret) {
-  const value = await signToken(role, secret, COOKIE_MAX_AGE);
+  const value = await signToken(role, secret, COOKIE_MAX_AGE, TOKEN_TYPE_SESSION);
   // SameSite=None + Partitioned (CHIPS); required so the cookie persists
   // when the vault is loaded inside a cross-origin iframe (the Foundry
   // connect dialog). Partitioned scopes the cookie per parent origin, so
@@ -952,13 +990,20 @@ async function signSessionCookie(role, secret) {
     + "; Path=/; HttpOnly; Secure; SameSite=None; Partitioned; Max-Age=" + COOKIE_MAX_AGE;
 }
 
-async function verifyToken(token, secret) {
+async function verifyToken(token, secret, expectedTyp) {
   const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [role, expStr, sig] = parts;
+  // 4 parts is the typed form; 3 is the untyped one issued before session
+  // cookies and bearers were distinguishable. Legacy tokens still verify, for
+  // either purpose, so nobody is logged out by the upgrade — they age out on
+  // their own within 90 days. Drop this branch after that.
+  const legacy = parts.length === 3;
+  if (parts.length !== 4 && !legacy) return null;
+  const [typ, role, expStr, sig] = legacy ? [expectedTyp, ...parts] : parts;
+  if (typ !== expectedTyp) return null;
   const exp = Number(expStr);
   if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return null;
-  const expected = await hmac(role + "." + expStr, secret);
+  const signed = legacy ? role + "." + expStr : typ + "." + role + "." + expStr;
+  const expected = await hmac(signed, secret);
   return constantTimeEqual(sig, expected) ? role : null;
 }
 
