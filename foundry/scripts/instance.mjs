@@ -9,6 +9,7 @@
 import { entryId, pageId, instanceId, folderId, subdocId } from "./ids.mjs";
 import { localFileUrl } from "./media.mjs";
 import { MODULE_ID } from "./settings.mjs";
+import { BLANK_DOC_TYPES, docNameOf, parseFoundryBase } from "./foundry-base.mjs";
 
 // Where the rendered article HTML lands inside each system's document, keyed
 // by (game.system.id, document name). Missing entries still create the clone;
@@ -25,13 +26,6 @@ const DESCRIPTION_FIELDS = {
 // Cloning needs a description-embed path, so this stays the narrow set.
 const CLONE_SUPPORTED_DOCS = new Set(["Actor", "Item"]);
 
-// Document types supported by `foundry.base: <type>[:<subtype>]` (blank doc).
-// Wider since we don't need a description embed for a blank doc — the user
-// drives the doc entirely via the `foundry:` overlay block.
-const BLANK_DOC_TYPES = new Set([
-  "Actor", "Item", "Scene", "JournalEntry",
-  "RollTable", "Macro", "Cards", "Playlist",
-]);
 
 // Where each blank-supported doc lives in the world. Looked up lazily so a
 // system that swaps out a collection at startup is honoured.
@@ -234,36 +228,7 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
   return { ok: true, action: "created" };
 }
 
-/**
- * Parse the `foundry.base` value into either a UUID-clone form or a
- * blank-doc form. UUIDs always contain a `.` (`Type.id` at minimum); a
- * bare type name like "Actor" or "Item:weapon" never does. Case-insensitive
- * for the type so `actor:npc` reads naturally in YAML.
- *
- * Returns null for unrecognised inputs. The caller warns, since only it
- * knows which page the bad value came from.
- */
-export function parseFoundryBase(spec) {
-  if (typeof spec !== "string" || !spec) return null;
-  if (spec.includes(".")) return { kind: "uuid", uuid: spec };
-  const [typeRaw, subtype] = spec.split(":");
-  const docName = [...BLANK_DOC_TYPES].find(t => t.toLowerCase() === typeRaw.toLowerCase());
-  if (!docName) return null;
-  return { kind: "blank", docName, subtype: subtype || undefined };
-}
 
-/**
- * The document type a parsed base names, without resolving anything. In every
- * UUID form the type is the second-to-last segment (`Actor.<id>`,
- * `Compendium.<pkg>.<pack>.Actor.<id>`, `Actor.<id>.Item.<id>`), and a
- * blank-doc spec carries it outright.
- */
-function docNameOf(parsed) {
-  if (!parsed) return null;
-  if (parsed.kind === "blank") return parsed.docName;
-  const parts = parsed.uuid.split(".");
-  return parts.length >= 2 ? parts[parts.length - 2] : null;
-}
 
 /**
  * Walk the priority list and return `{ data, from }` for the first entry that

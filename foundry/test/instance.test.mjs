@@ -4,7 +4,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseFoundryBase, missingBasePackages } from "../scripts/instance.mjs";
+import { missingBasePackages } from "../scripts/instance.mjs";
+import { parseFoundryBase } from "../scripts/foundry-base.mjs";
 
 test("parses a compendium UUID as a clone base", () => {
   const uuid = "Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa";

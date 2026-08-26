@@ -968,13 +968,42 @@ async function copyKatexAssets(destDir: string): Promise<void> {
  * (`Actor:npc`) carries it outright. `links.mjs` derives it the same way, so
  * both sides agree on where a wikilink to the page points.
  */
-function foundryBaseDocName(spec: string): string | null {
+export function foundryBaseDocName(spec: string): string | null {
   if (spec.includes(".")) {
     const parts = spec.split(".");
-    return parts.length >= 2 ? (parts[parts.length - 2] ?? null) : null;
+    if (parts.length < 2) return null;
+    const raw = parts[parts.length - 2];
+    // Unknown types pass through: vaults can't instantiate a Combat, but
+    // Foundry may still resolve the UUID, and reporting the type beats
+    // claiming the spec names none.
+    return canonicalFoundryType(raw) ?? raw ?? null;
   }
-  return spec.split(":")[0] || null;
+  // Blank-document form. An unrecognised type is not a base at all, so it is
+  // rejected rather than passed through — matching the Foundry module, which
+  // would create nothing for it.
+  return canonicalFoundryType(spec.split(":")[0]);
 }
+
+/**
+ * Fold a type segment to its canonical spelling, or null if vaults doesn't
+ * instantiate it.
+ *
+ * Case matters downstream and is hand-typed here: `base: actor:npc` is
+ * supported, but Foundry's `@UUID[...]` enricher does a case-sensitive
+ * lookup. Returning "actor" made the CLI treat it as a different type from
+ * "Actor" — so a list mixing the two failed the same-type check and had its
+ * whole foundry.base dropped. Kept in step with
+ * foundry/scripts/foundry-base.mjs by cli/test/foundry-base-conformance.test.ts.
+ */
+function canonicalFoundryType(raw: string | undefined): string | null {
+  if (!raw) return null;
+  return FOUNDRY_BLANK_DOC_TYPES.find((t) => t.toLowerCase() === raw.toLowerCase()) ?? null;
+}
+
+const FOUNDRY_BLANK_DOC_TYPES = [
+  "Actor", "Item", "Scene", "JournalEntry",
+  "RollTable", "Macro", "Cards", "Playlist",
+];
 
 /**
  * Validate `foundry.base` and normalize it for the manifest: a single string

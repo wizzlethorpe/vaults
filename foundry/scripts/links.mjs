@@ -21,6 +21,7 @@ import { entryId, pageId, instanceId } from "./ids.mjs";
 import { localFileUrl } from "./media.mjs";
 import { CACHED_EXT_RE } from "./parser.mjs";
 import { escapeAttr, escapeHtml, escapeBraces } from "./util.mjs";
+import { docNameFromBase } from "./foundry-base.mjs";
 
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 const MEDIA_SRC_RE = /<(img|audio|video)\b([^>]*?)src="([^"]+)"([^>]*)>/gi;
@@ -65,27 +66,6 @@ export function buildPathIndex(manifestFiles) {
   return { paths, idOverrides, docTargets, hashes };
 }
 
-/**
- * `foundry.base` → the document type it creates, without needing a lookup.
- * Every UUID form puts the type second-to-last (`Actor.<id>`,
- * `Compendium.<pkg>.<pack>.Actor.<id>`, `Actor.<id>.Item.<id>`), and a
- * blank-doc base is the type itself, optionally with a subtype (`Macro`,
- * `Actor:character`). A priority list names one type across all its entries,
- * so its first entry answers for the page.
- */
-function docNameFromBase(base) {
-  // A priority list names one document type across all its entries (the CLI
-  // rejects a mixed list), so the first entry answers for the page.
-  if (Array.isArray(base)) return base.length > 0 ? docNameFromBase(base[0]) : null;
-  if (typeof base !== "string" || !base) return null;
-  // Every UUID form puts the type second-to-last: `Actor.<id>`,
-  // `Compendium.<pkg>.<pack>.Actor.<id>`, `Actor.<id>.Item.<id>`.
-  if (base.includes(".")) {
-    const parts = base.split(".");
-    return parts.length >= 2 ? parts[parts.length - 2] : null;
-  }
-  return base.split(":")[0] || null;
-}
 
 /**
  * The UUID a link to `path` should resolve to. Pages that instantiate a

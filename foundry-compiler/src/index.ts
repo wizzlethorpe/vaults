@@ -95,6 +95,17 @@ function setPath(obj: Record<string, unknown>, dotted: string, value: unknown): 
   cur[segs[segs.length - 1]!] = value;
 }
 
+/** Document types `foundry.base: <Type>[:<subtype>]` can create, and the
+ *  canonical spelling of each. Mirrors foundry/scripts/foundry-base.mjs;
+ *  vfmc is a separate package with its own rootDir, so it cannot import it. */
+const BLANK_DOC_TYPES = ["Actor", "Item", "Scene", "JournalEntry",
+  "RollTable", "Macro", "Cards", "Playlist"];
+
+function canonicalDocType(raw: string | undefined): string | null {
+  if (!raw) return null;
+  return BLANK_DOC_TYPES.find((t) => t.toLowerCase() === raw.toLowerCase()) ?? null;
+}
+
 /** Collect every compilable page across all packs, recursing into subfolders. */
 function discoverPages(vault: string, decls: PackDecl[]): Page[] {
   const pages: Page[] = [];
@@ -139,7 +150,16 @@ function discoverPages(vault: string, decls: PackDecl[]): Page[] {
           );
           continue;
         }
-        const docType = blank.split(":")[0]!;
+        // Canonicalise: `actor:npc` is supported and must reach DOC_META as
+        // "Actor". Same rule as foundry/scripts/foundry-base.mjs.
+        const docType = canonicalDocType(blank.split(":")[0]);
+        if (!docType) {
+          console.warn(
+            `  [skip] ${pack.folder}/${entry.name}: foundry.base "${blank}" names no `
+            + `document type vaults can create.`,
+          );
+          continue;
+        }
         const subfolder = path.relative(root, dir).split(path.sep).join("/");
         pages.push({
           pack, body, foundry: fo, docType, subfolder,

@@ -11,6 +11,7 @@
 // wrap a single entry with no other entries to group with.
 
 import { MODULE_ID } from "./settings.mjs";
+import { docNameFromBase } from "./foundry-base.mjs";
 import { entryId, pageId, folderId, folderOfPath, instanceId } from "./ids.mjs";
 import { transformHtmlForFoundry } from "./links.mjs";
 import { escapeBraces } from "./util.mjs";
@@ -21,22 +22,9 @@ const NON_INDEX_SORT_BASE = 100000;
 // Doc types instance.mjs's blank-doc form supports. Mirrored here (rather
 // than imported from instance.mjs to avoid the circular dependency that
 // would force) so we can derive a UUID-class hint from `foundry.base` for
-// the in-page "Open in Foundry" link.
-const KNOWN_INSTANCE_DOC_TYPES = ["Actor", "Item", "Scene", "JournalEntry",
-  "RollTable", "Macro", "Cards", "Playlist"];
-
-/** Pull the document class name out of a `foundry.base` spec. UUID form
- *  ("Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa", or just
- *  "Actor.<id>") returns the second-to-last segment; blank form
- *  ("Actor:npc") returns the bare type. Returns null when the spec
- *  doesn't name a type vaults knows how to instantiate. */
-function inferInstanceDocName(base) {
-  if (typeof base !== "string" || !base) return null;
-  const raw = base.includes(".")
-    ? base.split(".").at(-2)
-    : base.split(":")[0];
-  return KNOWN_INSTANCE_DOC_TYPES.find((t) => t.toLowerCase() === raw?.toLowerCase()) ?? null;
-}
+// the in-page "Open in Foundry" link. See foundry-base.mjs for the parse;
+// this file's own copy rejected priority lists, so the link disappeared for
+// every page using one.
 
 /**
  * Ensure a chain of nested Foundry folders exists matching the vault's
@@ -378,7 +366,7 @@ export async function deleteVaultJournals(vaultId) {
  */
 async function appendInstanceDocLink(html, vault, path, meta) {
   const base = meta?.foundry?.base;
-  const docName = inferInstanceDocName(base);
+  const docName = docNameFromBase(base);
   if (!docName) return html;
   const idOverride = meta?.foundry?.id;
   const docId = typeof idOverride === "string" && idOverride
