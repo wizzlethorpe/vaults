@@ -10,6 +10,7 @@ import { entryId, pageId, instanceId, folderId, subdocId, folderOfPath } from ".
 import { localFileUrl } from "./media.mjs";
 import { MODULE_ID } from "./settings.mjs";
 import { BLANK_DOC_TYPES, docNameOf, parseFoundryBase } from "./foundry-base.mjs";
+import { resolveMoulinetteRefs } from "./moulinette.mjs";
 
 // Where the rendered article HTML lands inside each system's document, keyed
 // by (game.system.id, document name). Missing entries still create the clone;
@@ -136,6 +137,13 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
   const dataJson = fm.data_json && typeof fm.data_json === "object" && !Array.isArray(fm.data_json)
     ? rewriteVaultPaths(structuredClone(fm.data_json), vault.id)
     : null;
+  // `@moulinette/...` strings resolve against the reader's own Moulinette
+  // library, so a vault can point at a creator's map or ambience without
+  // shipping it. Unresolved references drop the field that held them, which
+  // is what makes a page degrade gracefully for a reader who is not
+  // subscribed rather than pointing Foundry at a file that isn't there.
+  const moulinetteWarn = (msg) => console.warn(`Vaults | moulinette: ${vaultPath}: ${msg}`);
+  if (dataJson) await resolveMoulinetteRefs(dataJson, moulinetteWarn);
   if (dataJson) {
     await resolveItemUuids(dataJson, vaultPath);
     await ensureEmbeddedIds(dataJson, vault.id, vaultPath);
@@ -571,6 +579,9 @@ async function buildOverlay(vault, vaultPath, meta, docName, derived = {}) {
   //     (walls, sounds, cards, …) on every re-sync.
   if (fm?.data && typeof fm.data === "object") {
     const cloned = rewriteVaultPaths(structuredClone(fm.data), vault.id);
+    // Same treatment as data_json: `@moulinette/...` resolves against the
+    // reader's own library, and an unresolved reference takes its field with it.
+    await resolveMoulinetteRefs(cloned, (msg) => console.warn(`Vaults | moulinette: ${vaultPath}: ${msg}`));
     await resolveItemUuids(cloned, vaultPath);
     await ensureEmbeddedIds(cloned, vault.id, vaultPath);
     deepMerge(overlay, cloned);
