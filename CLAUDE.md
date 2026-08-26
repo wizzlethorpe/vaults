@@ -116,6 +116,30 @@ Plugins live in `cli/src/render/` and consume a `RenderContext`. New rendering f
 3. Typecheck (`pnpm typecheck` from root) and run an end-to-end build against a real vault before reporting done.
 4. Commit on the active branch and push when authorized.
 
+### Testing a change to `foundry/scripts/`
+
+**The installed module does not run the sync code.** It is a host: UI, settings,
+notifications, and `importer-loader.mjs`. The sync/instantiate logic is bundled
+*by the CLI* (`scripts/bundle-importer.mjs`, at CLI build time) into
+`dist/foundry-importer.bundle.js`, shipped to the deploy as `_foundry/importer.js`,
+then fetched, hash-verified and evaluated as a blob at sync time.
+
+So a change to `sync.mjs` / `instance.mjs` / `links.mjs` / `media.mjs` reaches a
+running world only after:
+
+```bash
+pnpm --filter @wizzlethorpe/vaults run build   # re-bundles foundry/scripts
+vaults push <vault>                            # ships the new _foundry/importer.js
+```
+
+`./dev-install.sh --remote` alone changes only host code and will not alter sync
+behavior. Verify what is actually live by fetching `<deploy>/_foundry/importer.js`
+and diffing against `cli/dist/foundry-importer.bundle.js`; do not infer it from
+what `dev-install.sh` uploaded.
+
+A changed bundle changes its SHA-256, so the GM gets a trust prompt on the next
+sync (`trustedImporterHash`). Expect one per iteration.
+
 ## Self-check before reporting done
 
 1. Does it typecheck?

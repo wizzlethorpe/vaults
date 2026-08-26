@@ -913,6 +913,84 @@ async function copyKatexAssets(destDir: string): Promise<void> {
  *     embed: false                          # default true
  *     data: { … deep-merged into the doc }
  */
+/**
+ * The document type a `foundry.base` spec names, read off the string without
+ * resolving anything. Every UUID form puts the type second-to-last
+ * (`Actor.<id>`, `Compendium.<pkg>.<pack>.Actor.<id>`), and a blank-doc spec
+ * (`Actor:npc`) carries it outright. `links.mjs` derives it the same way, so
+ * both sides agree on where a wikilink to the page points.
+ */
+function foundryBaseDocName(spec: string): string | null {
+  if (spec.includes(".")) {
+    const parts = spec.split(".");
+    return parts.length >= 2 ? (parts[parts.length - 2] ?? null) : null;
+  }
+  return spec.split(":")[0] || null;
+}
+
+/**
+ * Validate `foundry.base` and normalize it for the manifest: a single string
+ * stays a string (so an older Foundry module keeps working), a list of two or
+ * more stays a list. Returns null when the value can't be used, having said
+ * why — the build continues, and the page syncs as a journal with no document.
+ *
+ * Every entry must name the same document type. The module reads that type
+ * off the spec rather than off a resolved template, and `links.mjs` has to
+ * reach the same answer with no lookup at all, so a list that disagrees with
+ * itself has no single answer to give.
+ */
+function normalizeFoundryBase(base: unknown, pagePath: string): string | string[] | null {
+  const raw = Array.isArray(base) ? base : [base];
+  const specs: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string" || entry.trim().length === 0) {
+      console.warn(
+        `  ${pagePath}: foundry.base entries must be non-empty strings (a UUID like `
+        + `"Compendium.<pkg>.<pack>.Actor.<id>", or a type like "Actor:npc"); `
+        + `got ${entry === null ? "null" : typeof entry}. Ignoring foundry.base — this page `
+        + `will sync as a journal but create no document.`,
+      );
+      return null;
+    }
+    specs.push(entry.trim());
+  }
+  if (specs.length === 0) {
+    console.warn(`  ${pagePath}: foundry.base is an empty list; ignoring.`);
+    return null;
+  }
+
+  const types = new Map<string, string>(); // docName → first spec that named it
+  for (const spec of specs) {
+    const docName = foundryBaseDocName(spec);
+    if (!docName) {
+      console.warn(`  ${pagePath}: foundry.base entry "${spec}" names no document type; ignoring foundry.base.`);
+      return null;
+    }
+    if (!types.has(docName)) types.set(docName, spec);
+  }
+  if (types.size > 1) {
+    const detail = [...types].map(([t, spec]) => `${t} (from "${spec}")`).join(", ");
+    console.warn(
+      `  ${pagePath}: every foundry.base entry must name the same document type, got ${detail}. `
+      + `Ignoring foundry.base — this page will sync as a journal but create no document.`,
+    );
+    return null;
+  }
+
+  // A list whose last entry is a UUID can still fail on a world that lacks
+  // every package named. A blank-doc tail is what makes the chain total.
+  const last = specs[specs.length - 1]!;
+  if (specs.length > 1 && last.includes(".")) {
+    console.warn(
+      `  ${pagePath}: foundry.base list ends with "${last}", so it can still resolve to nothing. `
+      + `End with a blank-document entry (e.g. "${[...types.keys()][0]}:npc" or "${[...types.keys()][0]}") `
+      + `to guarantee a document.`,
+    );
+  }
+
+  return specs.length === 1 ? specs[0]! : specs;
+}
+
 async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<BodyMeta> {
   const fm = p.frontmatter ?? {};
   const out: BodyMeta = { role: p.role };
@@ -923,8 +1001,17 @@ async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<BodyMeta
   const fo = fm["foundry"];
   if (fo && typeof fo === "object" && !Array.isArray(fo)) {
     const block: Record<string, unknown> = {};
+    // `base` is one spec, or a priority list the module tries in order so a
+    // vault degrades across worlds with different content installed. A
+    // malformed base is dropped with a warning rather than failing the build,
+    // same as foundry.id below. Silence here is worse than it looks: the
+    // module never receives the key, so it can't report the page either, and
+    // the page syncs as a journal with no Actor/Item and no explanation.
     const base = (fo as Record<string, unknown>)["base"];
-    if (typeof base === "string" && base.trim().length > 0) block.base = base.trim();
+    if (base !== undefined && base !== null) {
+      const normalized = normalizeFoundryBase(base, p.path);
+      if (normalized !== null) block.base = normalized;
+    }
     const embed = (fo as Record<string, unknown>)["embed"];
     if (typeof embed === "boolean") block.embed = embed;
     // foundry.sync: false keeps the page out of Foundry altogether — no

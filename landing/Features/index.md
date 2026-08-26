@@ -21,7 +21,6 @@ the underlying markdown.
 | [[OIDC login]] | Single sign-on against any OIDC issuer, with roles granted by email or domain |
 | [[Math]] | `$inline$` and `$$display$$` LaTeX, rendered at build time with KaTeX |
 | [[Battlemaps]] | Layered, multi-level maps with a grid overlay and PNG export |
-| [[Foundry module compiler]] | Bake a vault into an installable Foundry module with real compendium packs |
 
 Other features that don't need a dedicated page:
 

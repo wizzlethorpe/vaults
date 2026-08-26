@@ -2,9 +2,11 @@
 
 Working notes on where vaults goes next. Nothing here is committed to; it is the reasoning behind each decision so that future-you does not have to re-derive it. Items are roughly ordered by how much they block other work.
 
-## In flight
+## Recently landed
 
-Landing page documentation gaps. An audit against the built CLI surface found ten features with no coverage on vaults.wizzlethorpe.com: OIDC SSO, math (KaTeX), the `battlemap` and `gallery` handlers, `vfmc`, page transclusion, video embeds, `foundry.link`, `foundry.folder`, and `vaults migrate`. Plus a stale handler count on `Features/Handlers.md` and a cover-image bug that ships a broken `og:image` on `Features/Statblocks.md`. Being handled separately.
+Foundry instantiation now reports true outcomes. `applyInstance` returns `null` / `{ok:true, action}` / `{ok:false, reason}` instead of bare-returning on seven distinct failure paths, and `sync` counts outcomes rather than calls. Previously a page whose `foundry.base` produced nothing still incremented `instances`, so a world missing a required compendium reported "Sync complete, instantiated 40 documents" having created zero. Skips now raise a notification. Also: `_stats.compendiumSource` is stamped on the clone path (verified end to end against a live world), and `parseFoundryBase` no longer fails silently on an unrecognised base.
+
+`foundry/test/` exists now, run by the root `test:foundry` script, covering the pure helpers.
 
 ## 1. Separating vaults from Foundry
 
@@ -47,89 +49,125 @@ It does **not** touch the barrier that actually stops people. Needing a Cloudfla
 
 Practical note: `sharp` (native binary) and `wrangler` are the two dependencies that make bundling awkward. `image_quality: 0` already skips sharp at runtime, so a degraded no-compression path is close to free if needed.
 
-## 4. Foundry versioning and the module build
+## 4. Foundry module compilation (vfmc)
 
-Two separate items, and one is further along than it looks.
+**Live sync is the primary path. Keep it that way.** Every problem the compile-to-module route runs into is a problem sync does not have:
 
-### The module build already exists
+| Problem | Compiled module | Live sync |
+|---|---|---|
+| `foundry.base` UUID clones | Needs a bootstrapper or redistribution rights | `fromUuid` is right there |
+| v13 / v14 | Build matrix, hardcoded `coreVersion`, separate artifacts | Runs in whatever version is installed |
+| Roles | Compile per variant; a `dm` page in a zip is unzippable | Middleware gates per visitor, live |
+| Licensing | You ship someone else's content | You ship nothing; the clone happens on their machine, and a system redirect may supply it even without the module |
+| LevelDB | Has to be written offline | Foundry writes its own |
+| Updates | Version bump plus reinstall | Manifest diff, incremental |
 
-`foundry-compiler/` (`vfmc`) compiles a vault into a distributable module with LevelDB compendium packs, and `WANDS/` is the working instance. The roadmap item is not "build this," it is **promote it**: document it on landing, add it to `CLAUDE.md`, fold it in as `vaults foundry build` instead of a separate binary, and stop requiring hand-authored `flags.vfmc.packs`.
+The one thing sync cannot do is **distribution to strangers**: a live-sync vault can't go on the Foundry package listing, because the installer needs a URL, a token, and the module.
 
-The real work underneath is that **vfmc and the live sync are two different content models.** vfmc compiles `Compendium/<folder>/` pages carrying `foundry.base` into compendium documents. The sync module compiles every page into JournalEntries. Making "compile the whole vault, journals included, into a module" work is the actual feature.
+### vfmc is internal and not ready
 
-### Roles in a distributed module
+Do not advertise it on the landing site. It is published to npm (`release.sh` does so with `--access public` on every release), which is fine, but nothing should point users at it yet.
 
-A distributed module is a file on the player's disk. There is no runtime gate and nothing to redact. A `dm`-tier page must simply not be present in a module handed to players.
+What it actually is today: a compendium-pack compiler for a vault's `Compendium/` subtree, with WANDS as its one real user. Known gaps:
 
-The only sane model is compile-per-variant: `vfmc --role <name>` produces the module for that tier, and pages at or above the module's `dmRole` cutoff get GM-only ownership. Anything cleverer leaks.
+1. Requires a hand-authored `data_json` sidecar for every non-RollTable page (`assembleDoc` dereferences `page.foundry.data_json!` unconditionally). WANDS carries 613 sidecars for 668 pages.
+2. Supports 3 document types (Item, Actor, RollTable) against the sync module's 8.
+3. Hardcodes `DEFAULT_STATS`: `systemId: dnd5e`, `systemVersion: 5.3.0`, `coreVersion: 14.359`. Already stale; a live world reports 5.3.3 / 14.367.
+4. Ignores the UUID form of `foundry.base` and fails with `unsupported foundry.base type`, which names neither cause nor fix. It should report those pages as sync-only.
+5. Needs hand-written `flags.vfmc.packs` in `module.json`.
+6. Derives ids with a different scheme than the sync module (base64-filtered vs hex), so the two disagree for the same page.
+7. Reimplements wikilink and markdown rendering separately from `links.mjs`.
+8. Compiles compendium documents only. A vault's pages don't come along, so it is not "compile a vault".
 
-### v13 / v14
+### Compendium-only modules already work
 
-Three distinct problems that want different answers.
+For **vault-authored** content the offline path is done and shipping. WANDS is 648 pages of blank-type bases (`Item:feat`, `Actor:npc`, `RollTable`, …) with sidecars, and vfmc compiles complete LevelDB packs with no Foundry in the loop. The base data is in the vault, so nothing needs resolving.
 
-- **Sync-side** differences are code-level (document schema, ApplicationV1 vs V2). One module, capability checks in `foundry/scripts/`. Do not ship two modules for this.
-- **Content-side** is the genuinely version-bound part. A compiled pack's LevelDB and document schema are tied to a version, and dnd5e schema drift between 13 and 14 is the real hazard. Make the target an explicit input (`vfmc --foundry-version 13`), emit the matching `compatibility` block, run the matching `@foundryvtt/foundryvtt-cli`, and produce separately-named artifacts.
-- **Enforcement** is only ever `compatibility.minimum` / `maximum` in `module.json`, the one thing Foundry actually honors. The vaults module currently declares `{minimum: 13, verified: 14}` with no maximum while WANDS declares `{minimum: 14}`. Set `maximum` when we mean it.
+Only the **UUID-clone** form has the problem, and even then Foundry itself is not required: the source pack is a LevelDB directory on disk and `@foundryvtt/foundryvtt-cli` reads it as plain Node (`molten unpack` does exactly this). The real constraint is provenance and rights, not runtime.
 
-### Consolidate the mapping first
+So: **the UUID-clone form is a live-sync idiom, not a distribution idiom.** Either you authored the content and can ship it, or you didn't and can't.
 
-The vault-to-Foundry mapping currently exists in three places: `cli/src/foundry-importer.ts` bundles an importer into every deploy, `foundry/scripts/` runs in the live world, `foundry-compiler/src/` compiles offline. Id derivation and wikilink-to-`@UUID` rewriting are independently implemented in both `foundry-compiler/src/index.ts` and `foundry/scripts/links.mjs`, with different hash seeds.
+#### Systems can redirect a module's packs, so a UUID is more portable than it looks
 
-Pull that mapping into one shared package all three import **before** adding a version matrix on top, or the matrix gets maintained twice.
+Verified live, and it corrects an earlier assumption here. dnd5e ships a `moduleRedirects` table mapping the three official 2024 books onto its own packs:
 
-### Client-side module builder
-
-The idea: a bundled handler that renders a "Download Foundry module" button on the deployed wiki, building a module in the visitor's browser out of the content their role gives them.
-
-**The role story is the strongest part of this, and it is free.** The builder runs inside the deployed site, behind the existing middleware. `/_batch` and `/_batch-images` already return role-scoped rendered bodies and binaries, and `readRole()` already accepts a session cookie, an `Authorization: Bearer` header, or `?_token=`. A public visitor building a module gets the public variant; the DM gets everything. No new gating logic, no new trust boundary. The `_batch` API was built for the Foundry module's incremental sync, and this is the same read path with a different consumer.
-
-**The wall is LevelDB.** Foundry v11+ compendium packs are LevelDB directories, and `@foundryvtt/foundryvtt-cli` writes them through `classic-level`, a native Node binding. It does not run in a browser. Hand-writing a LevelDB log and MANIFEST in JS is technically possible (the write-ahead log format is simple enough that a few hundred lines would do it) but it is exactly the kind of thing that breaks silently on a Foundry upgrade.
-
-**So do not build a module in the browser. Build a payload, and let a bootstrapper do the Foundry-specific work at install time.** The zip contains:
-
+```js
+"dnd-monster-manual": {
+  "Compendium.dnd-monster-manual.actors": "Compendium.dnd5e.actors24",
+  ...
+}
 ```
-module.json          # id, title, version, compatibility, esmodules: ["install.mjs"]
-content/*.json       # documents as plain data, built in the browser
-install.mjs          # creates the packs and populates them via Foundry's own APIs
-assets/              # images and audio pulled from the deploy
-```
 
-On first launch the bootstrapper creates the compendium(s) and bulk-creates the folders and documents. Foundry writes its own LevelDB, which is the whole point.
+A page whose base is `Compendium.dnd-monster-manual.actors.Actor.mmGuard000000000` therefore instantiates fine in a world where that module is **installed but disabled**, or absent entirely, because `fromUuid` transparently resolves it to `Compendium.dnd5e.actors24`. Marlo Mystery's Prison Guard does exactly this: the resulting Actor records `compendiumSource: Compendium.dnd5e.actors24.Actor.mmGuard000000000`.
 
-**Deferring to install time also solves versioning, which is the reason to prefer this shape.** Everything version-sensitive happens inside the target Foundry:
+Two consequences:
 
-- `foundry.base: Compendium.dnd5e.monsters.Actor.…` needs `fromUuid()` and an installed dnd5e. The browser cannot resolve it; the bootstrapper can, and that is where it belongs.
-- Document schema shape is decided by the running version rather than baked into the artifact.
-- v13 vs v14 branching is a runtime `if`, not a build matrix.
+- A vault built against official-book UUIDs is considerably more portable than "the reader needs the book". It works for anyone on a dnd5e version carrying the redirect. This does not generalise: it is a courtesy of that system for that content, not a Foundry-wide guarantee, and third-party modules have no such mapping.
+- **Never infer reachability from module state.** `game.modules.get(id)?.active` reports a working package as missing. The only reliable test is asking Foundry to resolve a UUID from the pack, which is what the preflight does.
 
-Shape of the authoring surface, if it stays a handler:
+### If the module build is ever revisited, build it from the world
 
-````
-```foundry-module
-id: mossfoot
-name: Mossfoot Campaign
-system: dnd5e
-include: ["NPCs/**", "Lore/**"]
-packs:
-  - { folder: NPCs, label: Mossfoot NPCs, type: Actor }
-```
-````
+The most promising shape is an export from a *synced world* rather than a compile from the vault. Sync has already done the mapping: correct schema, correct `_stats`, clones resolved, embedded items resolved, media downloaded, links rewritten. Exporting from there packages what is already correct instead of recomputing it, and roles come along free because the world holds exactly the role you synced as.
 
-Click flow: read `_manifest.json` for the current variant, `POST /_batch` for page bodies and `/_batch-images` for assets, transform to document data in the browser, zip (store-only, no dependency needed), hand it over with a blob download.
+Two honest limits: Foundry probably cannot finish the job in-app, since module packs are LevelDB under `Data/modules/<id>/packs/` and a client module can write files via `FilePicker` but cannot make the server build a pack, so expect a two-step flow. And publishing stops being headless, which is a real regression for a rulebook that re-releases often.
 
-**Honest problems:**
+### Considered and rejected
 
-- **Asset size.** Zipping a few hundred MB of maps in a tab will not work. Either stream to disk via the File System Access API where available, or offer an assets-excluded mode where `install.mjs` fetches from the deploy at install time using a `?_token=` bearer.
-- **A fourth mapping implementation.** This makes the consolidation above mandatory rather than nice-to-have. The upside: a browser-side mapper must be pure data-in/data-out with no Foundry globals and no Node, which is exactly the shape the shared package needs anyway. Build the shared package for this and the other three fall out.
-- **Handler may be the wrong shape.** Handlers are per-page render transforms; a module builder is a site-wide capability. A settings toggle that adds a sidebar entry is probably more correct, with the fenced block reserved for "download just this section."
-- **Trust.** The zip carries an esmodule that runs in the installer's world. Same trust as any module install, but the two-layer consent model already used for handler assets in Foundry is the precedent to follow.
+Recorded so this doesn't get re-derived:
 
-**Cheaper alternative worth weighing first.** Build the module at `vaults push` time instead. The CLI already has every page, already runs the Node LevelDB tooling, and already knows the variants. Emit one zip per role variant, serve `/_foundry/module.json` and `/_foundry/module.zip` through the existing gate, and let people install by pasting a manifest URL. Because `readRole()` honors `?_token=`, Foundry's own server-side manifest fetch authenticates correctly with `https://vault.example.com/_foundry/module.json?_token=…`, and the token comes from the `/connect` flow that already exists for the sync module.
+- **Client-side (browser) module builder.** Attractive because `/_batch` already gates by role, so "the content they can see" falls out for free. Killed by LevelDB: it cannot be written in a browser, so the output needs either a bootstrapper (no longer a pack-only module) or a hand-rolled LevelDB writer. Building at `vaults push` time gets pack-only output for free, since Node can run the pack tooling.
+- **Install-time hydration via a bootstrapper esmodule.** Resolves `foundry.base` on the installer's machine and never redistributes source content. But it is not a compendium-only module, which is what content modules actually are, and module packs are locked by default so hydration needs somewhere to write.
+- **`vaults` as a shared hydration runtime** that content modules declare via `relationships.requires`. Elegant, and `_stats.compendiumSource` is a real native field for the provenance half, but Foundry gives that field provenance semantics only, with no native derivation. It would also make vaults a runtime dependency of published content, a much heavier commitment than being a build tool.
 
-That gets most of the benefit with no browser zip, no memory ceiling, no fourth mapper, and reuse of vfmc. The browser builder is the better answer only if the goal is specifically that a *visitor* can take content away without the vault owner pre-baking a variant for them. Decide which of those two we actually want before building either.
+## 5. Consolidate the Foundry mapping
+
+Promoted out of item 4, because it is a prerequisite for almost everything else and stands on its own.
+
+**`foundry/scripts/` is already CLI-owned code.** The installed module is a host; the sync logic is bundled by the CLI into `dist/foundry-importer.bundle.js`, shipped as `_foundry/importer.js`, and evaluated from the deploy (see CLAUDE.md, "Testing a change to `foundry/scripts/`"). That makes vfmc's separate reimplementation the odd one out, not one of two peers.
+
+The duplication is concrete: id derivation and wikilink-to-`@UUID` rewriting exist independently in `foundry-compiler/src/index.ts` and `foundry/scripts/links.mjs`, with different hash seeds. `util.mjs` even documents its own duplication of `cli/src/escape.ts`, citing a boundary that the CLI's own esbuild step already crosses.
+
+Classified by whether it touches Foundry at all:
+
+| Stays in the module | Can move up |
+|---|---|
+| `instance.mjs` (660) — `fromUuid`, Document.create/update | `links.mjs` (403) — wikilink to `@UUID`, HTML transform |
+| `media.mjs` (404) — FilePicker, world data dir writes | `sync.mjs` (321) — manifest diffing, **zero** Foundry globals |
+| `main.mjs` (692) — hooks, UI, dialogs | `api.mjs` (113) — `_batch` client, plain `fetch` |
+| `settings.mjs`, `handler-assets.mjs`, `importer*.mjs` | `ids.mjs` (38), `util.mjs` (28), `parser.mjs` (3) |
+
+Roughly 900 of 4,220 lines are already pure, and they are precisely the lines vfmc duplicates. Target shape: a **pure planner plus per-environment executor**. The planner emits document intents; the live module calls `Document.create`, vfmc writes LevelDB, the CLI does either.
+
+Blockers to plan for: the two id schemes are incompatible, so unifying forces a `forceFull` re-sync and orphans documents in existing worlds; `links.mjs` uses DOM (`createDocumentFragment`), free in a browser and needing a shim in Node; and vfmc covers 3 document types against the module's 8, so consolidation forces that reconciliation.
+
+## Near-term work
+
+1. **Preflight for missing compendiums.** The manifest carries every `foundry.base`, so one pass before syncing can collect the distinct `Compendium.<pkg>` prefixes, check `game.modules` / `game.system`, and say "this vault needs dnd5e, which is not installed" once instead of failing per page. Note this is a **distribution** concern: every base in every one of our own vaults resolves against the installed module set, so it never fires locally. It matters when someone else installs a vault.
+
+2. **`foundry.base` as a priority list.** Accept a list, tried in order, so a vault degrades gracefully across worlds with different content:
+
+   ```yaml
+   foundry:
+     base:
+       - Compendium.dnd-monster-manual.actors.Actor.mmAboleth0000000
+       - Compendium.dnd5e.actors24.Actor.mmAboleth0000000
+       - Actor:npc
+   ```
+
+   A string is a one-element list, so it is backwards compatible. Four design points:
+   - **Every entry must yield the same document type**, and that is statically checkable: a compendium UUID names its type in segment 3, a blank form names it outright. `links.mjs` resolves wikilink targets *without* a lookup, so it needs one answer per page. Validate in the CLI and hard-error on a mixed list.
+   - **Record which entry won** in `_stats.compendiumSource`, so two GMs with different content installed can see why their documents differ.
+   - **Evaluate the list at creation only.** On later syncs honour the recorded `compendiumSource` unless `forceFull`, or a GM who buys the Monster Manual after a fallback sync gets a document they have been editing silently re-based. Surface it instead ("3 documents could use a higher-priority base").
+   - **Warn when the last entry is not a blank form**, since only a blank tail makes the chain total.
+
+   Note this one small feature touches three parsers (`instance.mjs`, `links.mjs`, `foundry-compiler`) plus CLI validation. That is item 5 making its own case.
+
+3. **Sync does not reconcile world state.** It diffs the remote manifest against `lastManifest`, so a document deleted in the world is invisible to every later incremental sync: it reports "up to date" forever. Combined with a failed instantiation this is how a world drifts quietly. Force Sync is the only repair today.
+
+4. **`compendiumSource` is create-only.** Existing documents never gain the provenance trail retroactively, because the update path patches an existing document rather than re-deriving it. Defensible, but decide whether heal-on-update is wanted.
 
 ## Smaller open items
 
 - `vaults preview` renders pages that contain only base code as raw base code rather than the rendered view.
-- No Foundry-side test harness. The CLI tests run end-to-end through `buildSite` against a tmpdir vault, but `instance.mjs`, `links.mjs`, `media.mjs`, and `ids.mjs` are unreachable from there, so every Foundry-side fix has shipped without a regression test. The pure helpers (`subdocId`, `ensureEmbeddedIds`, `isCacheable`, the regex predicates) are straightforward `node --test` fodder; the parts touching Foundry globals (`Document.create`, `FilePicker`, `game.scenes`) need a mock layer.
+- Foundry-side test coverage is only partial. `foundry/test/` now covers the pure helpers via the root `test:foundry` script, but everything touching Foundry globals (`Document.create`, `FilePicker`, `game.scenes`) still needs a mock layer, so `instance.mjs`'s create/update paths and `media.mjs` remain untested. Verifying those currently means a real world plus a vault push.
 - No `sitemap.xml` or `robots.txt`. Irrelevant for private campaign vaults, but the course and research sites want to be indexed.

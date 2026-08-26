@@ -5,6 +5,8 @@
   "VAULTS.Sync.Initial": "Initial sync: {count} file(s) to import.",
   "VAULTS.Sync.Incremental": "Incremental sync: {add} added, {mod} changed, {del} removed.",
   "VAULTS.Sync.Done": "Sync complete in {seconds}s. +{added} ~{modified} −{removed}",
+  "VAULTS.Sync.MissingPackages": "This vault expects compendium package(s) this world can't read: {packages}. Those pages will sync as journals but create no Actor/Item.",
+  "VAULTS.Sync.InstancesSkipped": "{count} page(s) declared foundry.base but no document was created. See the console for details.",
   "VAULTS.Sync.NothingToDo": "Vault is already up to date.",
   "VAULTS.Sync.Error": "Vault sync failed: {message}",
   "VAULTS.Sync.NoUrl": "Vault URL is missing.",

@@ -12,7 +12,7 @@ import { fetchManifest, fetchSourceBatch } from "./api.mjs";
 import { upsertFile, deleteFile, buildFolderInfo, reconcileEntryPlacement, reconcileOwnership } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
-import { applyInstance, deleteInstance } from "./instance.mjs";
+import { applyInstance, deleteInstance, missingBasePackages } from "./instance.mjs";
 import { instanceId } from "./ids.mjs";
 import { tokenInfo } from "./auth.mjs";
 
@@ -69,6 +69,8 @@ async function orderByBaseDeps(vault, paths, bodyMetaIndex) {
  *     refreshHandlerAssets: boolean,   // host re-applies CSS/JS post-sync
  *     added, modified, removed,
  *     imageStats, instances,
+ *     skipped,                         // [{ path, reason }] declared a
+ *                                      // foundry.base but got no document
  *   }
  */
 export async function sync(host, vault, { forceFull = false } = {}) {
@@ -175,6 +177,20 @@ export async function sync(host, vault, { forceFull = false } = {}) {
     if (f.meta && f.path.endsWith(".body.html")) bodyMetaIndex.set(f.path, f.meta);
   }
 
+  // Checked against the whole manifest, not just the changed subset, and
+  // before the up-to-date early return: an unresolvable base produces no
+  // document on the sync that first sees the page, and every sync after
+  // that reports "already up to date" while the documents stay missing.
+  const missingPackages = await missingBasePackages(bodyMetaIndex.values());
+  if (missingPackages.size > 0) {
+    const summary = [...missingPackages].map(([pkg, n]) => `${pkg} (${n})`).join(", ");
+    host.notify("warn", host.localize("VAULTS.Sync.MissingPackages", { packages: summary }));
+    console.warn(
+      `Vaults | ${vault.label}: foundry.base points into package(s) this world can't read: ${summary}. `
+      + `Those pages will sync as journals but create no Actor/Item.`,
+    );
+  }
+
   // A page's HTML carries `?v=<hash>` on every image it shows, so that a
   // changed picture is a changed URL and the browser stops serving the one it
   // cached. That only works if the page is rewritten when the picture moves —
@@ -207,7 +223,7 @@ export async function sync(host, vault, { forceFull = false } = {}) {
     host.notify("info", host.localize("VAULTS.Sync.NothingToDo"));
     return {
       ok: true, refreshHandlerAssets: false,
-      added: 0, modified: 0, removed: 0, imageStats, instances: 0,
+      added: 0, modified: 0, removed: 0, imageStats, instances: 0, skipped: [],
     };
   }
 
@@ -231,6 +247,8 @@ export async function sync(host, vault, { forceFull = false } = {}) {
   // Foundry's data layer doesn't love concurrent JournalEntry.create calls
   // on the same world, and the bottleneck has moved off the network.
   let added = 0, modified = 0, instances = 0;
+  // Pages that declared foundry.base but produced no document: { path, reason }.
+  const skipped = [];
   // Carried forward for pages we didn't touch, replaced for the ones we did,
   // and dropped for pages that left the manifest.
   const mediaRefs = {};
@@ -261,10 +279,15 @@ export async function sync(host, vault, { forceFull = false } = {}) {
       // render. Only fires when the page declared foundry.base.
       if (pageMeta?.foundry?.base) {
         try {
-          await applyInstance(vault, logicalPath, pageMeta, { forceFull });
-          instances++;
+          const outcome = await applyInstance(vault, logicalPath, pageMeta, { forceFull });
+          // A declared base that produced no document returns { ok: false }
+          // rather than throwing, so counting calls instead of outcomes would
+          // report every skipped page as a success.
+          if (outcome?.ok) instances++;
+          else if (outcome) skipped.push({ path: logicalPath, reason: outcome.reason });
         } catch (err) {
           console.warn(`Vaults | foundry instantiation failed for ${logicalPath}:`, err);
+          skipped.push({ path: logicalPath, reason: "threw" });
         }
       }
     } catch (err) {
@@ -303,13 +326,19 @@ export async function sync(host, vault, { forceFull = false } = {}) {
       + (imageStats.errors ? `, ${imageStats.errors} failed` : ""));
   }
   if (instances > 0) console.info(`Vaults | ${vault.label} instantiated ${instances} document(s) from page foundry.base.`);
+  // A silent skip here used to look like a clean sync: the journal pages land,
+  // the actors never do, and the only trace is a console warning. Surface it.
+  if (skipped.length > 0) {
+    host.notify("warn", host.localize("VAULTS.Sync.InstancesSkipped", { count: skipped.length }));
+    console.warn(`Vaults | ${vault.label} no document created for ${skipped.length} page(s):`, skipped);
+  }
 
   // Handler-asset refresh is module-side (settings + DOM injection), so the
   // host re-applies post-sync when we flag it. No-op if both per-vault
   // toggles are off.
   return {
     ok: true, refreshHandlerAssets: true,
-    added, modified, removed, imageStats, instances,
+    added, modified, removed, imageStats, instances, skipped,
   };
 }
 

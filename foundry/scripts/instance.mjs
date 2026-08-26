@@ -70,47 +70,56 @@ const COLLECTION_FOR = {
  *
  * Inside `data`, an entry of an `items` array may be `{ uuid, … }` instead of
  * full item data; see `resolveItemUuids`.
+ *
+ * @returns `null` when the page declares nothing to instantiate,
+ *   `{ ok: true, action: "created" | "updated" }` on success, or
+ *   `{ ok: false, reason }` when a declared base produced no document.
+ *   Callers count these; every non-ok path also warns with specifics.
  */
 export async function applyInstance(vault, vaultPath, meta, { forceFull = false } = {}) {
   const fm = meta?.foundry;
   // No foundry block at all → nothing to instantiate.
-  if (!fm || typeof fm !== "object") return;
-  const parsed = parseFoundryBase(fm.base);
-  if (!parsed) return;
+  if (!fm || typeof fm !== "object") return null;
+  if (fm.base === undefined || fm.base === null) return null;
+  // `base` is either one spec or a priority list tried in order, so that a
+  // vault degrades across worlds with different content installed: prefer the
+  // paid statblock, fall back to the SRD one, fall back to a blank document
+  // the page's own `data` fills in.
+  const specs = Array.isArray(fm.base) ? fm.base : [fm.base];
+  const candidates = specs.map(parseFoundryBase);
+  if (candidates.length === 0 || candidates.some((c) => !c)) {
+    console.warn(
+      `Vaults | foundry.base: ${vaultPath} → unrecognised base ${JSON.stringify(fm.base)}; `
+      + `expected a UUID ("Compendium.<pkg>.<pack>.Actor.<id>") or a type ("Actor:npc"), `
+      + `or a list of those. Skipping.`,
+    );
+    return { ok: false, reason: "unparseable" };
+  }
 
-  let docName;
-  let baseData;
-  if (parsed.kind === "uuid") {
-    const template = await safeFromUuid(parsed.uuid);
-    if (!template) {
-      console.warn(`Vaults | foundry.base: ${vaultPath} → ${parsed.uuid} did not resolve; skipping.`);
-      return;
-    }
-    docName = template.documentName;
-    if (!CLONE_SUPPORTED_DOCS.has(docName)) {
-      console.warn(
-        `Vaults | foundry.base: ${vaultPath} → ${parsed.uuid} is a ${docName}; `
-        + `clone-from-UUID only supports ${[...CLONE_SUPPORTED_DOCS].join(", ")}.`,
-      );
-      return;
-    }
-    // toObject() works on both compendium-loaded and world docs; pack-locking
-    // doesn't apply because we're creating a brand-new world document.
-    try { baseData = template.toObject(); }
-    catch (err) {
-      console.warn(`Vaults | foundry.base: could not read template ${parsed.uuid}:`, err);
-      return;
-    }
-    delete baseData._id;
-  } else {
-    docName = parsed.docName;
-    baseData = parsed.subtype ? { type: parsed.subtype } : {};
+  // Read the document type off the specs rather than off a resolved template.
+  // Two reasons: the existing-document check can then happen before any
+  // fromUuid, so an update still works when the template's package is gone;
+  // and links.mjs has to reach the same answer statically for wikilinks.
+  const docNames = new Set(candidates.map(docNameOf));
+  const docName = candidates.length > 0 ? docNameOf(candidates[0]) : null;
+  if (!docName) {
+    console.warn(`Vaults | foundry.base: ${vaultPath} → could not read a document type from ${JSON.stringify(fm.base)}. Skipping.`);
+    return { ok: false, reason: "unparseable" };
+  }
+  // The CLI rejects a mixed list at build time; this catches a hand-edited or
+  // stale deploy, where picking the first entry's type would mis-file the doc.
+  if (docNames.size > 1) {
+    console.warn(
+      `Vaults | foundry.base: ${vaultPath} → every entry must name the same document type, `
+      + `got ${[...docNames].join(", ")}. Skipping.`,
+    );
+    return { ok: false, reason: "mixed-types" };
   }
 
   const collection = COLLECTION_FOR[docName]?.();
   if (!collection) {
     console.warn(`Vaults | foundry.base: no world collection for ${docName}; skipping ${vaultPath}.`);
-    return;
+    return { ok: false, reason: "no-collection" };
   }
   const docClass = CONFIG[docName].documentClass;
   // foundry.id pins this page's instance doc to an explicit Foundry id
@@ -154,9 +163,18 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
       await existing.update(updatePatch);
     } catch (err) {
       console.warn(`Vaults | foundry.base update failed for ${vaultPath}:`, err);
+      return { ok: false, reason: "update-failed" };
     }
-    return;
+    return { ok: true, action: "updated" };
   }
+
+  // Only the create path consults `base`; an update patches the document
+  // already in the world. So a priority list is evaluated once, when the
+  // document is first made, and a GM who later installs a higher-priority
+  // package never has a document they have been editing silently re-based.
+  const resolved = await resolveBase(candidates, vaultPath);
+  if (!resolved) return { ok: false, reason: "unresolved" };
+  const baseData = resolved.data;
 
   // Create: layer data_json onto baseData first, then overlay on top.
   const baseItems = Array.isArray(baseData.items) ? baseData.items : null;
@@ -179,7 +197,7 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
     await docClass.create(baseData, { keepId: true, keepEmbeddedIds: true });
   } catch (err) {
     console.warn(`Vaults | foundry.base create failed for ${vaultPath}:`, err);
-    return;
+    return { ok: false, reason: "create-failed" };
   }
 
   // Scene thumbnails: V14's Scene._preCreate already attempts this, but it
@@ -198,6 +216,8 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
       }
     }
   }
+
+  return { ok: true, action: "created" };
 }
 
 /**
@@ -206,15 +226,148 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
  * bare type name like "Actor" or "Item:weapon" never does. Case-insensitive
  * for the type so `actor:npc` reads naturally in YAML.
  *
- * Returns null for unrecognised inputs so the caller can no-op silently.
+ * Returns null for unrecognised inputs. The caller warns, since only it
+ * knows which page the bad value came from.
  */
-function parseFoundryBase(spec) {
+export function parseFoundryBase(spec) {
   if (typeof spec !== "string" || !spec) return null;
   if (spec.includes(".")) return { kind: "uuid", uuid: spec };
   const [typeRaw, subtype] = spec.split(":");
   const docName = [...BLANK_DOC_TYPES].find(t => t.toLowerCase() === typeRaw.toLowerCase());
   if (!docName) return null;
   return { kind: "blank", docName, subtype: subtype || undefined };
+}
+
+/**
+ * The document type a parsed base names, without resolving anything. In every
+ * UUID form the type is the second-to-last segment (`Actor.<id>`,
+ * `Compendium.<pkg>.<pack>.Actor.<id>`, `Actor.<id>.Item.<id>`), and a
+ * blank-doc spec carries it outright.
+ */
+function docNameOf(parsed) {
+  if (!parsed) return null;
+  if (parsed.kind === "blank") return parsed.docName;
+  const parts = parsed.uuid.split(".");
+  return parts.length >= 2 ? parts[parts.length - 2] : null;
+}
+
+/**
+ * Walk the priority list and return `{ data, from }` for the first entry that
+ * yields usable template data, or null when none do. A blank-doc entry always
+ * succeeds, so a list ending in one can't fail.
+ *
+ * Every rejected candidate is collected and reported together: one line naming
+ * what was tried and why each failed beats a warning per entry.
+ */
+async function resolveBase(candidates, vaultPath) {
+  const tried = [];
+  for (const parsed of candidates) {
+    if (parsed.kind === "blank") {
+      if (tried.length > 0) {
+        console.info(
+          `Vaults | foundry.base: ${vaultPath} → fell back to blank `
+          + `${parsed.docName}${parsed.subtype ? `:${parsed.subtype}` : ""} after `
+          + `${tried.length} earlier candidate(s) did not resolve.`,
+        );
+      }
+      return { data: parsed.subtype ? { type: parsed.subtype } : {}, from: null };
+    }
+    const template = await safeFromUuid(parsed.uuid);
+    if (!template) { tried.push(`${parsed.uuid} — did not resolve`); continue; }
+    if (!CLONE_SUPPORTED_DOCS.has(template.documentName)) {
+      tried.push(`${parsed.uuid} — is a ${template.documentName}; clone supports ${[...CLONE_SUPPORTED_DOCS].join(", ")}`);
+      continue;
+    }
+    // toObject() works on both compendium-loaded and world docs; pack-locking
+    // doesn't apply because we're creating a brand-new world document.
+    let data;
+    try { data = template.toObject(); }
+    catch (err) { tried.push(`${parsed.uuid} — unreadable: ${err.message}`); continue; }
+    delete data._id;
+    // Record where the document *came from*, not what we asked for. A system
+    // may redirect a module's pack onto its own (dnd5e maps
+    // Compendium.dnd-monster-manual.actors onto Compendium.dnd5e.actors24), so
+    // the resolved document's uuid can differ from the spec — and stamping the
+    // spec would name a source this world never read. Foundry's own
+    // fromCompendium uses the resolved uuid for the same reason.
+    const sourceUuid = template.uuid ?? parsed.uuid;
+    if (sourceUuid.startsWith("Compendium.")) {
+      data._stats = { ...data._stats, compendiumSource: sourceUuid };
+    }
+    const via = sourceUuid === parsed.uuid ? "" : ` (redirected to ${sourceUuid})`;
+    if (tried.length > 0) {
+      console.info(
+        `Vaults | foundry.base: ${vaultPath} → using ${parsed.uuid}${via}; earlier candidate(s) skipped:\n  `
+        + tried.join("\n  "),
+      );
+    }
+    return { data, from: sourceUuid };
+  }
+  console.warn(
+    `Vaults | foundry.base: ${vaultPath} → no candidate resolved:\n  ` + tried.join("\n  ")
+    + `\n  Add a blank-document entry (e.g. "Actor:npc") as the last item so this can't fail.`,
+  );
+  return null;
+}
+
+/**
+ * Packages named by `foundry.base` compendium UUIDs that this world cannot
+ * resolve, mapped to how many pages need each.
+ *
+ * `applyInstance` can only report a missing base one page at a time, after
+ * the fact — a vault built against a paid content module produces a warning
+ * per page and no documents at all. Reading the manifest up front turns that
+ * into one actionable sentence before any work starts.
+ *
+ * Scope `world` is skipped: a world compendium is local by definition and
+ * there is no package to check it against.
+ *
+ * @param {Iterable<object>} metas  Page meta objects (`.foundry.base`).
+ * @returns {Map<string, number>}   package id → page count. Empty when fine.
+ */
+export async function missingBasePackages(metas) {
+  // Per page, the compendium specs it could use. A page with a blank-document
+  // entry or a world-document base can never be stranded, so it is dropped
+  // here rather than probed.
+  const pageSpecs = [];
+  for (const meta of metas) {
+    const base = meta?.foundry?.base;
+    if (base === undefined || base === null) continue;
+    const specs = (Array.isArray(base) ? base : [base]).filter((s) => typeof s === "string");
+    if (specs.length === 0) continue;
+    if (specs.some((s) => !s.includes("."))) continue;
+    if (specs.some((s) => !s.startsWith("Compendium."))) continue;
+    // A world compendium is local by definition; there is no package to
+    // report and nothing for the GM to go install.
+    if (specs.some((s) => s.split(".")[1] === "world")) continue;
+    pageSpecs.push(specs);
+  }
+  if (pageSpecs.length === 0) return new Map();
+
+  // Ask Foundry whether a pack answers, rather than inferring it from module
+  // state. A system can redirect a module's packs onto its own — dnd5e maps
+  // Compendium.dnd-monster-manual.actors onto Compendium.dnd5e.actors24 — so
+  // an inactive module still resolves, and `game.modules.get(id).active` would
+  // report a working package as missing.
+  //
+  // Probed once per pack rather than per page: reachability is a property of
+  // the pack, and a vault can name hundreds of documents inside one.
+  const packOf = (spec) => spec.split(".").slice(1, 3).join(".");
+  const probe = new Map(); // "pkg.pack" → a representative spec
+  for (const specs of pageSpecs) {
+    for (const spec of specs) if (!probe.has(packOf(spec))) probe.set(packOf(spec), spec);
+  }
+  const reachable = new Map();
+  for (const [pack, spec] of probe) reachable.set(pack, !!(await safeFromUuid(spec)));
+
+  const missing = new Map();
+  for (const specs of pageSpecs) {
+    if (specs.some((s) => reachable.get(packOf(s)))) continue;
+    for (const pkg of new Set(specs.map((s) => s.split(".")[1]).filter(Boolean))) {
+      missing.set(pkg, (missing.get(pkg) ?? 0) + 1);
+    }
+  }
+  return missing;
 }
 
 /**

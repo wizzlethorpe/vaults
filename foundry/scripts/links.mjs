@@ -72,10 +72,15 @@ export function buildPathIndex(manifestFiles) {
  * itself, optionally with a subtype (`Macro`, `Actor:character`).
  */
 function docNameFromBase(base) {
+  // A priority list names one document type across all its entries (the CLI
+  // rejects a mixed list), so the first entry answers for the page.
+  if (Array.isArray(base)) return base.length > 0 ? docNameFromBase(base[0]) : null;
   if (typeof base !== "string" || !base) return null;
-  if (base.startsWith("Compendium.")) {
+  // Every UUID form puts the type second-to-last: `Actor.<id>`,
+  // `Compendium.<pkg>.<pack>.Actor.<id>`, `Actor.<id>.Item.<id>`.
+  if (base.includes(".")) {
     const parts = base.split(".");
-    return parts.length >= 5 ? parts[3] : null;
+    return parts.length >= 2 ? parts[parts.length - 2] : null;
   }
   return base.split(":")[0] || null;
 }
