@@ -5,6 +5,7 @@
 
 import { CACHED_EXT_RE } from "./parser.mjs";
 import { url as vaultUrl } from "./api.mjs";
+import * as progress from "./progress.mjs";
 
 // Where the cache lives inside the world data dir. No leading dot. Foundry's
 // FilePicker validation hides dotfile paths from listings and may reject
@@ -143,6 +144,7 @@ export async function syncImages(host, vault, manifestFiles) {
   }
   if (chunk.length > 0) chunks.push(chunk);
 
+  progress.phase("Images", toDownload.length);
   let next = 0;
   const downloaded = [];
   const errors = [];
@@ -158,6 +160,7 @@ export async function syncImages(host, vault, manifestFiles) {
           const blob = blobs.get(path);
           if (!blob) { errors.push({ path, err: new Error("missing in batch response") }); continue; }
           try {
+            progress.step(path.split("/").pop());
             await uploadToWorld(baseDir, path, blob);
             downloaded.push(path);
           } catch (err) {

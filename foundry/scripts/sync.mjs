@@ -12,6 +12,7 @@ import { fetchManifest, fetchSourceBatch } from "./api.mjs";
 import { upsertFile, deleteFile, buildFolderInfo, reconcileEntryPlacement, reconcileOwnership } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
+import * as progress from "./progress.mjs";
 import { applyInstance, deleteInstance, findMissingDocuments, missingBasePackages } from "./instance.mjs";
 import { instanceId } from "./ids.mjs";
 import { tokenInfo } from "./auth.mjs";
@@ -75,7 +76,24 @@ async function orderByBaseDeps(vault, paths, bodyMetaIndex) {
  *                                      // its hash is not recorded, so it retries
  *   }
  */
-export async function sync(host, vault, { forceFull = false } = {}) {
+/**
+ * Run a sync, always closing the progress bar afterwards.
+ *
+ * The bar is a permanent notification, so any path out of runSync — an early
+ * return for an up-to-date vault, a failed fetch, an unexpected throw — has to
+ * take it down. A wrapper does that once; the alternative was an end() call at
+ * each of the exits, which is the kind of thing that stays correct only until
+ * someone adds the next return.
+ */
+export async function sync(host, vault, opts = {}) {
+  try {
+    return await runSync(host, vault, opts);
+  } finally {
+    progress.end();
+  }
+}
+
+async function runSync(host, vault, { forceFull = false } = {}) {
   if (!vault?.url) {
     host.notify("error", host.localize("VAULTS.Sync.NoUrl"));
     return { ok: false, refreshHandlerAssets: false };
@@ -98,6 +116,7 @@ export async function sync(host, vault, { forceFull = false } = {}) {
 
   const start = Date.now();
   host.notify("info", host.localize("VAULTS.Sync.StartingNamed", { name: vault.label }));
+  progress.begin(vault.label);
 
   let manifest;
   try {
@@ -312,7 +331,9 @@ export async function sync(host, vault, { forceFull = false } = {}) {
   // and dropped for pages that left the manifest.
   const mediaRefs = {};
   for (const p of bodyPaths) if (lastMediaRefs[p]) mediaRefs[p] = lastMediaRefs[p];
+  progress.phase("Pages", toUpsert.length);
   for (const bodyPath of toUpsert) {
+    progress.step(bodyPath.replace(/\.body\.html$/i, "").split("/").pop());
     const html = bodies.get(bodyPath);
     if (html == null) {
       console.warn(`Vaults | server returned no content for ${bodyPath}`);
@@ -358,8 +379,10 @@ export async function sync(host, vault, { forceFull = false } = {}) {
 
   let removed = 0;
   const failedDeletes = new Set();
+  if (toDelete.length > 0) progress.phase("Removing", toDelete.length);
   for (const bodyPath of toDelete) {
     const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
+    progress.step(logicalPath.split("/").pop());
     try { await deleteFile(vault, logicalPath); removed++; }
     catch (err) {
       console.warn(`Vaults | delete failed for ${logicalPath}:`, err);

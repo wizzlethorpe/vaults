@@ -31,6 +31,8 @@
 // subscription, or an asset that has moved gets an unresolved reference, and
 // the caller drops the field rather than failing the sync.
 
+import * as progress from "./progress.mjs";
+
 export const MOULINETTE_PREFIX = "@moulinette/";
 
 /** The collection that fetches `/all-assets`: the reader's whole entitled index. */
@@ -90,6 +92,9 @@ async function resolveOne(ref, index, log) {
   }
 
   try {
+    // The download can take seconds and is invisible from the sync loop, which
+    // is still sitting on one page. Name it so a slow sync reads as progress.
+    progress.note(`Moulinette: ${ref.file.split("/").pop()}`);
     const path = await index.collection.selectAsset(matches[0]);
     // Scene and Scene Packer assets download as JSON and report no path.
     // They are documents, not media, and a data tree wants a file.
