@@ -3,6 +3,8 @@
 // to /login on a missing/expired cookie, and rewrites every request to the
 // matching `_variants/<role>/` path before letting Pages serve it.
 
+import { htmlAttr, htmlEscape } from "../escape.js";
+
 export interface AuthTemplateConfig {
   /** ordered low → high */
   roles: string[];
@@ -1050,7 +1052,54 @@ function isSharedAsset(pathname) {
 `;
 }
 
-export const LOGIN_HTML = `<!doctype html>
+/**
+ * Render `login.html` for a deploy, showing only the sign-in methods it
+ * actually has.
+ *
+ * A role is reachable by password only if a hash was set for it; Patreon and
+ * OIDC each carry their own role mappings. A deploy authenticating purely
+ * through a provider therefore gets no password form and no role selector —
+ * the selector only ever chose which password to check, so with one password
+ * role (or none) it is noise, and with none it would be a form that cannot
+ * succeed.
+ */
+export function renderLoginPage(opts: {
+  /** Roles with a password hash, in tier order. */
+  passwordRoles: string[];
+  /** Roles mapped to a Patreon tier, empty when Patreon isn't configured. */
+  patreonRoles: string[];
+  /** OIDC provider display name, or null when OIDC isn't configured. */
+  oidcDisplayName: string | null;
+}): string {
+  const { passwordRoles, patreonRoles, oidcDisplayName } = opts;
+
+  let form = "";
+  if (passwordRoles.length > 0) {
+    // One password role means there is nothing to choose, so the role rides
+    // as a hidden field and the visitor just types a password.
+    const rolePicker = passwordRoles.length === 1
+      ? `    <input type="hidden" name="role" value="${htmlAttr(passwordRoles[0]!)}">`
+      : `    <label for="role">Role</label>\n`
+        + `    <select id="role" name="role">`
+        + passwordRoles.map((r) => `<option value="${htmlAttr(r)}">${htmlEscape(r)}</option>`).join("")
+        + `</select>`;
+    form = `  <form id="login-form" method="POST" action="/login">\n`
+      + `${rolePicker}\n`
+      + `    <label for="password">Password</label>\n`
+      + `    <input id="password" type="password" name="password" autocomplete="current-password" required>\n`
+      + `    <input type="hidden" name="next" id="next">\n`
+      + `    <button type="submit">Sign in</button>\n`
+      + `  </form>`;
+  }
+
+  return LOGIN_HTML
+    .replace("__PASSWORD_FORM__", form)
+    .replace("__PATREON_ROLES_ATTR__", patreonRoles.length > 0
+      ? ` data-patreon-roles="${htmlAttr(patreonRoles.join(","))}"` : "")
+    .replace("__OIDC_ATTR__", oidcDisplayName ? ` data-oidc="${htmlAttr(oidcDisplayName)}"` : "");
+}
+
+const LOGIN_HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -1105,14 +1154,7 @@ export const LOGIN_HTML = `<!doctype html>
 <div class="login-card"__PATREON_ROLES_ATTR____OIDC_ATTR__>
   <h1>Sign in</h1>
   <p id="err" class="login-error" hidden></p>
-  <form method="POST" action="/login">
-    <label for="role">Role</label>
-    <select id="role" name="role">__ROLE_OPTIONS__</select>
-    <label for="password">Password</label>
-    <input id="password" type="password" name="password" autocomplete="current-password" required>
-    <input type="hidden" name="next" id="next">
-    <button type="submit">Sign in</button>
-  </form>
+__PASSWORD_FORM__
   <div id="patreon-section" hidden>
     <div class="login-divider">or</div>
     <a id="patreon-btn" class="patreon-btn" href="#">
@@ -1135,7 +1177,10 @@ export const LOGIN_HTML = `<!doctype html>
 <script>
   const params = new URLSearchParams(location.search);
   const next = params.get("next") || "/";
-  document.getElementById("next").value = next;
+  // The password form is omitted entirely on a deploy where no role has a
+  // password, so nothing here may assume its fields exist.
+  const nextField = document.getElementById("next");
+  if (nextField) nextField.value = next;
   const err = params.get("error");
   if (err) {
     const el = document.getElementById("err");
@@ -1174,6 +1219,17 @@ export const LOGIN_HTML = `<!doctype html>
     const oidcBtn = document.getElementById("oidc-btn");
     oidcBtn.textContent = "Sign in with " + card.dataset.oidc;
     oidcBtn.href = "/auth/oidc/start?next=" + encodeURIComponent(next);
+  }
+  // Each provider section leads with an "or" divider, which only reads
+  // correctly as an alternative to the password form. With no form, the
+  // first provider is the only way in, so its divider comes off.
+  if (!document.getElementById("login-form")) {
+    const sections = [document.getElementById("patreon-section"), document.getElementById("oidc-section")];
+    const first = sections.find((s) => s && !s.hidden);
+    if (first) {
+      const divider = first.querySelector(".login-divider");
+      if (divider) divider.remove();
+    }
   }
   // Autofocus moved here so it picks the right field whether the password
   // form is visible or the user is going for the Patreon button.

@@ -59,10 +59,25 @@ callout is stripped from every variant lower than that role:
 ## Setup
 
 ```bash
-vaults role add patron     # prompts for a password
-vaults role add dm         # prompts for a password
+vaults role add patron     # offers a password; press Enter to skip
+vaults role add dm         # same
 vaults push                # multi-role build + auth middleware
 ```
+
+A password is one way to reach a role, not the only one. Press Enter at the
+prompt (or pass `--no-password`) for a role granted by [[Patreon login|Patreon]]
+or [[OIDC login|OIDC]] instead:
+
+```bash
+vaults role add staff --no-password
+vaults oidc configure              # grant 'staff' by email domain
+```
+
+**The login page renders only the methods the deploy actually has.** With no
+password on any role there is no password form and no role picker, just the
+provider button. With exactly one password role the picker disappears too,
+since there is nothing to choose. `vaults role list` shows what each role
+accepts, and the build warns about any role that nothing can reach.
 
 Roles are ordered by add time, lowest → highest. To reorder:
 

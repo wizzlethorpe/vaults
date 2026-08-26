@@ -27,8 +27,7 @@ import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./settings.js";
 import { loadConfig, saveConfig, type VaultConfig } from "./config.js";
 import matter from "gray-matter";
-import { renderAuthMiddleware, LOGIN_HTML } from "./render/auth-template.js";
-import { htmlAttr } from "./escape.js";
+import { renderAuthMiddleware, renderLoginPage } from "./render/auth-template.js";
 import { renderFooterHtml } from "./render/footer.js";
 import type { ImageEntry, PageMeta, RenderContext, RenderWarning } from "./render/types.js";
 import { buildRegistry, type HandlerRegistry } from "./render/handlers/types.js";
@@ -564,25 +563,32 @@ export async function buildSite(opts: BuildOptions): Promise<BuildResult> {
     });
     await writeFile(join(fnDir, "_middleware.js"), middleware);
 
-    // Login page; drop in the role list (everything above the default).
+    // Login page, showing only the methods this deploy actually has. A role
+    // is reachable by password only if a hash was set for it, so a vault
+    // authenticating purely through Patreon or OIDC gets no password form
+    // and no role selector.
     const protectedRoles = roles.slice(1);
-    const opts_html = protectedRoles
-      .map((r) => `<option value="${r}">${r}</option>`)
-      .join("");
-    const patreonRolesAttr = patreonForFn
-      ? ` data-patreon-roles="${Object.keys(patreonForFn.tiers).join(",")}"`
-      : "";
-    // displayName is free text (unlike role names), so attribute-escape it.
-    const oidcAttr = oidcForFn ? ` data-oidc="${htmlAttr(oidcForFn.displayName)}"` : "";
-    await writeFile(join(opts.outputDir, "login.html"),
-      LOGIN_HTML
-        .replace("__ROLE_OPTIONS__", opts_html)
-        .replace("__PATREON_ROLES_ATTR__", patreonRolesAttr)
-        .replace("__OIDC_ATTR__", oidcAttr));
+    const passwordRoles = protectedRoles.filter((r) => cfg.rolePasswords[r]);
+    const patreonRoles = patreonForFn ? Object.keys(patreonForFn.tiers) : [];
+    const oidcRoles = oidcForFn ? Object.keys(oidcForFn.roleRules ?? {}) : [];
+    await writeFile(join(opts.outputDir, "login.html"), renderLoginPage({
+      passwordRoles,
+      patreonRoles,
+      oidcDisplayName: oidcForFn ? oidcForFn.displayName : null,
+    }));
 
-    const missing = protectedRoles.filter((r) => !cfg.rolePasswords[r]);
-    if (missing.length > 0) {
-      console.warn(`  WARNING: no password set for role(s): ${missing.join(", ")}. Run 'vaults password <role>' before pushing.`);
+    // The error is a role nobody can reach, not a role without a password —
+    // password-less is the point when a provider grants the role instead.
+    const unreachable = protectedRoles.filter(
+      (r) => !cfg.rolePasswords[r] && !patreonRoles.includes(r) && !oidcRoles.includes(r),
+    );
+    if (unreachable.length > 0) {
+      console.warn(
+        `  WARNING: no way to sign in as role(s): ${unreachable.join(", ")}. `
+        + `Set a password ('vaults password <role>'), map a Patreon tier `
+        + `('vaults patreon link <role> <tier-id>'), or add an OIDC rule `
+        + `('vaults oidc configure'). Pages at these roles will be unreachable.`,
+      );
     }
   }
 

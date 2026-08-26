@@ -4,7 +4,7 @@ import { hashPassword } from "../auth.js";
 import { loadConfig, saveConfig } from "../config.js";
 import { runMigrations } from "../migrate/run.js";
 
-export async function roleAdd(name: string, vaultPath: string): Promise<void> {
+export async function roleAdd(name: string, vaultPath: string, opts: { noPassword?: boolean } = {}): Promise<void> {
   await runMigrations(vaultPath);
   if (!/^[a-z][a-z0-9_-]*$/i.test(name)) {
     throw new Error(`Invalid role name '${name}'. Use letters, digits, '_' or '-' (must start with a letter).`);
@@ -13,20 +13,31 @@ export async function roleAdd(name: string, vaultPath: string): Promise<void> {
   const cfg = await loadConfig(vaultPath, {});
   if (cfg.roles.includes(name)) throw new Error(`Role '${name}' already exists.`);
 
-  // First role added (or first ever role) is the default; no password.
-  // Subsequent roles need a password to gate access.
+  // The first role is the default (public) tier and never has a password.
+  // Above that, a password is one way to reach a role, not the only one: a
+  // Patreon tier or an OIDC rule can grant it instead, and a vault that
+  // authenticates purely through a provider wants no password at all.
   const isDefault = cfg.roles.length === 0;
   cfg.roles.push(name);
 
-  if (!isDefault) {
-    console.log(`Adding role '${name}'. Set a password to gate access:`);
-    const pw = await readPassword();
-    cfg.rolePasswords[name] = await hashPassword(pw);
+  let passwordSet = false;
+  if (!isDefault && !opts.noPassword) {
+    console.log(`Adding role '${name}'. Set a password, or press Enter to skip`);
+    console.log(`  (skip if this role is granted by Patreon or OIDC instead):`);
+    const pw = await readPassword({ allowEmpty: true });
+    if (pw) {
+      cfg.rolePasswords[name] = await hashPassword(pw);
+      passwordSet = true;
+    }
   }
 
   await saveConfig(vaultPath, cfg);
   console.log(`Added role '${name}'${isDefault ? " (default)" : ""}.`);
   console.log(`  Mark pages with 'role: ${name}' frontmatter or callouts with '> [!${name}]' to gate them.`);
+  if (!isDefault && !passwordSet) {
+    console.log(`  No password set. Grant it with 'vaults patreon link ${name} <tier-id>' or `
+      + `'vaults oidc configure', or set one later with 'vaults password ${name}'.`);
+  }
 }
 
 export async function roleRemove(name: string, vaultPath: string): Promise<void> {
@@ -82,15 +93,32 @@ export async function roleList(vaultPath: string): Promise<void> {
     return;
   }
   console.log("Roles (lowest → highest):");
+  const patreonTiers = cfg.oauth?.patreon?.tiers ?? {};
+  const oidcRules = cfg.oauth?.oidc?.roleRules ?? {};
   cfg.roles.forEach((r, i) => {
-    const isDefault = i === 0;
-    const hasPw = cfg.rolePasswords[r] != null;
-    const tag = isDefault ? " (default, public)" : hasPw ? "" : " (no password set!)";
-    console.log(`  ${r}${tag}`);
+    if (i === 0) {
+      console.log(`  ${r} (default, public)`);
+      return;
+    }
+    // A role is reachable by any of these; none of them is required, but a
+    // role with none of them can't be signed into at all.
+    const via: string[] = [];
+    if (cfg.rolePasswords[r] != null) via.push("password");
+    if (patreonTiers[r]) via.push(`patreon tier ${patreonTiers[r]}`);
+    if (oidcRules[r]) via.push("oidc");
+    console.log(`  ${r}${via.length > 0 ? ` — ${via.join(", ")}` : " — UNREACHABLE (no password, no provider)"}`);
   });
 }
 
-async function readPassword(): Promise<string> {
+/**
+ * Prompt for a password twice and return it.
+ *
+ * With `allowEmpty`, an empty first entry returns "" instead of throwing —
+ * `role add` uses that to mean "this role is granted by a provider, not a
+ * password". `vaults password <role>` still rejects empty, since setting a
+ * password to nothing is never what that command means.
+ */
+async function readPassword(opts: { allowEmpty?: boolean } = {}): Promise<string> {
   const isTty = !!stdin.isTTY;
   if (!isTty) {
     const chunks: Buffer[] = [];
@@ -98,7 +126,10 @@ async function readPassword(): Promise<string> {
     const lines = Buffer.concat(chunks).toString("utf8").split(/\r?\n/);
     const pw = lines[0] ?? "";
     const confirm = lines[1] ?? "";
-    if (!pw) throw new Error("Empty password.");
+    if (!pw) {
+      if (opts.allowEmpty) return "";
+      throw new Error("Empty password.");
+    }
     if (pw !== confirm) throw new Error("Passwords don't match.");
     return pw;
   }
@@ -106,7 +137,10 @@ async function readPassword(): Promise<string> {
   const rl = createInterface({ input: stdin, output: stdout });
   try {
     const pw = await maskedRead(rl, "Password: ");
-    if (!pw) throw new Error("Empty password.");
+    if (!pw) {
+      if (opts.allowEmpty) return "";
+      throw new Error("Empty password.");
+    }
     const confirm = await maskedRead(rl, "Confirm:  ");
     if (pw !== confirm) throw new Error("Passwords don't match.");
     return pw;

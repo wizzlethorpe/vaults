@@ -29,11 +29,13 @@ const role = program
 
 role
   .command("add")
-  .description("Add a role and (for non-default roles) set its password")
+  .description("Add a role, optionally with a password (Patreon/OIDC can grant it instead)")
   .argument("<name>", "Role name")
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
-  .action(async (name: string, vaultPath: string) => {
-    try { await roleAdd(name, vaultPath); }
+  .option("--no-password", "Skip the password prompt; the role is granted by Patreon or OIDC")
+  .action(async (name: string, vaultPath: string, opts: { password?: boolean }) => {
+    // commander maps --no-password to `password: false`.
+    try { await roleAdd(name, vaultPath, { noPassword: opts.password === false }); }
     catch (err) { console.error(err instanceof Error ? err.message : err); process.exit(1); }
   });
 

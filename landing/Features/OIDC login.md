@@ -15,7 +15,7 @@ student   →  domains: lion.lmu.edu
 staff     →  domains: lmu.edu,  emails: dean@lmu.edu
 ```
 
-On sign-in the middleware takes the email from the issuer's userinfo endpoint and awards the **highest-ranked** role whose rule matches. Roles with no rule stay password-only, exactly like an unmapped Patreon tier.
+On sign-in the middleware takes the email from the issuer's userinfo endpoint and awards the **highest-ranked** role whose rule matches. A visitor matching no rule falls back to the default (public) role rather than being refused, so an SSO-only vault still serves its public pages to anyone. Roles with no rule are reachable by whatever else grants them, exactly like an unmapped Patreon tier.
 
 Matching is deliberately strict:
 
@@ -75,4 +75,4 @@ vaults oidc clear
 
 - The flow uses PKCE (`S256`) plus a signed, short-lived CSRF state cookie, the same hardening as the Patreon round-trip.
 - OIDC and Patreon can be configured on the same vault. A visitor takes whichever route grants them the stronger role.
-- Today OIDC sits **alongside** password auth rather than replacing it. Making a vault SSO-only (no password form, no role picker) is on the roadmap.
+- OIDC can **replace** password auth rather than sitting alongside it. Add roles with `--no-password` (or press Enter at the prompt) and the login page drops the password form and role picker entirely, leaving only the provider button. See [[Role gating]].

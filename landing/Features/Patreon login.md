@@ -2,7 +2,9 @@
 title: Patreon login
 ---
 
-An optional, additive overlay on top of password auth. Roles always have a password gate. When Patreon is configured, **a role can also accept Patreon OAuth login** if its name appears in the `patreon.tiers` mapping. Patrons whose pledge grants the linked tier can sign in directly without the password.
+An optional way to grant a role. When Patreon is configured, **a role accepts Patreon OAuth login** if its name appears in the `patreon.tiers` mapping, and patrons whose pledge grants the linked tier sign in directly.
+
+A password is not required alongside it. A role can be reachable by password, by Patreon, by [[OIDC login|OIDC]], or by any combination; a role reachable only through Patreon simply has no password set. See [[Role gating]] for how the login page adapts.
 
 ## Setup
 
