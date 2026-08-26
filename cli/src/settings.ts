@@ -31,6 +31,7 @@ export interface Settings {
   include_unknown_files: boolean;
   footer: string;
   foundry: boolean;
+  site_url: string;
 }
 
 type SettingType = "string" | "number" | "boolean" | "string[]";
@@ -152,6 +153,12 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     type: "boolean",
     description:
       "Ship the Foundry VTT integration with this deploy: the importer bundle the Foundry module fetches, the /_batch read API it syncs through, and any handler assets marked for Foundry import. Set false for a vault that has nothing to do with Foundry (a course site, a research wiki) and the deploy drops ~60KB and the sync endpoints it would never use. Pages keep their 'foundry:' frontmatter either way; it simply isn't advertised.",
+  },
+  site_url: {
+    default: "",
+    type: "string",
+    description:
+      "Public base URL this vault is served from, e.g. 'https://notes.example.com'. Set it and the build emits sitemap.xml and robots.txt so search engines can index the site; leave it empty and neither is written. Only pages in the default (lowest) role are listed — a sitemap naming gated pages would advertise that they exist.",
   },
   footer: {
     default: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com).",

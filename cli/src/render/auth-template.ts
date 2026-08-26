@@ -1129,6 +1129,7 @@ function isSharedAsset(pathname) {
   if (pathname === "/login.html") return true;
   if (pathname === "/favicon.ico" || pathname === "/favicon.svg") return true;
   if (pathname === "/robots.txt") return true;
+  if (pathname === "/sitemap.xml") return true;
   return false;
 }
 `;

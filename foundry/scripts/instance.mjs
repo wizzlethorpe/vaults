@@ -831,3 +831,48 @@ function deepMerge(target, source) {
   }
   return target;
 }
+
+/**
+ * Pages whose documents are missing from the world.
+ *
+ * Sync diffs the remote manifest against the last one, so a page whose hash
+ * has not changed is never revisited — and a document deleted in the world,
+ * or one that failed to instantiate, stays missing while every later sync
+ * reports "already up to date". This is the only way that drift is ever
+ * noticed.
+ *
+ * Reports rather than repairs. The module deliberately never auto-deletes a
+ * document a GM has taken over, and re-creating one they deleted on purpose
+ * would fight the same principle from the other side. A force sync is the
+ * "put it back the way the vault says" button, and this tells them when to
+ * reach for it.
+ *
+ * @param entries `{ logicalPath, meta }` for every syncable page.
+ * @returns `[{ path, missing }]`, `missing` being "journal", "document", or both.
+ */
+export async function findMissingDocuments(vault, entries) {
+  const out = [];
+  for (const { logicalPath, meta } of entries) {
+    const fm = meta?.foundry;
+    const missing = [];
+
+    if (fm?.journal !== false) {
+      const eId = await entryId(vault.id, logicalPath);
+      const pId = typeof fm?.id === "string" && fm.id ? fm.id : await pageId(vault.id, logicalPath);
+      if (!game.journal.get(eId)?.pages?.get(pId)) missing.push("journal");
+    }
+
+    if (fm?.base !== undefined && fm?.base !== null) {
+      const specs = Array.isArray(fm.base) ? fm.base : [fm.base];
+      const docName = docNameOf(parseFoundryBase(specs[0]));
+      const collection = docName ? COLLECTION_FOR[docName]?.() : null;
+      if (collection) {
+        const id = typeof fm.id === "string" && fm.id ? fm.id : await instanceId(vault.id, logicalPath);
+        if (!collection.get(id)) missing.push("document");
+      }
+    }
+
+    if (missing.length > 0) out.push({ path: logicalPath, missing: missing.join(" + ") });
+  }
+  return out;
+}

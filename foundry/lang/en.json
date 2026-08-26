@@ -7,6 +7,7 @@
   "VAULTS.Sync.Done": "Sync complete in {seconds}s. +{added} ~{modified} −{removed}",
   "VAULTS.Sync.MissingPackages": "This vault expects compendium package(s) this world can't read: {packages}. Those pages will sync as journals but instantiate no document.",
   "VAULTS.Sync.PagesFailed": "{count} page(s) failed to sync and will be retried on the next sync. See the console for details.",
+  "VAULTS.Sync.MissingDocuments": "{count} page(s) have no document in this world. An incremental sync won't notice them again — use Force Sync to restore.",
   "VAULTS.Sync.InstancesSkipped": "{count} page(s) declared foundry.base but no document was created. See the console for details.",
   "VAULTS.Sync.NothingToDo": "Vault is already up to date.",
   "VAULTS.Sync.Error": "Vault sync failed: {message}",

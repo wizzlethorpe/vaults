@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { availableParallelism } from "node:os";
 import picomatch from "picomatch";
 import { scanVault, type ScannedFile } from "./scan.js";
+import { htmlEscape } from "./escape.js";
 import { buildManifest, type AssetAdvertisement, type BodyMeta } from "./manifest.js";
 import { collectBodyMeta, loadDataJson, warnFoundryDocCollisions } from "./foundry-meta.js";
 import { compressImage } from "./images.js";
@@ -48,6 +49,7 @@ export interface BuildOptions {
 
 /** BuildOptions plus the vault properties read out of settings.md. */
 type ResolvedOptions = BuildOptions & {
+  siteUrl: string;
   vaultName: string;
   imageQuality: number;
   maxFileBytes: number;
@@ -115,6 +117,42 @@ function addBasenameKeys(
 }
 
 
+/**
+ * Emit `sitemap.xml` and `robots.txt` at the deploy root.
+ *
+ * **Only the default role's pages are listed.** A sitemap naming gated pages
+ * would advertise that they exist, and their URLs, to anyone who fetches it —
+ * the middleware would still refuse the content, but the leak is the point of
+ * a sitemap, so it must never see above the lowest tier.
+ *
+ * Both files are written only when `site_url` is set, because a sitemap needs
+ * absolute URLs and nothing else in the build knows the deploy's public
+ * hostname (a Pages project can answer on several).
+ */
+async function writeSitemap(outputDir: string, siteUrl: string, pagePaths: string[]): Promise<void> {
+  const base = siteUrl.replace(/\/+$/, "");
+  const urls = pagePaths
+    .map((p) => p.replace(/\.md$/i, ""))
+    .map((p) => (p === "index" ? "" : p.replace(/\/index$/i, "")))
+    .sort()
+    .map((p) => `${base}/${p.split("/").map(encodeURIComponent).join("/")}`)
+    // index.md becomes the bare base URL rather than "<base>/".
+    .map((u) => u.replace(/\/$/, ""));
+
+  const body = [...new Set(urls)]
+    .map((u) => `  <url><loc>${htmlEscape(u)}</loc></url>`)
+    .join("\n");
+  await writeFile(
+    join(outputDir, "sitemap.xml"),
+    `<?xml version="1.0" encoding="UTF-8"?>\n`
+    + `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`,
+  );
+  await writeFile(
+    join(outputDir, "robots.txt"),
+    `User-agent: *\nAllow: /\nSitemap: ${base}/sitemap.xml\n`,
+  );
+}
+
 export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   const start = Date.now();
   const concurrency = Math.max(2, availableParallelism());
@@ -139,6 +177,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // vault decides.
   let opts: ResolvedOptions = {
     ...input,
+    siteUrl: settings.values.site_url,
     vaultName: settings.values.vault_name,
     imageQuality: settings.values.image_quality,
     maxFileBytes: settings.values.max_file_bytes,
@@ -484,6 +523,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // ── Per-role variant builds ─────────────────────────────────────────────
   const perRolePageCount: Record<string, number> = {};
   const collapseToRoot = roles.length === 1;
+  let defaultRolePagePaths: string[] = [];
   let katexCopied = false;
 
   for (const role of roles) {
@@ -526,6 +566,8 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       allWarnings: opts.allWarnings,
     });
     perRolePageCount[role] = stats.pageCount;
+    // Only the default (lowest) role feeds the sitemap; see writeSitemap.
+    if (role === roles[0]) defaultRolePagePaths = stats.pagePaths;
     if (!collapseToRoot) console.log(`  variant '${role}': ${stats.pageCount} pages`);
 
     // KaTeX stylesheet + fonts, shared at the deploy root. Copied lazily on
@@ -642,6 +684,12 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     }
   }
 
+  // Search-engine files. Written from the default role's page list only, so a
+  // gated page is never named. Skipped entirely without a site_url.
+  if (opts.siteUrl) {
+    await writeSitemap(opts.outputDir, opts.siteUrl, defaultRolePagePaths);
+  }
+
   // Drop the staging dirs; their contents have been copied into each
   // variant that needs them, so they're no longer required for the deploy.
   await rm(imageStagingDir, { recursive: true, force: true });
@@ -702,6 +750,8 @@ interface VariantArgs {
 
 interface VariantStats {
   pageCount: number;
+  /** Vault-relative .md paths visible in this variant, for the sitemap. */
+  pagePaths: string[];
   /** Maps `.body.html` path (variant-relative) to its meta payload. Empty unless any page sets a foundry block / image. */
   bodyMeta: Map<string, BodyMeta>;
   /** True when any page in this variant rendered KaTeX math. */
@@ -917,7 +967,12 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   // public deploy because no public-tier source mentions it.
   await copyReferencedPassthroughs(visibleSources, visibleMetas, a.passthroughIndex, a.passthroughStagingDir, a.variantDir);
 
-  return { pageCount: visibleMetas.length, bodyMeta, hasMath: hasMathCss };
+  return {
+    pageCount: visibleMetas.length,
+    pagePaths: visibleMetas.map((m) => m.path),
+    bodyMeta,
+    hasMath: hasMathCss,
+  };
 }
 
 /**

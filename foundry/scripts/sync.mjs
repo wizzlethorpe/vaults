@@ -12,7 +12,7 @@ import { fetchManifest, fetchSourceBatch } from "./api.mjs";
 import { upsertFile, deleteFile, buildFolderInfo, reconcileEntryPlacement, reconcileOwnership } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
-import { applyInstance, deleteInstance, missingBasePackages } from "./instance.mjs";
+import { applyInstance, deleteInstance, findMissingDocuments, missingBasePackages } from "./instance.mjs";
 import { instanceId } from "./ids.mjs";
 import { tokenInfo } from "./auth.mjs";
 
@@ -238,11 +238,43 @@ export async function sync(host, vault, { forceFull = false } = {}) {
     console.warn(`Vaults | image sync failed for ${vault.label}:`, err);
   }
 
+  // Drift check, before the up-to-date return below — which is the exact case
+  // it exists to catch. Everything else here only visits *changed* pages, so a
+  // document deleted in the world, or one that failed to instantiate on the
+  // sync that first saw its page, is invisible from then on: the manifest
+  // still matches and every later run reports "already up to date". This asks
+  // the world instead of the manifest.
+  //
+  // Reports rather than repairs, deliberately. Re-creating a document the GM
+  // deleted on purpose would fight the same rule that stops us deleting one
+  // they took over. Force Sync is the repair.
+  // Only the pages this run will *not* touch. A page in toUpsert is about to
+  // be created or updated, so reporting it as missing would be describing the
+  // state a moment before we fix it.
+  const untouched = new Set(bodyPaths);
+  for (const p of toUpsert) untouched.delete(p);
+  for (const p of toDelete) untouched.delete(p);
+  const missingDocs = await findMissingDocuments(vault, [...untouched].map((bodyPath) => ({
+    logicalPath: bodyPath.replace(/\.body\.html$/i, ".md"),
+    meta: bodyMetaIndex.get(bodyPath),
+  })));
+  const reportMissingDocs = () => {
+    if (missingDocs.length === 0) return;
+    host.notify("warn", host.localize("VAULTS.Sync.MissingDocuments", { count: missingDocs.length }));
+    console.warn(
+      `Vaults | ${vault.label}: ${missingDocs.length} page(s) have no document in this world. `
+      + `An incremental sync will not notice them again — use Force Sync to restore:`,
+      missingDocs,
+    );
+  };
+
   if (toUpsert.length === 0 && toDelete.length === 0 && imageStats.downloaded === 0 && imageStats.removed === 0) {
     host.notify("info", host.localize("VAULTS.Sync.NothingToDo"));
+    reportMissingDocs();
     return {
       ok: true, refreshHandlerAssets: false,
       added: 0, modified: 0, removed: 0, imageStats, instances: 0, skipped: [], failed: [],
+      missingDocuments: [],
     };
   }
 
@@ -371,6 +403,7 @@ export async function sync(host, vault, { forceFull = false } = {}) {
 
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
   host.notify("info", host.localize("VAULTS.Sync.Done", { added, modified, removed, seconds }));
+  reportMissingDocs();
   if (imageStats.downloaded > 0 || imageStats.removed > 0) {
     console.info(`Vaults | ${vault.label} images: ${imageStats.downloaded} downloaded, ${imageStats.removed} removed`
       + (imageStats.errors ? `, ${imageStats.errors} failed` : ""));
@@ -394,6 +427,7 @@ export async function sync(host, vault, { forceFull = false } = {}) {
   return {
     ok: true, refreshHandlerAssets: true,
     added, modified, removed, imageStats, instances, skipped,
+    missingDocuments: missingDocs,
     failed: [...failedPages].map(([path, reason]) => ({ path, reason })),
   };
 }
