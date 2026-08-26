@@ -82,6 +82,7 @@ describe("generated auth middleware", () => {
   before(async () => {
     mw = await loadMiddleware({
       roles: ["public", "dm"],
+      foundry: true,
       rolePasswords: { dm: await hashPassword("hunter2") },
     });
   });
@@ -203,6 +204,7 @@ describe("OAuth state cookie", () => {
     // to any vault whose page titles aren't plain ASCII.
     const mw = await loadMiddleware({
       roles: ["public", "staff"],
+      foundry: true,
       rolePasswords: {},
       oidc: {
         displayName: "LMU",
@@ -230,6 +232,7 @@ describe("OAuth state cookie", () => {
     // bouncing the visitor through a flow that cannot complete.
     const mw = await loadMiddleware({
       roles: ["public", "staff"],
+      foundry: true,
       rolePasswords: {},
       oidc: {
         displayName: "LMU",

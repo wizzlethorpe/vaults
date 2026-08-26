@@ -429,9 +429,11 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     .slice(0, 10);
 
   // Foundry importer bundle: one ESM file the Foundry module fetches at
-  // sync time, plus a tiny version manifest with the SHA-256 the host
-  // verifies against its trust cache.
-  await writeFoundryImporter(opts.outputDir);
+  // sync time. Skipped entirely when the vault has opted out of the Foundry
+  // integration — it is ~60KB shipped to every deploy, and a course site or
+  // research wiki will never fetch it.
+  const foundryEnabled = settings.values.foundry;
+  if (foundryEnabled) await writeFoundryImporter(opts.outputDir);
   // Foundry-import bundles are written per-variant inside the role loop
   // below (instead of at the root) so the middleware role-gates them. A
   // public visitor can't fetch the dm-tier handler bundle even if it
@@ -544,7 +546,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     // Foundry-import subset bundles. The Foundry module fetches these by
     // their canonical `/_handlers.foundry.{js,css}` paths; the middleware
     // role-gates per the requesting bearer's variant.
-    if (handlerAssets.foundry) {
+    if (foundryEnabled && handlerAssets.foundry) {
       if (handlerAssets.foundry.js.length > 0) {
         await writeFile(join(variantDir, "_handlers.foundry.js"), handlerAssets.foundry.js);
       }
@@ -563,8 +565,8 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       {
         hasHandlerJs,
         hasHandlerCss,
-        hasFoundryJs: (handlerAssets.foundry?.js.length ?? 0) > 0,
-        hasFoundryCss: (handlerAssets.foundry?.css.length ?? 0) > 0,
+        hasFoundryJs: foundryEnabled && (handlerAssets.foundry?.js.length ?? 0) > 0,
+        hasFoundryCss: foundryEnabled && (handlerAssets.foundry?.css.length ?? 0) > 0,
       },
     );
     await writeFile(join(variantDir, "_manifest.json"), JSON.stringify(manifest));
@@ -604,6 +606,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       : null;
     const middleware = renderAuthMiddleware({
       roles,
+      foundry: foundryEnabled,
       rolePasswords: cfg.rolePasswords,
       ...(patreonForFn ? { patreon: patreonForFn } : {}),
       ...(oidcForFn ? { oidc: oidcForFn } : {}),

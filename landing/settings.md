@@ -54,6 +54,9 @@ auto_image: true
 # Ship files with unrecognized extensions to every deploy variant. Default false skips them (with a warning) so a stray file in your vault can't accidentally bypass role gating. Recognized media types (audio/video/pdf/epub) are reference-gated like images regardless of this setting.
 include_unknown_files: false
 
+# Ship the Foundry VTT integration with this deploy: the importer bundle the Foundry module fetches, the /_batch read API it syncs through, and any handler assets marked for Foundry import. Set false for a vault that has nothing to do with Foundry (a course site, a research wiki) and the deploy drops ~60KB and the sync endpoints it would never use. Pages keep their 'foundry:' frontmatter either way; it simply isn't advertised.
+foundry: true
+
 # Markdown text rendered in a small <footer> at the bottom of every page. Supports inline markdown (links, *italic*, **bold**). Set to an empty string to hide the footer entirely.
 footer: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com)."
 ---
