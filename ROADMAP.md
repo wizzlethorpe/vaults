@@ -324,6 +324,32 @@ creator + pack + exact filename rather than an id.
 
 ### Open questions
 
+- **A creator's back catalogue may be a Foundry version behind.** Verified: The
+  MAD Cartographer's newer packs export native v14 (`13752` Dark Heart of the
+  Wood is core 14.364 with 4 levels), while everything below roughly `13000` is
+  core 13.344. A v13 Scene *creates* cleanly in v14 — all 153 walls, 17 lights,
+  10 tiles and 10 sounds survive, and the tile coordinates in the document are
+  correct — but it does not *render* correctly: v14 draws those tiles at the
+  canvas origin instead of at their stored x/y.
+
+  Migrating scene data across Foundry versions is Foundry's job, not ours, so
+  the honest scope is: a `@moulinette/` document rung is reliable only for a
+  pack the creator has re-exported for the reader's Foundry version.
+
+- **Prefer a compendium rung above a Moulinette document rung.** Not only for
+  fidelity, which was the earlier reasoning, but because Foundry migrates
+  compendium packs on load and raw JSON pulled from Moulinette skips that step
+  entirely. A creator who ships both ways (MAD's scenes name
+  `Compendium.mad-taverns.mad-taverns-maps.Scene.…` in their own
+  `compendiumSource`) is better addressed through their module:
+
+  ```yaml
+  base:
+    - Compendium.mad-taverns.mad-taverns-maps.Scene.F3wyDaiec72h5sFG  # migrates
+    - "@moulinette/13752/json/scene/....json"                          # does not
+    - Scene
+  ```
+
 - **Re-releases fragment a pack across `pack_ref`s.** Verified against a live
   library: The MAD Cartographer alone has 204 packs there, and the same name
   recurs under different refs with different contents ("Badlands Map Pack" at
@@ -337,6 +363,11 @@ creator + pack + exact filename rather than an id.
   degrades correctly (no background, rather than a broken path) but it does
   degrade, and there is no more stable handle on offer short of a supported
   `resolveAsset` from the Moulinette developers.
+
+  This turned out to cut the other way too. Those pairs are largely *version*
+  re-exports, so pinning a `pack_ref` also pins a Foundry version — which for
+  documents is the difference between a scene that renders and one that does
+  not. Naming the pack is the feature, not the tax.
 
 - **Resolved paths carry a pack version** — a download lands in
   `moulinette-v2/cloud/<creator>/<pack>-12.5.1/...`. Harmless because we
