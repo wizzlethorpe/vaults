@@ -93,6 +93,15 @@ read -p "Continue? (y/n) " -n 1 -r
 echo
 [[ "$REPLY" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
 
+# Gate the release on the suite. Nothing else does: there is no CI, so
+# without this a broken build reaches npm and the Foundry package listing,
+# and the CLI's published bundle is what every deployed vault runs.
+echo ""
+echo "=== Typecheck + tests ==="
+pnpm typecheck
+pnpm test
+echo "All green."
+
 # Bump cli/package.json
 jq --arg v "$NEW_VERSION" '.version = $v' cli/package.json > cli/package.json.tmp
 mv cli/package.json.tmp cli/package.json

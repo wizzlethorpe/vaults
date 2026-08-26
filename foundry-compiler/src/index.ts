@@ -73,8 +73,14 @@ function parseArgs(argv: string[]): { vault: string; out: string } {
 }
 
 function parseFrontmatter(md: string): { fm: Record<string, unknown>; body: string } {
-  const m = md.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-  if (!m) return { fm: {}, body: md };
+  // Strip a BOM and normalise line endings before matching. Without this a
+  // CRLF vault matched nothing at all, so every page looked like it had no
+  // frontmatter, every page was skipped for "no foundry.base/id", and vfmc
+  // wrote an empty module and exited 0. The CLI does the same normalisation
+  // in build.ts (normalizeFrontmatterSource).
+  const text = md.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+  const m = text.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!m) return { fm: {}, body: text };
   return { fm: (yaml.load(m[1]!) ?? {}) as Record<string, unknown>, body: m[2]! };
 }
 

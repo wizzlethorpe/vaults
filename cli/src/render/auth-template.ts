@@ -378,10 +378,11 @@ async function handleConnectGet(request, env) {
   const url = new URL(request.url);
   const app = url.searchParams.get("app") || "an external app";
 
-  // Require login first; the user's role is what we're authorising.
+  // Require login first; the user's role is what we're authorising. The
+  // default role is the unauthenticated one, so it is the whole test —
+  // any other role can only have come from a verified cookie or token.
   const role = await readRole(request, env);
-  const isLoggedIn = role !== ROLES[0] || PASSWORDS[role] != null;
-  if (!isLoggedIn || role === ROLES[0]) {
+  if (role === ROLES[0]) {
     // Default role; redirect to login first, come back here on success.
     const next = url.pathname + url.search;
     return new Response(null, {
@@ -850,6 +851,15 @@ function base64UrlEncode(bytes) {
   return btoa(s).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/, "");
 }
 
+/** Inverse of base64UrlEncode for UTF-8 text. */
+function base64UrlDecodeUtf8(s) {
+  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
 // State cookie: stores { state, next } (plus the PKCE verifier for OIDC)
 // signed with SESSION_SECRET, used to verify the OAuth callback came from
 // our /start handler and not a forgery. Shared by both OAuth flows.
@@ -860,7 +870,12 @@ async function signStateCookie(payload, secret) {
   const exp = Math.floor(Date.now() / 1000) + STATE_TTL;
   const data = JSON.stringify({ ...payload, exp });
   const sig = await hmac(data, secret);
-  const value = btoa(data) + "." + sig;
+  // The payload carries the next path, and btoa throws on any code point
+  // above U+00FF — so a page whose name uses a non-Latin1 character
+  // (Sunawi with a w-circumflex, Ordogok, Japanese) turned the /start
+  // handler into an unhandled 500. Encode the UTF-8 bytes instead.
+  // (No backticks in this comment: it is inside the middleware template.)
+  const value = base64UrlEncode(new TextEncoder().encode(data)) + "." + sig;
   return STATE_COOKIE + "=" + value
     + "; Path=/; Secure; SameSite=Lax; HttpOnly; Max-Age=" + STATE_TTL;
 }
@@ -874,10 +889,12 @@ async function readStateCookie(request, secret) {
   const dataB64 = raw.slice(0, dot);
   const sig = raw.slice(dot + 1);
   let data;
-  try { data = atob(dataB64); }
+  try { data = base64UrlDecodeUtf8(dataB64); }
   catch { return null; }
   const expected = await hmac(data, secret);
-  if (sig !== expected) return null;
+  // Constant-time, matching verifyToken; a plain !== leaks the signature
+  // byte-by-byte through response timing.
+  if (!constantTimeEqual(sig, expected)) return null;
   let parsed;
   try { parsed = JSON.parse(data); }
   catch { return null; }
