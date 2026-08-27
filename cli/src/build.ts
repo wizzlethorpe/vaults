@@ -278,10 +278,20 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // the passthrough pool (still reference-gated). The user-facing
   // warning lists exactly which paths got dropped so unintentional
   // omissions surface immediately.
+  // Read the ```download blocks first: a file named by one is shipped whatever
+  // its extension, so it must not also be reported as skipped. Warning about a
+  // file that then gets staged sends the reader off to set
+  // include_unknown_files for no reason.
+  const downloadPaths = new Set<string>();
+  for (const f of markdownFiles) {
+    const source = await readFile(f.absolute, "utf8");
+    for (const path of downloadFilePaths(source)) downloadPaths.add(path);
+  }
   const unknownFiles = withinLimit.filter((f) =>
     !/\.md$|\.base$/i.test(f.path)
     && !IMAGE_EXT_RE.test(f.path)
-    && !PASSTHROUGH_EXT_RE.test(f.path),
+    && !PASSTHROUGH_EXT_RE.test(f.path)
+    && !downloadPaths.has(f.path),
   );
   const includeUnknown = settings.values.include_unknown_files;
   if (unknownFiles.length > 0) {
@@ -309,11 +319,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // include_unknown_files exists to require. Role gating is untouched: these
   // are still reference-gated, so a download on a patron page reaches the
   // patron variant and no other.
-  const downloadPaths = new Set<string>();
-  for (const f of markdownFiles) {
-    const source = await readFile(f.absolute, "utf8");
-    for (const path of downloadFilePaths(source)) downloadPaths.add(path);
-  }
   if (downloadPaths.size > 0) {
     const already = new Set(stagedPassthroughs.map((f) => f.path));
     const promoted = withinLimit.filter((f) => downloadPaths.has(f.path) && !already.has(f.path));
