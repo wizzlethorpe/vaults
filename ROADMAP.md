@@ -359,6 +359,32 @@ author asked for nothing, so nothing should change under the GM.
 
 ### Open questions
 
+- **Composing a scene from Moulinette *assets* is the stronger pattern, not
+  the fallback.** The two rungs age differently. A document inherits the
+  creator's walls, lights and ambience but is coupled to a Foundry generation,
+  and it ages on their release schedule rather than the vault's. An asset is a
+  `.webp`, and a `.webp` does not have a schema.
+
+  The licensing split also lands where it should. A vault cannot redistribute
+  MAD's art, but wall geometry, lighting and levels are the author's own work
+  and ship freely in `data_json`. So the vault carries the structure it owns
+  and the reader's library supplies the licensed pixels:
+
+  ```yaml
+  foundry:
+    base: Scene
+    data_json: Scenes/tavern.json      # dimensions, grid, walls, lights, levels
+  ```
+  ```json
+  { "levels": [ { "background": { "src": "@moulinette/11938/images/maps/...webp" } } ] }
+  ```
+
+  That is the same relationship the rest of vaults already has with Foundry:
+  the vault is authoritative for what it wrote, and defers for what it does
+  not own. Worth saying so in the docs, because the obvious reading of a
+  priority list is that the document rung is the good one and the asset rung
+  is what you settle for.
+
 - **A creator's back catalogue may be a Foundry version behind.** Verified: The
   MAD Cartographer's newer packs export native v14 (`13752` Dark Heart of the
   Wood is core 14.364 with 4 levels), while everything below roughly `13000` is
