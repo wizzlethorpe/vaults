@@ -130,7 +130,7 @@ const PACK_LABEL: Record<string, string> = {
 };
 
 /** LevelDB collection prefix per document type. */
-const PACK_KEY: Record<string, string> = {
+export const PACK_KEY: Record<string, string> = {
   Actor: "actors", Item: "items", Scene: "scenes", JournalEntry: "journal",
   RollTable: "tables", Macro: "macros", Cards: "cards", Playlist: "playlists",
 };

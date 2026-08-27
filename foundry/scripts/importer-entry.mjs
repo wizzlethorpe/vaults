@@ -4,9 +4,8 @@
 // See ./host.mjs for the host shape these entry points receive.
 
 import { sync } from "./sync.mjs";
-import { deleteVaultJournals } from "./importer.mjs";
 import { deleteVaultCache } from "./media.mjs";
-import { deleteVaultInstances } from "./instance.mjs";
+import { deleteVaultPacks } from "./packs.mjs";
 
 /** Bumped on host-contract changes the importer relies on. */
 export const REQUIRED_HOST_VERSION = 1;
@@ -16,7 +15,6 @@ export async function runSync(host, vault, options = {}) {
 }
 
 export async function runRemove(_host, vault) {
-  await deleteVaultJournals(vault.id);
+  await deleteVaultPacks(vault.id);
   await deleteVaultCache(vault.id);
-  await deleteVaultInstances(vault.id);
 }

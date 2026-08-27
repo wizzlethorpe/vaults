@@ -17,6 +17,7 @@
 // Unresolved wikilinks (rendered with `is-unresolved`) keep their markup
 //. Foundry shows them as broken-styled text.
 
+import { journalPageUuid, instanceUuid } from "./packs.mjs";
 import { entryId, pageId, instanceId } from "./ids.mjs";
 import { localFileUrl } from "./media.mjs";
 import { CACHED_EXT_RE } from "./parser.mjs";
@@ -73,15 +74,15 @@ export function buildPathIndex(manifestFiles) {
  * everything else addresses the specific journal page, so a click opens
  * that page rather than the entry's first one.
  */
-async function targetUuid(vaultId, path, index) {
+export async function targetUuid(vault, path, index) {
   const docName = index.docTargets?.get(path);
   if (docName) {
-    const id = index.idOverrides?.get(path) ?? await instanceId(vaultId, path);
-    return `${docName}.${id}`;
+    const id = index.idOverrides?.get(path) ?? await instanceId(vault.id, path);
+    return instanceUuid(vault, docName, id);
   }
-  const eId = await entryId(vaultId, path);
-  const pId = index.idOverrides?.get(path) ?? await pageId(vaultId, path);
-  return `JournalEntry.${eId}.JournalEntryPage.${pId}`;
+  const eId = await entryId(vault.id, path);
+  const pId = index.idOverrides?.get(path) ?? await pageId(vault.id, path);
+  return journalPageUuid(vault, eId, pId);
 }
 
 /**
@@ -124,7 +125,7 @@ function decodeHtmlEntities(s) {
  * may surface inside a player-visible parent.
  */
 export async function transformHtmlForFoundry(vault, html, index, mediaRefs) {
-  html = await rewriteWikilinks(vault.id, html, index);
+  html = await rewriteWikilinks(vault, html, index);
   html = rewriteMediaSrcs(vault.id, html, index?.hashes, mediaRefs);
   html = rewritePassthroughLinks(vault.id, html);
   html = await applyDomTransforms(html, vault, index);
@@ -144,7 +145,7 @@ async function applyDomTransforms(html, vault, index) {
   touched = stripWebOnlyWidgets(doc) || touched;
   touched = flattenBasesTabs(doc) || touched;
   touched = neutralizeEnrichersInCode(doc) || touched;
-  touched = (await rewriteBasesCardLinks(doc, vault.id, index)) || touched;
+  touched = (await rewriteBasesCardLinks(doc, vault, index)) || touched;
   touched = rewriteDiceButtons(doc) || touched;
   touched = wrapRestrictedCalloutsAsSecret(doc, vault) || touched;
   return touched ? doc.body.innerHTML : html;
@@ -246,7 +247,7 @@ function neutralizeEnrichersInCode(doc) {
  * journal-page click handler routes to the linked JournalEntry while the
  * card structure stays intact.
  */
-async function rewriteBasesCardLinks(doc, vaultId, index) {
+async function rewriteBasesCardLinks(doc, vault, index) {
   const cards = doc.querySelectorAll("a.bases-card[href]");
   if (cards.length === 0) return false;
   let touched = false;
@@ -256,7 +257,7 @@ async function rewriteBasesCardLinks(doc, vaultId, index) {
     const path = logicalPathFromHref(href);
     if (!index.paths.has(path)) continue;
     a.classList.add("content-link");
-    a.setAttribute("data-uuid", await targetUuid(vaultId, path, index));
+    a.setAttribute("data-uuid", await targetUuid(vault, path, index));
     a.removeAttribute("href"); // Foundry triggers off the data-uuid; an href would re-navigate the page.
     touched = true;
   }
@@ -309,7 +310,7 @@ function cssEscape(s) {
   return String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
 }
 
-async function rewriteWikilinks(vaultId, html, index) {
+async function rewriteWikilinks(vault, html, index) {
   const matches = [];
   let m;
   ANCHOR_RE.lastIndex = 0;
@@ -340,7 +341,7 @@ async function rewriteWikilinks(vaultId, html, index) {
   // Resolve target UUIDs in parallel for the resolvable matches.
   const uuidMatches = matches.filter((r) => r.kind === "uuid");
   const resolved = await Promise.all(
-    uuidMatches.map((r) => targetUuid(vaultId, r.path, index)));
+    uuidMatches.map((r) => targetUuid(vault, r.path, index)));
   uuidMatches.forEach((r, i) => { r.uuid = resolved[i]; });
 
   // Splice from the end so earlier indices stay valid.

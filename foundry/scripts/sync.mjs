@@ -9,7 +9,7 @@
 // round-trip the host.
 
 import { fetchManifest, fetchSourceBatch } from "./api.mjs";
-import { upsertFile, deleteFile, buildFolderInfo, reconcileEntryPlacement, reconcileOwnership } from "./importer.mjs";
+import { upsertFile, deleteFile, buildFolderInfo, reconcileEntries } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
 import { localizeOr } from "./util.mjs";
@@ -441,16 +441,11 @@ async function runSync(host, vault, { forceFull = false } = {}) {
     lastIdScheme: remoteIdScheme,
   });
 
-  // Re-place existing entries whose leaf-collapse status changed since
-  // the last sync (folder gained/lost subfolders). Cheap pass; only hits
-  // the journals belonging to this vault.
-  await reconcileEntryPlacement(vault, folderInfo);
-
-  // Reconcile per-page ownership against the current manifest roles.
-  // Catches pages whose role flipped but body hash didn't (so they wouldn't
-  // be in `toUpsert`), and retroactively repairs deploys where DM pages
-  // had been leaking via the old entry-level ownership scheme.
-  await reconcileOwnership(vault, bodyMetaIndex);
+  // Re-file entries whose leaf-collapse status changed since the last sync
+  // (a folder gained or lost subfolders), and bring per-page ownership back
+  // in line with the manifest's roles — which catches pages whose role
+  // flipped while their body hash did not, so they never appeared above.
+  await reconcileEntries(vault, folderInfo, bodyMetaIndex);
 
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
   host.notify("info", host.localize("VAULTS.Sync.Done", { added, modified, removed, seconds }));

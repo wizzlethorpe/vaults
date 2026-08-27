@@ -163,18 +163,27 @@ test("a compendium Scene UUID reads as a Scene", () => {
 // ── drift detection ──────────────────────────────────────────────────────
 
 /**
- * Stub the world: `journals` and `docs` are the ids that exist. Mirrors what
- * findMissingDocuments actually reaches for — game.journal and the per-type
- * collections — and nothing else.
+ * Stub the vault's compendium packs: `journals` maps an entry id to the page
+ * ids it holds, and `actors` is the ids in the Actor pack. Mirrors what
+ * findMissingDocuments actually reaches for — game.packs, keyed the way
+ * packs.mjs names them — and nothing else.
+ *
+ * A pack that is absent from `game.packs` is not the same as an empty one:
+ * a vault that never instantiated an Actor has no Actor pack at all, and the
+ * lookup has to survive that rather than throw.
  */
-async function withWorld({ journals = {}, actors = [] }, fn) {
+async function withWorld({ journals = {}, actors = null }, fn) {
   const prev = globalThis.game;
-  globalThis.game = {
-    journal: { get: (id) => (journals[id] ? { pages: { get: (p) => journals[id].includes(p) } } : undefined) },
-    actors: { get: (id) => (actors.includes(id) ? { id } : undefined) },
-    items: { get: () => undefined },
-    scenes: { get: () => undefined },
-  };
+  const packs = new Map();
+  packs.set(`world.${VAULT.id}-journal`, {
+    getDocuments: async () => Object.entries(journals).map(([id, pages]) => ({
+      id, pages: { contents: pages.map((p) => ({ id: p })) },
+    })),
+  });
+  if (actors !== null) {
+    packs.set(`world.${VAULT.id}-actors`, { getIndex: async () => actors.map((id) => ({ _id: id })) });
+  }
+  globalThis.game = { packs };
   try { return await fn(); } finally { globalThis.game = prev; }
 }
 
@@ -199,6 +208,20 @@ test("a deleted Actor is reported as a missing document", async () => {
   const path = "Creatures/Beefy.md";
   const [e, p] = [await entryId(VAULT.id, path), await pageId(VAULT.id, path)];
   await withWorld({ journals: { [e]: [p] }, actors: [] }, async () => {
+    const missing = await findMissingDocuments(VAULT, [{ logicalPath: path, meta: { foundry: { base: "Actor:npc" } } }]);
+    assert.deepEqual(missing, [{ path, missing: "document" }]);
+  });
+});
+
+test("a page needing a document type the vault has no pack for is reported", async () => {
+  // Distinct from an empty pack: a vault whose first Scene page has just been
+  // added has no Scene pack at all, and the drift check has to read that as
+  // "the document is missing" rather than throwing on a pack it cannot find.
+  const { entryId, pageId } = await import("../scripts/ids.mjs");
+  const { findMissingDocuments } = await import("../scripts/instance.mjs");
+  const path = "Places/Tavern.md";
+  const [e, p] = [await entryId(VAULT.id, path), await pageId(VAULT.id, path)];
+  await withWorld({ journals: { [e]: [p] }, actors: null }, async () => {
     const missing = await findMissingDocuments(VAULT, [{ logicalPath: path, meta: { foundry: { base: "Actor:npc" } } }]);
     assert.deepEqual(missing, [{ path, missing: "document" }]);
   });

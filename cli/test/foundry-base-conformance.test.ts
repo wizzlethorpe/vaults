@@ -14,7 +14,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CASES } from "../../foundry/test/foundry-base.test.mjs";
 import { foundryBaseDocName } from "../src/foundry-meta.js";
-import { resolveSelfContainedBase } from "../src/foundry-module.js";
+import { resolveSelfContainedBase, PACK_KEY } from "../src/foundry-module.js";
+import { PACK_KEY as MODULE_PACK_KEY } from "../../foundry/scripts/foundry-base.mjs";
 
 describe("foundry.base doc-type conformance", () => {
   it("matches the Foundry module on every case", () => {
@@ -58,5 +59,14 @@ describe("foundry.base doc-type conformance", () => {
       }
     }
     assert.deepEqual(mismatches, [], "module compiler disagrees on foundry.base");
+  });
+
+  // Sync and the module compiler both name packs "<namespace>-<key>", differing
+  // only in the namespace (a vault id vs a module id). If the two key tables
+  // drift, the same vault produces "…-tables" one way and "…-rolltables" the
+  // other, and the equivalence between a synced vault and a downloaded module
+  // quietly stops holding for that document type.
+  it("agrees with the module on every compendium pack key", () => {
+    assert.deepEqual(PACK_KEY, MODULE_PACK_KEY);
   });
 });

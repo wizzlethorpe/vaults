@@ -20,6 +20,26 @@
 // tsconfigs — but foundry/test/foundry-base.test.mjs pins the agreed answers
 // so a future divergence fails a test rather than a user's wikilinks.
 
+/**
+ * The compendium pack each document type belongs to, as a name fragment.
+ *
+ * Shared so that a vault synced into a world and the same vault compiled into
+ * a module land in packs with matching names: sync scopes them by vault id
+ * ("seylon-wiki-71c13dcb-journal"), the compiler by module id
+ * ("wands-journal"). The CLI keeps its own copy for the reason described
+ * above, held to this one by cli/test/foundry-base-conformance.test.ts.
+ */
+export const PACK_KEY = {
+  Actor: "actors",
+  Item: "items",
+  Scene: "scenes",
+  JournalEntry: "journal",
+  RollTable: "tables",
+  Macro: "macros",
+  Cards: "cards",
+  Playlist: "playlists",
+};
+
 /** Document types `foundry.base: <Type>[:<subtype>]` can create. */
 export const BLANK_DOC_TYPES = [
   "Actor", "Item", "Scene", "JournalEntry",

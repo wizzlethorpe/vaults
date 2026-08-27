@@ -2,7 +2,7 @@
 
 Sync an Obsidian vault deployed via [vaults-cli](https://github.com/wizzlethorpe/vaults) into Foundry VTT as journal entries (and optionally Actors / Items / Scenes / …). Manifest-based incremental sync, role-based auth, multi-vault, local media cache.
 
-Module ID: `vaults`. Compatible with Foundry V13 + V14.
+Module ID: `vaults`. Requires Foundry V14 or newer.
 
 ## Quick start
 
