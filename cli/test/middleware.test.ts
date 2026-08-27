@@ -195,6 +195,92 @@ describe("generated auth middleware", () => {
     });
     assert.equal(res.headers.get("Location"), "/");
   });
+
+  // /_link — short-lived, self-authenticating URLs -------------------------
+  //
+  // Foundry's module installer runs on the Foundry server, not the browser, so
+  // it never carries the session cookie. /_link moves the caller's existing
+  // authority into a URL and puts a short clock on it. It grants nothing they
+  // could not already fetch; what is worth testing is that it refuses
+  // anonymous callers, cannot be talked into signing a link pointing somewhere
+  // else, and hands back something that actually works.
+
+  it("refuses to mint a link for an anonymous caller", async () => {
+    const res = await call(mw, "https://v.example/_link?path=/releases/module.json");
+    assert.equal(res.status, 401);
+  });
+
+  it("mints a working link carrying the caller's own role", async () => {
+    const res = await call(mw, "https://v.example/_link?path=/releases/module.json", {
+      headers: { Cookie: dmCookie },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as { url: string; role: string; expiresInMinutes: number };
+    assert.equal(body.role, "dm");
+    assert.equal(body.expiresInMinutes, 10);
+
+    // The point of the endpoint: that URL authenticates on its own, with no
+    // cookie, and lands in the caller's variant rather than the public one.
+    const followed = await call(mw, body.url);
+    assert.equal(await followed.text(), "/_variants/dm/releases/module.json");
+  });
+
+  it("will not sign a link pointing at another origin", async () => {
+    // Otherwise this is an open redirect with our signature on it.
+    const res = await call(mw, "https://v.example/_link?path=https://evil.example/x", {
+      headers: { Cookie: dmCookie },
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("will not sign a protocol-relative path either", async () => {
+    const res = await call(mw, "https://v.example/_link?path=//evil.example/x", {
+      headers: { Cookie: dmCookie },
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("needs a path", async () => {
+    const res = await call(mw, "https://v.example/_link", { headers: { Cookie: dmCookie } });
+    assert.equal(res.status, 400);
+  });
+
+  it("keeps a 90-day bearer out of top-level navigation", async () => {
+    // The rule a link token is deliberately exempt from. A bearer in a URL is
+    // a shareable 90-day credential; it must not quietly browse the site.
+    const bearer = await forgeToken("b", "dm", 3600);
+    const res = await call(mw, "https://v.example/secret?_token=" + bearer);
+    assert.equal(await res.text(), "/_variants/public/secret");
+  });
+
+  it("does not accept a link token as a bearer, or the reverse", async () => {
+    // Separate types, so neither inherits the other's rules by accident.
+    const link = await forgeToken("l", "dm", 600);
+    const asBearer = await call(mw, "https://v.example/x", {
+      headers: { Authorization: "Bearer " + link },
+    });
+    assert.equal(await asBearer.text(), "/_variants/public/x");
+  });
+
+  it("stops honouring a link token once it expires", async () => {
+    const stale = await forgeToken("l", "dm", -1);
+    const res = await call(mw, "https://v.example/releases/mod.zip?_token=" + stale);
+    assert.equal(await res.text(), "/_variants/public/releases/mod.zip");
+  });
+
+  it("sets no cookie when a link token is used, so it cannot become a session", async () => {
+    const link = await forgeToken("l", "dm", 600);
+    const res = await call(mw, "https://v.example/releases/mod.zip?_token=" + link);
+    assert.equal(res.headers.get("Set-Cookie"), null);
+  });
+
+  it("does not let a minted link be cached in between", async () => {
+    const res = await call(mw, "https://v.example/_link?path=/a.zip", {
+      headers: { Cookie: dmCookie },
+    });
+    assert.match(res.headers.get("Cache-Control") ?? "", /no-store/);
+  });
+
 });
 
 describe("OAuth state cookie", () => {

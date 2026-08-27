@@ -38,7 +38,10 @@ const sanitizeSchema = {
     audio: ["src", "controls", "preload", "loop", "muted"],
     video: ["src", "controls", "preload", "loop", "muted", "width", "height", "poster"],
     source: ["src", "type"],
-    a: ["href", "title", "className", "id", "target", "rel"],
+    // `download` asks the browser to save rather than navigate, which is what
+    // the `download` handler's links are for. It carries no script and cannot
+    // change where a link points, only what the browser does on arrival.
+    a: ["href", "title", "className", "id", "target", "rel", "download"],
     div: ["className", "data*", "role"],
     span: ["className", "data*"],
     code: ["className", "title"],

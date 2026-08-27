@@ -6,11 +6,12 @@
 import type { Handler } from "../types.js";
 import { battlemapHandler } from "./battlemap.js";
 import { diceHandler } from "./dice.js";
+import { downloadHandler } from "./download.js";
 import { fmHandler } from "./fm.js";
 import { fmCodeHandler } from "./fm-code.js";
 import { galleryHandler } from "./gallery.js";
 import { statblockHandler } from "./statblock.js";
 
 export const BUILTIN_HANDLERS: Handler[] = [
-  diceHandler, fmHandler, fmCodeHandler, statblockHandler, battlemapHandler, galleryHandler,
+  diceHandler, fmHandler, fmCodeHandler, statblockHandler, battlemapHandler, galleryHandler, downloadHandler,
 ];

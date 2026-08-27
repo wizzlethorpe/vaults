@@ -11,6 +11,7 @@ import {
   copyReferencedImages,
   copyReferencedPassthroughs,
 } from "./asset-refs.js";
+import { downloadFilePaths } from "./render/handlers/builtin/download.js";
 import { buildManifest, type BodyMeta } from "./manifest.js";
 import { collectBodyMeta, warnFoundryDocCollisions } from "./foundry-meta.js";
 import { compressImage } from "./images.js";
@@ -299,7 +300,32 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // Effective passthrough list: recognised media plus (optionally) unknowns.
   const stagedPassthroughs = includeUnknown
     ? [...passthroughFiles, ...unknownFiles]
-    : passthroughFiles;
+    : [...passthroughFiles];
+
+  // Files named by a ```download block join the pool whatever their
+  // extension. A download is usually a .zip or a module.json, which the
+  // passthrough list calls unknown and drops — but naming one in a block is
+  // the author asking for it by name, which is exactly the intent
+  // include_unknown_files exists to require. Role gating is untouched: these
+  // are still reference-gated, so a download on a patron page reaches the
+  // patron variant and no other.
+  const downloadPaths = new Set<string>();
+  for (const f of markdownFiles) {
+    const source = await readFile(f.absolute, "utf8");
+    for (const path of downloadFilePaths(source)) downloadPaths.add(path);
+  }
+  if (downloadPaths.size > 0) {
+    const already = new Set(stagedPassthroughs.map((f) => f.path));
+    const promoted = withinLimit.filter((f) => downloadPaths.has(f.path) && !already.has(f.path));
+    const missing = [...downloadPaths].filter((p) => !withinLimit.some((f) => f.path === p));
+    for (const p of missing) {
+      console.warn(`  download block names '${p}', which is not in the vault; the link will 404.`);
+    }
+    if (promoted.length > 0) {
+      console.log(`  staging ${promoted.length} download file(s) named by \`\`\`download blocks`);
+      stagedPassthroughs.push(...promoted);
+    }
+  }
 
   // ── Shared content (read once, reused across roles) ─────────────────────
   const sources = new Map<string, string>();

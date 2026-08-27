@@ -14,6 +14,7 @@
 import { copyFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { battlemapLayerPaths } from "./render/handlers/builtin/battlemap.js";
+import { downloadFilePaths } from "./render/handlers/builtin/download.js";
 import { IMAGE_EXT_RE } from "./render/extensions.js";
 import { slugify } from "./render/slug.js";
 import type { ImageEntry, PageMeta } from "./render/types.js";
@@ -209,6 +210,13 @@ export async function copyReferencedPassthroughs(
       // Skip http(s) links and anchor-only refs.
       if (/^(https?:|mailto:|#)/i.test(name)) continue;
       const entry = passthroughIndex.get(slugify(name.split("/").pop()!));
+      if (entry) refs.add(entry.outputPath);
+    }
+    // Files named by ```download blocks, looked up by full vault-relative
+    // path rather than basename: a download names an exact file, and two
+    // releases called module.json in different folders must not collide.
+    for (const path of downloadFilePaths(source)) {
+      const entry = passthroughIndex.get(path);
       if (entry) refs.add(entry.outputPath);
     }
   }

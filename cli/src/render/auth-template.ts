@@ -77,11 +77,20 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 // Bearer tokens (used by Foundry, MCP clients) get a much longer lifetime
 // since refreshing means reopening a browser-based approval flow.
 const BEARER_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
+// Long enough to paste a URL somewhere and press install, short enough that a
+// leaked one is worthless. Deliberately not single-use: a use-count needs
+// server-side state, and this deploy has none by design, so the honest
+// stateless equivalent is a small window. Pre-signed URLs everywhere else
+// work the same way for the same reason.
+const LINK_MAX_AGE = 60 * 10; // 10 minutes
 // Tokens carry their purpose so the two are not interchangeable: without
 // this a 7-day session cookie and a 90-day bearer were byte-identical in
 // format, so either could be replayed as the other.
 const TOKEN_TYPE_SESSION = "s";
 const TOKEN_TYPE_BEARER = "b";
+// A link token. Separate from a bearer because it is honoured on ordinary
+// navigation, which a bearer deliberately is not — see readRole.
+const TOKEN_TYPE_LINK = "l";
 const PBKDF2_DEFAULT_ITERATIONS = 100000;
 // Same shape as a real PBKDF2 hash (iterations:saltHex:hashHex with the
 // expected lengths) but with all-zero salt + hash. Used to keep the
@@ -161,6 +170,14 @@ const handleRequest = async (ctx) => {
   }
   if (url.pathname === "/connect/approve" && request.method === "POST") {
     return handleConnectApprove(request, env);
+  }
+
+  // /_link. Mints a short-lived, self-authenticating URL for one path, for
+  // consumers that cannot carry the session cookie. Foundry's module
+  // installer is the motivating one: it runs on the Foundry server, not in
+  // the browser, so it needs a URL that stands on its own.
+  if (url.pathname === "/_link" && request.method === "GET") {
+    return handleLink(request, env);
   }
 
   // /auth/patreon/* — only mounted when the build saw a Patreon config.
@@ -442,6 +459,52 @@ async function handleConnectApprove(request, env) {
   const token = await signToken(role, env.SESSION_SECRET, BEARER_MAX_AGE, TOKEN_TYPE_BEARER);
   const html = renderConnectCopyPage({ token, role, app });
   return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+/**
+ * Issue a short-lived URL for a single vault path.
+ *
+ * The token carries the caller's own role, so this grants nothing they could
+ * not already fetch with their cookie; it only moves that authority into a
+ * URL, and puts a short clock on it.
+ *
+ * The path is confined to this deploy: it is resolved against the origin and
+ * rejected if it leaves, so a caller cannot get us to sign a link pointing at
+ * somewhere else.
+ */
+async function handleLink(request, env) {
+  const url = new URL(request.url);
+  const role = await readRole(request, env);
+  if (role === ROLES[0]) {
+    return jsonResponse({ error: "not signed in" }, 401);
+  }
+  const requested = url.searchParams.get("path") || "";
+  if (!requested) {
+    return jsonResponse({ error: "missing path" }, 400);
+  }
+  let target;
+  try {
+    target = new URL(requested, url.origin);
+  } catch {
+    return jsonResponse({ error: "bad path" }, 400);
+  }
+  if (target.origin !== url.origin) {
+    return jsonResponse({ error: "path must be on this site" }, 400);
+  }
+  const token = await signToken(role, env.SESSION_SECRET, LINK_MAX_AGE, TOKEN_TYPE_LINK);
+  target.searchParams.set("_token", token);
+  return jsonResponse({
+    url: target.toString(),
+    role,
+    expiresInMinutes: Math.round(LINK_MAX_AGE / 60),
+  }, 200);
+}
+
+function jsonResponse(body, status) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  });
 }
 
 function renderApprovePage({ app, role }) {
@@ -972,6 +1035,20 @@ async function readRole(request, env) {
   const queryToken = new URL(request.url).searchParams.get("_token");
   if (queryToken && isSubresourceFetch(request)) {
     const role = await verifyToken(queryToken, env.SESSION_SECRET, TOKEN_TYPE_BEARER);
+    if (role && ROLES.includes(role)) return role;
+  }
+
+  // A link token IS honoured on navigation, which is the whole reason it is a
+  // separate type. The rule above rests on bearers lasting 90 days; a link
+  // token lasts ten minutes, so the same reasoning does not reach it. It also
+  // has to work this way: Foundry's module installer accepts a URL and
+  // nothing else, so it cannot send the Authorization header the rule above
+  // points anything header-capable towards.
+  //
+  // It authenticates one request and sets no cookie, so a shared link does
+  // not turn into a session at someone else's role.
+  if (queryToken) {
+    const role = await verifyToken(queryToken, env.SESSION_SECRET, TOKEN_TYPE_LINK);
     if (role && ROLES.includes(role)) return role;
   }
 
