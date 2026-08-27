@@ -31,6 +31,7 @@ import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import matter from "gray-matter";
 import { loadDataJson } from "./foundry-meta.js";
+import { buildFolders, renderBody, type LinkEntry } from "./foundry-module-render.js";
 import { scanVault } from "./scan.js";
 
 const execFileAsync = promisify(execFile);
@@ -47,15 +48,65 @@ const BLANK_DOC_TYPES = [
  * fails with "Key cannot be null or undefined" when one is missing — which
  * names neither the document nor the field, so it is worth being explicit here.
  */
-const EMBEDDED: Record<string, string[]> = {
-  Actor: ["items", "effects"],
-  Item: ["effects"],
-  RollTable: ["results"],
-  JournalEntry: ["pages"],
-  Playlist: ["sounds"],
-  Cards: ["cards"],
-  Scene: ["drawings", "lights", "notes", "sounds", "templates", "tiles", "tokens", "walls", "regions"],
+const EMBEDDED_FIELDS = new Set([
+  "items", "effects", "results", "pages", "sounds", "cards",
+  "drawings", "lights", "notes", "templates", "tiles", "tokens", "walls", "regions",
+]);
+
+/** Where a rendered page body lands, per document type. */
+const DESCRIPTION_PATH: Record<string, string> = {
+  Item: "system.description.value",
+  Actor: "system.details.biography.value",
+  RollTable: "description",
+  JournalEntry: "",
+  Scene: "",
+  Macro: "",
+  Cards: "description",
+  Playlist: "description",
 };
+
+/**
+ * What Foundry stamps on a document, derived from the manifest rather than
+ * hardcoded: the core version it was verified against, and the system it
+ * requires. It is provenance metadata — Foundry shows it, nothing depends on
+ * it — so guessing would be worse than reading what the author already
+ * declared two fields away.
+ */
+function statsFor(manifest: Record<string, unknown>): Record<string, unknown> {
+  const compat = (manifest["compatibility"] ?? {}) as Record<string, unknown>;
+  const rel = (manifest["relationships"] ?? {}) as Record<string, unknown>;
+  const requires = Array.isArray(rel["requires"]) ? rel["requires"] : [];
+  const system = requires.find(
+    (r) => r && typeof r === "object" && (r as Record<string, unknown>)["type"] === "system",
+  ) as Record<string, unknown> | undefined;
+  const systemCompat = (system?.["compatibility"] ?? {}) as Record<string, unknown>;
+  return {
+    coreVersion: compat["verified"] ?? compat["minimum"] ?? null,
+    systemId: system?.["id"] ?? manifest["system"] ?? null,
+    systemVersion: systemCompat["verified"] ?? systemCompat["minimum"] ?? null,
+    createdTime: null, modifiedTime: null, lastModifiedBy: null,
+    compendiumSource: null, duplicateSource: null, exportSource: null,
+  };
+}
+
+/** One `flags.vaults.packs[]` entry: which folder compiles to which pack. */
+export interface PackDecl {
+  folder: string;
+  name: string;
+  label: string;
+  type: string;
+}
+
+function setPath(obj: Record<string, unknown>, dotted: string, value: unknown): void {
+  const segs = dotted.split(".");
+  let cur = obj;
+  for (let i = 0; i < segs.length - 1; i++) {
+    const seg = segs[i]!;
+    if (cur[seg] == null || typeof cur[seg] !== "object") cur[seg] = {};
+    cur = cur[seg] as Record<string, unknown>;
+  }
+  cur[segs[segs.length - 1]!] = value;
+}
 
 /** What a pack of each type is called in Foundry's compendium list. */
 const PACK_LABEL: Record<string, string> = {
@@ -100,11 +151,20 @@ export function resolveSelfContainedBase(specs: string[]): { blank: string; subt
   return parsed.length > 0 ? parsed[parsed.length - 1]! : null;
 }
 
-/** A stable 16-char Foundry id derived from the page path. */
+/**
+ * A stable 16-char Foundry id ([A-Za-z0-9]) for a seed.
+ *
+ * base64 rather than hex, matching what the standalone compiler used: hex would
+ * work, but changing the derivation would renumber every derived id in every
+ * already-published pack, which reads as a content change to anyone diffing.
+ */
+function derivedId(seed: string): string {
+  return createHash("sha1").update(seed).digest("base64")
+    .replace(/[^A-Za-z0-9]/g, "").slice(0, 16).padEnd(16, "0");
+}
+
 function documentId(vaultId: string, pagePath: string): string {
-  const hex = createHash("sha1").update(`vaults-module:${vaultId}:${pagePath}`).digest("hex");
-  // Foundry ids are [A-Za-z0-9]{16}; hex qualifies and stays deterministic.
-  return hex.slice(0, 16);
+  return derivedId(`vaults-module:${vaultId}:${pagePath}`);
 }
 
 /** Recursively rewrite `@vault/PATH` strings to a module-relative asset path. */
@@ -152,23 +212,29 @@ export function stripMoulinette(value: unknown, found: Set<string>): unknown {
 }
 
 /**
- * Give every embedded document an `_id` and `_key`, deriving stable ids for
- * any that lack one so a rebuild does not renumber the pack.
+ * Stamp `_id` and `_key` on embedded documents, recursing.
+ *
+ * Keys nest by collection path, so an effect on an item is
+ * `!items.effects!<item>.<effect>` and an effect on an item *on an actor* is
+ * `!actors.items.effects!<actor>.<item>.<effect>`. The Foundry CLI refuses to
+ * invent these and fails the whole pack with "Key cannot be null or
+ * undefined", naming neither the document nor the field.
  */
 export function keyEmbedded(
-  doc: Record<string, unknown>, docType: string, prefix: string, parentId: string,
+  doc: Record<string, unknown>, collection: string, idPath: string,
 ): void {
-  for (const collection of EMBEDDED[docType] ?? []) {
-    const list = doc[collection];
-    if (!Array.isArray(list)) continue;
+  for (const [field, list] of Object.entries(doc)) {
+    if (!Array.isArray(list) || !EMBEDDED_FIELDS.has(field)) continue;
     list.forEach((entry, i) => {
       if (!entry || typeof entry !== "object") return;
       const child = entry as Record<string, unknown>;
       if (typeof child["_id"] !== "string" || !child["_id"]) {
-        child["_id"] = createHash("sha1")
-          .update(`${parentId}:${collection}:${i}`).digest("hex").slice(0, 16);
+        child["_id"] = derivedId(`${idPath}:${field}:${i}`);
       }
-      child["_key"] = `!${prefix}.${collection}!${parentId}.${child["_id"] as string}`;
+      const nextCollection = `${collection}.${field}`;
+      const nextPath = `${idPath}.${child["_id"] as string}`;
+      child["_key"] = `!${nextCollection}!${nextPath}`;
+      keyEmbedded(child, nextCollection, nextPath);
     });
   }
 }
@@ -226,6 +292,7 @@ export interface ModuleOptions {
 interface ModulePage {
   path: string;
   title: string;
+  body: string;
   foundry: Record<string, unknown> | null;
 }
 
@@ -233,13 +300,14 @@ async function scanPages(vaultPath: string): Promise<ModulePage[]> {
   const files = await scanVault(vaultPath);
   const pages: ModulePage[] = [];
   for (const f of files) {
-    if (!/\.md$/i.test(f.path)) continue;
+    if (!/\.md$/i.test(f.path) || /(^|\/)index\.md$/i.test(f.path)) continue;
     const parsed = matter(await readFile(f.absolute, "utf8"));
     const fm = parsed.data as Record<string, unknown>;
     const fo = fm["foundry"];
     pages.push({
       path: f.path,
-      title: typeof fm["title"] === "string" ? fm["title"] : "",
+      title: typeof fm["title"] === "string" ? fm["title"] : f.path.split("/").pop()!.replace(/\.md$/i, ""),
+      body: parsed.content,
       foundry: fo && typeof fo === "object" && !Array.isArray(fo) ? fo as Record<string, unknown> : null,
     });
   }
@@ -247,9 +315,42 @@ async function scanPages(vaultPath: string): Promise<ModulePage[]> {
 }
 
 /**
+ * Which pack a page belongs in.
+ *
+ * Declarations win where they exist: a vault that wants Spells and Items as
+ * two Item packs has to say so, because grouping by document type cannot know
+ * that Foundry treats them as separate compendiums while the schema does not.
+ * Without declarations, one pack per document type is a reasonable default and
+ * needs no configuration at all — which is what a small vault wants.
+ */
+function assignPack(page: ModulePage, docType: string, decls: PackDecl[], moduleId: string): PackDecl | null {
+  for (const decl of decls) {
+    const prefix = `${decl.folder}/`;
+    if (page.path.startsWith(prefix) || page.path.includes(`/${prefix}`)) {
+      return decl.type === docType ? decl : null;
+    }
+  }
+  if (decls.length > 0) return null;
+  return {
+    folder: "", name: `${moduleId}-${PACK_KEY[docType]}`,
+    label: `${docType}`, type: docType,
+  };
+}
+
+/** The page's folder path inside its pack, for compendium folders. */
+function subfolderOf(page: ModulePage, decl: PackDecl): string {
+  const override = page.foundry?.["folder"];
+  if (typeof override === "string" && override.trim()) return override.trim().replace(/^\/+|\/+$/g, "");
+  const dir = page.path.split("/").slice(0, -1).join("/");
+  if (!decl.folder) return dir;
+  const marker = `${decl.folder}/`;
+  const at = dir.indexOf(marker);
+  return at === -1 ? "" : dir.slice(at + marker.length);
+}
+
+/**
  * Build the module. Returns null (having said why) when the vault has no
- * module.json to build from, which is how a vault opts out simply by not
- * having one.
+ * module.json to build from, which is how a vault opts out by not having one.
  */
 export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleResult | null> {
   const manifestSource = join(opts.vaultPath, "module.json");
@@ -270,6 +371,9 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     return null;
   }
   const version = typeof manifest["version"] === "string" ? manifest["version"] : "0.0.0";
+  const stats = statsFor(manifest);
+  const flags = (manifest["flags"] ?? {}) as Record<string, Record<string, unknown>>;
+  const decls = ((flags["vaults"]?.["packs"] ?? flags["vfmc"]?.["packs"]) ?? []) as PackDecl[];
 
   const cli = await findFoundryCli(opts.vaultPath);
   if (!cli) {
@@ -281,12 +385,16 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     return null;
   }
 
-  // ── Collect what the vault can build on its own ─────────────────────────
+  // ── First pass: decide what each page compiles to ───────────────────────
+  interface Planned {
+    page: ModulePage;
+    decl: PackDecl;
+    docType: string;
+    subtype?: string;
+    id: string;
+  }
   const skipped: ModuleSkip[] = [];
-  const byType = new Map<string, Array<Record<string, unknown>>>();
-  const assets = new Set<string>();
-  const moulinette = new Set<string>();
-  let documents = 0;
+  const planned: Planned[] = [];
 
   for (const page of await scanPages(opts.vaultPath)) {
     if (!page.foundry) continue;
@@ -295,32 +403,61 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
       .filter((x): x is string => typeof x === "string" && x.length > 0);
     if (specs.length === 0) continue;
 
-    // The last self-contained rung: a standalone module is exactly the case a
-    // priority list's fallback exists for.
-    const parsed = specs.map(parseBase).filter((p): p is { blank: string; subtype?: string } => p !== null);
-    if (parsed.length === 0) {
+    const target = resolveSelfContainedBase(specs);
+    if (!target) {
       skipped.push({
         path: page.path,
         reason: `base is ${specs.join(", ")} — nothing a module can build without the reader's own content`,
       });
       continue;
     }
-    const target = parsed[parsed.length - 1]!;
-    if (parsed.length < specs.length) {
+    const decl = assignPack(page, target.blank, decls, moduleId);
+    if (!decl) continue; // declared vault, page outside any declared pack
+    if (specs.length > 1 && specs.filter((sp) => sp.includes(".") || sp.startsWith("@moulinette/")).length > 0) {
       skipped.push({
         path: page.path,
-        reason: `built as a blank ${target.blank}; ${specs.length - parsed.length} higher rung(s) need content this module cannot carry`,
+        reason: `built as a blank ${target.blank}; higher rung(s) need content this module cannot carry`,
       });
     }
+    planned.push({
+      page, decl, docType: target.blank,
+      ...(target.subtype ? { subtype: target.subtype } : {}),
+      id: typeof block["id"] === "string" && block["id"] ? block["id"] : documentId(opts.vaultId, page.path),
+    });
+  }
 
+  if (planned.length === 0) {
+    console.warn("  --module: no page produced a document this module can carry; nothing built.");
+    return null;
+  }
+
+  // Every compiled page, by name, so a wikilink between them becomes a real
+  // @UUID cross-reference rather than losing its link and keeping its text.
+  // Built before rendering, since a page can link to one compiled after it.
+  const linkIndex = new Map<string, LinkEntry>();
+  for (const p of planned) {
+    const uuid = `Compendium.${moduleId}.${p.decl.name}.${p.docType}.${p.id}`;
+    linkIndex.set(p.page.title.toLowerCase(), { uuid, name: p.page.title });
+    const basename = p.page.path.split("/").pop()!.replace(/\.md$/i, "");
+    if (!linkIndex.has(basename.toLowerCase())) linkIndex.set(basename.toLowerCase(), { uuid, name: basename });
+  }
+
+  // ── Second pass: assemble ───────────────────────────────────────────────
+  const byPack = new Map<string, { decl: PackDecl; docs: Array<Record<string, unknown>>; entries: Array<{ key: Record<string, unknown>; folderPath: string }> }>();
+  const assets = new Set<string>();
+  const moulinette = new Set<string>();
+  let documents = 0;
+
+  for (const p of planned) {
+    const block = p.page.foundry!;
+    const prefix = PACK_KEY[p.docType]!;
     const doc: Record<string, unknown> = {
-      _id: typeof block["id"] === "string" && block["id"] ? block["id"] : documentId(opts.vaultId, page.path),
-      name: page.title || page.path.split("/").pop()!.replace(/\.md$/i, ""),
-      ...(target.subtype ? { type: target.subtype } : {}),
+      _id: p.id,
+      name: p.page.title,
+      ...(p.subtype ? { type: p.subtype } : {}),
     };
-
     const dataJson = typeof block["data_json"] === "string"
-      ? await loadDataJson(opts.vaultPath, block["data_json"], page.path)
+      ? await loadDataJson(opts.vaultPath, block["data_json"], p.page.path)
       : null;
     if (dataJson) deepMerge(doc, dataJson as Record<string, unknown>);
     const inline = block["data"];
@@ -328,26 +465,111 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
       deepMerge(doc, inline as Record<string, unknown>);
     }
 
-    // A module cannot resolve @moulinette/ — that is the sync module's job,
-    // against a library this module will never see.
+    // The page's prose is the compendium entry for most types; a sidecar
+    // exported from Foundry generally carries an empty description because
+    // the writing lives in the vault.
+    const descPath = DESCRIPTION_PATH[p.docType];
+    if (descPath) {
+      const html = renderBody(p.page.body, linkIndex);
+      // Set even when empty. A page whose prose lives entirely in a handler
+      // fence renders to nothing, and a sheet reading an absent field is not
+      // the same as one reading a blank string.
+      setPath(doc, descPath, html);
+      // dnd5e sheets read a sibling `chat` description and throw on undefined.
+      // Walked with setPath rather than by hand: a page with no body never had
+      // the intermediate objects created, and reaching through them crashed
+      // the whole build on the first such page.
+      if (p.docType === "Item" || p.docType === "Actor") {
+        const chatPath = [...descPath.split(".").slice(0, -1), "chat"];
+        const existing = chatPath.reduce<unknown>(
+          (o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), doc,
+        );
+        if (existing === undefined) setPath(doc, chatPath.join("."), "");
+      }
+    }
+    doc["sort"] ??= 0;
+    doc["flags"] ??= {};
+    doc["ownership"] ??= { default: 0 };
+    doc["_stats"] ??= stats;
+
+    if (p.docType === "RollTable") assembleRollTableResults(doc, p.id, stats);
+
     const cleaned = stripMoulinette(doc, moulinette) as Record<string, unknown>;
     const withAssets = rewriteAssetPaths(cleaned, moduleId, assets) as Record<string, unknown>;
-    const prefix = PACK_KEY[target.blank]!;
-    const parentId = withAssets["_id"] as string;
-    withAssets["_key"] = `!${prefix}!${parentId}`;
-    keyEmbedded(withAssets, target.blank, prefix, parentId);
 
-    const list = byType.get(target.blank) ?? [];
-    list.push(withAssets);
-    byType.set(target.blank, list);
-    documents++;
+    const bucket = byPack.get(p.decl.name) ?? { decl: p.decl, docs: [], entries: [] };
+    for (const variant of expandVariants(withAssets, block, prefix)) {
+      variant["_key"] = `!${prefix}!${variant["_id"] as string}`;
+      keyEmbedded(variant, prefix, variant["_id"] as string);
+      bucket.docs.push(variant);
+      bucket.entries.push({ key: variant, folderPath: subfolderOf(p.page, p.decl) });
+      documents++;
+    }
+    byPack.set(p.decl.name, bucket);
   }
 
-  if (documents === 0) {
-    console.warn("  --module: no page produced a document this module can carry; nothing built.");
-    return null;
-  }
-  return finishModule(opts, manifest, moduleId, version, cli, byType, assets, moulinette, skipped, documents);
+  return finishModule(opts, manifest, moduleId, version, cli, byPack, assets, moulinette, skipped, documents, stats);
+}
+
+/**
+ * Give a RollTable the shape Foundry expects.
+ *
+ * A page authors results as `{ text }` or `{ uuid }` with an optional weight
+ * and range; a table document wants each one typed, named, ranged, imaged and
+ * keyed. Foundry does not fill these in — a result with no `type` simply never
+ * draws — so the compiler does, rather than making every page restate the same
+ * nine fields.
+ */
+function assembleRollTableResults(
+  doc: Record<string, unknown>, tableId: string, stats: Record<string, unknown>,
+): void {
+  const raw = Array.isArray(doc["results"]) ? doc["results"] as Array<Record<string, unknown>> : [];
+  doc["results"] = raw.map((r, i) => {
+    const rid = derivedId(`${tableId}:${i}`);
+    const uuid = typeof r["uuid"] === "string" ? r["uuid"] : "";
+    const isDoc = uuid.length > 0;
+    const text = typeof r["text"] === "string" ? r["text"] : "";
+    return {
+      _id: rid,
+      type: isDoc ? "document" : "text",
+      name: isDoc ? text : "",
+      description: isDoc ? "" : text,
+      ...(isDoc ? { documentUuid: uuid } : {}),
+      img: r["img"] ?? "icons/svg/d20-black.svg",
+      weight: r["weight"] ?? 1,
+      range: r["range"] ?? [i + 1, i + 1],
+      drawn: false,
+      flags: {},
+      _stats: stats,
+      _key: `!tables.results!${tableId}.${rid}`,
+    };
+  });
+  doc["img"] ??= "icons/svg/d20-grey.svg";
+  doc["formula"] ??= `1d${raw.length || 1}`;
+  doc["replacement"] ??= true;
+  doc["displayRoll"] ??= true;
+}
+
+/** A page with `foundry.variants` becomes one document per variant. */
+function expandVariants(
+  base: Record<string, unknown>, block: Record<string, unknown>, prefix: string,
+): Array<Record<string, unknown>> {
+  const variants = block["variants"];
+  if (!Array.isArray(variants) || variants.length === 0) return [base];
+  return variants.map((v) => {
+    const entry = v as { id?: string; data?: Record<string, unknown> };
+    const clone = structuredClone(base);
+    if (entry.data) deepMerge(clone, entry.data);
+    if (entry.id) clone["_id"] = entry.id;
+    clone["_key"] = `!${prefix}!${clone["_id"] as string}`;
+    return clone;
+  });
+}
+
+interface PackBucket {
+  decl: PackDecl;
+  docs: Array<Record<string, unknown>>;
+  entries: Array<{ key: Record<string, unknown>; folderPath: string }>;
 }
 
 /** Write the packs, the manifest and the zip, and report what was left out. */
@@ -357,27 +579,34 @@ async function finishModule(
   moduleId: string,
   version: string,
   cli: string,
-  byType: Map<string, Array<Record<string, unknown>>>,
+  byPack: Map<string, PackBucket>,
   assets: Set<string>,
   moulinette: Set<string>,
   skipped: ModuleSkip[],
   documents: number,
+  stats: Record<string, unknown>,
 ): Promise<ModuleResult> {
   const staging = await mkdtemp(join(tmpdir(), "vaults-module-"));
   const moduleDir = join(staging, moduleId);
   const jsonDir = join(staging, "_json");
   await mkdir(join(moduleDir, "packs"), { recursive: true });
 
-  // One pack per document type. Grouping by type rather than by vault folder
-  // because Foundry packs are typed: a pack holds one kind of document, and a
-  // folder generally does not.
   const packs: Array<Record<string, unknown>> = [];
   const packNames: string[] = [];
-  for (const [docType, docs] of byType) {
-    const packName = `${moduleId}-${PACK_KEY[docType]}`;
+  for (const [packName, bucket] of byPack) {
     const dir = join(jsonDir, packName);
     await mkdir(dir, { recursive: true });
-    for (const doc of docs) {
+
+    // Compendium folders are documents in the pack too, so a pack of five
+    // hundred items is browsable instead of one flat list.
+    const { folderDocs, leafFor } = buildFolders(
+      bucket.entries, packName, bucket.decl.type, stats,
+    );
+    for (const entry of bucket.entries) entry.key["folder"] = leafFor.get(entry.key) ?? null;
+    for (const folder of folderDocs) {
+      await writeFile(join(dir, `folder-${folder._id}.json`), JSON.stringify(folder, null, 2));
+    }
+    for (const doc of bucket.docs) {
       await writeFile(join(dir, `${doc["_id"] as string}.json`), JSON.stringify(doc, null, 2));
     }
     await execFileAsync(process.execPath, [
@@ -386,16 +615,16 @@ async function finishModule(
     ]);
     packs.push({
       name: packName,
-      label: `${manifest["title"] ?? moduleId}: ${PACK_LABEL[docType] ?? docType}`,
+      label: bucket.decl.folder ? bucket.decl.label
+        : `${manifest["title"] ?? moduleId}: ${PACK_LABEL[bucket.decl.type] ?? bucket.decl.type}`,
       path: `packs/${packName}`,
-      type: docType,
+      type: bucket.decl.type,
       ...(typeof manifest["system"] === "string" ? { system: manifest["system"] } : {}),
     });
     packNames.push(packName);
-    console.log(`    ${packName}: ${docs.length} ${docType} document(s)`);
+    console.log(`    ${packName}: ${bucket.docs.length} document(s), ${folderDocs.length} folder(s)`);
   }
 
-  // Assets the documents point at, carried so the module stands alone.
   for (const rel of assets) {
     const from = join(opts.vaultPath, rel);
     const to = join(moduleDir, "assets", rel);

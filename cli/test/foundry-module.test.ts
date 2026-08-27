@@ -57,7 +57,7 @@ describe("embedded documents", () => {
     // Without this the Foundry CLI fails with "Key cannot be null or
     // undefined", naming neither the document nor the field.
     const doc: Record<string, unknown> = { _id: "table0000000001", results: [{ range: [1, 1] }, { range: [2, 2] }] };
-    keyEmbedded(doc, "RollTable", "tables", "table0000000001");
+    keyEmbedded(doc, "tables", "table0000000001");
     const results = doc["results"] as Array<Record<string, unknown>>;
     assert.match(results[0]!["_key"] as string, /^!tables\.results!table0000000001\./);
     assert.notEqual(results[0]!["_id"], results[1]!["_id"], "distinct ids");
@@ -66,17 +66,31 @@ describe("embedded documents", () => {
   it("derives ids stably, so a rebuild does not renumber the pack", () => {
     const once: Record<string, unknown> = { results: [{ range: [1, 1] }] };
     const twice: Record<string, unknown> = { results: [{ range: [1, 1] }] };
-    keyEmbedded(once, "RollTable", "tables", "t1");
-    keyEmbedded(twice, "RollTable", "tables", "t1");
+    keyEmbedded(once, "tables", "t1");
+    keyEmbedded(twice, "tables", "t1");
     assert.equal(
       (once["results"] as Array<Record<string, unknown>>)[0]!["_id"],
       (twice["results"] as Array<Record<string, unknown>>)[0]!["_id"],
     );
   });
 
+  it("nests keys through embedded documents of embedded documents", () => {
+    // An effect on an item on an actor is !actors.items.effects!a.i.e — the
+    // shape the Foundry CLI wants and refuses to derive.
+    const doc: Record<string, unknown> = {
+      _id: "actor00000000001",
+      items: [{ _id: "item00000000001", effects: [{ name: "Bless" }] }],
+    };
+    keyEmbedded(doc, "actors", "actor00000000001");
+    const item = (doc["items"] as Array<Record<string, unknown>>)[0]!;
+    assert.equal(item["_key"], "!actors.items!actor00000000001.item00000000001");
+    const effect = (item["effects"] as Array<Record<string, unknown>>)[0]!;
+    assert.match(effect["_key"] as string, /^!actors\.items\.effects!actor00000000001\.item00000000001\./);
+  });
+
   it("keeps an id the author pinned", () => {
     const doc: Record<string, unknown> = { results: [{ _id: "mine000000000001" }] };
-    keyEmbedded(doc, "RollTable", "tables", "t1");
+    keyEmbedded(doc, "tables", "t1");
     assert.equal((doc["results"] as Array<Record<string, unknown>>)[0]!["_id"], "mine000000000001");
   });
 });

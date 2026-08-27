@@ -44,6 +44,7 @@
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.1",
     "katex": "^0.18.1",
+    "marked": "^12.0.0",
     "mdast-util-find-and-replace": "^3.0.1",
     "picomatch": "^4.0.2",
     "rehype-katex": "^7.0.1",
