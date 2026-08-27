@@ -32,6 +32,7 @@ import { promisify } from "node:util";
 import matter from "gray-matter";
 import { canonicalFoundryType, loadDataJson } from "./foundry-meta.js";
 import { loadConfig } from "./config.js";
+import { applyFrontmatterDefaults, compileFrontmatterRules, type CompiledRule } from "./frontmatter-defaults.js";
 import { buildFolders, renderBody, type LinkEntry } from "./foundry-module-render.js";
 import {
   buildJournalEntries, journalEntryId, journalPageId, transformForModule,
@@ -324,7 +325,9 @@ interface ModulePage {
   foundry: Record<string, unknown> | null;
 }
 
-async function scanPages(vaultPath: string, defaultRole: string): Promise<ModulePage[]> {
+async function scanPages(
+  vaultPath: string, defaultRole: string, rules: CompiledRule[],
+): Promise<ModulePage[]> {
   const files = await scanVault(vaultPath);
   const pages: ModulePage[] = [];
   for (const f of files) {
@@ -336,7 +339,9 @@ async function scanPages(vaultPath: string, defaultRole: string): Promise<Module
     // the vault into plain text.
     if (!/\.md$/i.test(f.path)) continue;
     const parsed = matter(await readFile(f.absolute, "utf8"));
-    const fm = parsed.data as Record<string, unknown>;
+    // Same defaults the wiki and the sync manifest see — the compiler must not
+    // read a different version of the page than they do.
+    const fm = applyFrontmatterDefaults(f.path, parsed.data as Record<string, unknown>, rules);
     const fo = fm["foundry"];
     pages.push({
       path: f.path,
@@ -474,7 +479,8 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
 
   const gated: string[] = [];
   const journalPages: ModulePage[] = [];
-  for (const page of await scanPages(opts.vaultPath, defaultRole)) {
+  const frontmatterRules = compileFrontmatterRules(settings.values.default_frontmatter);
+  for (const page of await scanPages(opts.vaultPath, defaultRole, frontmatterRules)) {
     if (!allowedRoles.has(page.role)) { gated.push(page.path); continue; }
     // `sync: false` means the page is not for Foundry at all — no journal, no
     // document. A module is Foundry content by definition, so it honours that
@@ -550,22 +556,13 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
   // with `flags.vaults.journal: false`. That is a real case, not a
   // hypothetical: WANDS's prose is already the text of each item, so carrying
   // it a second time as an article would duplicate the whole compendium.
-  // `journal` is `false`, `true`, or a list of folders. The list is the case
-  // that matters: WANDS wants its Rules chapters as articles but not its
-  // Compendium pages, whose prose is already the text of each item and would
-  // otherwise ship twice.
-  const journalFlag = flags["vaults"]?.["journal"];
-  const journalFolders = Array.isArray(journalFlag)
-    ? journalFlag.filter((f): f is string => typeof f === "string")
-    : null;
-  const wantsJournal = journalFlag !== false;
-  const inJournalScope = (path: string): boolean =>
-    journalFolders === null
-      ? true
-      : journalFolders.some((f) => path === f || path.startsWith(`${f.replace(/\/+$/, "")}/`));
-  if (opts.renderedDir && wantsJournal) {
+  // Which pages become articles is the page's own business, said the same way
+  // it is said to the sync client: `foundry.journal: false`. A vault that wants
+  // a whole folder excluded sets it once in default_frontmatter rather than in
+  // module config, so a synced world and an installed module cannot disagree
+  // about which pages have articles.
+  if (opts.renderedDir) {
     for (const page of journalPages) {
-      if (!inJournalScope(page.path)) continue;
       const html = await readRenderedBody(opts, page.path);
       if (html === null) continue;
       journalSources.push({ path: page.path, title: page.title, html });

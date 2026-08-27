@@ -33,6 +33,7 @@ import { DEFAULT_CSS, renderThemeOverride } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings } from "./settings.js";
 import { loadConfig } from "./config.js";
+import { applyFrontmatterDefaults, compileFrontmatterRules } from "./frontmatter-defaults.js";
 import matter from "gray-matter";
 import { renderAuthMiddleware, renderLoginPage } from "./render/auth-template.js";
 import { renderFooterHtml } from "./render/footer.js";
@@ -377,9 +378,17 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // normalized for Obsidian quirks first; malformed YAML throws inside
   // parsePageFrontmatter and aborts the build rather than silently dropping a
   // page's metadata (and, with it, its role gate).
+  const frontmatterRules = compileFrontmatterRules(settings.values.default_frontmatter);
   const parsedSources = new Map<string, PreParsedFrontmatter>();
   for (const f of markdownFiles) {
-    parsedSources.set(f.path, parsePageFrontmatter(sources.get(f.path)!, f.path));
+    const parsed = parsePageFrontmatter(sources.get(f.path)!, f.path);
+    // Applied here, at the one place a page's frontmatter is read, so that
+    // roles, the rendered wiki, the manifest the Foundry client syncs from and
+    // the module compiler all see the same page. A default that only some of
+    // them honoured would be a way for a synced vault and an installed module
+    // to disagree about the same file.
+    applyFrontmatterDefaults(f.path, parsed.data, frontmatterRules);
+    parsedSources.set(f.path, parsed);
   }
 
   // Derive role/title/aliases per page from that parse. A role that's present

@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { dump as dumpYaml } from "js-yaml";
 import { join } from "node:path";
 import matter from "gray-matter";
 
@@ -15,6 +16,7 @@ export interface Settings {
   image_quality: number;
   max_file_bytes: number;
   ignore: string[];
+  default_frontmatter: FrontmatterRule[];
   inline_title: boolean;
   default_image_width: string;
   center_images: boolean;
@@ -34,12 +36,24 @@ export interface Settings {
   site_url: string;
 }
 
-type SettingType = "string" | "number" | "boolean" | "string[]";
+type SettingType = "string" | "number" | "boolean" | "string[]" | "rules";
 
 interface SettingDef<K extends keyof Settings> {
   default: Settings[K];
   type: SettingType;
   description: string;
+}
+
+/**
+ * A glob and the frontmatter it supplies to matching pages.
+ *
+ * Defaults only: anything a page states itself wins. Later rules deep-merge
+ * over earlier ones, so a broad rule can set a baseline and a narrow one
+ * override part of it.
+ */
+export interface FrontmatterRule {
+  match: string;
+  data: Record<string, unknown>;
 }
 
 const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
@@ -57,6 +71,18 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     default: 25 * 1024 * 1024,
     type: "number",
     description: "Hard cap (in bytes) on a single file. Larger files are skipped.",
+  },
+  default_frontmatter: {
+    default: [],
+    type: "rules",
+    description:
+      "Frontmatter applied to pages that match a glob, before anything else reads them. "
+      + "An ordered list of { match, data }: later rules merge over earlier ones, and a page's "
+      + "own frontmatter always wins. Use it to set a baseline without editing every file — "
+      + "e.g. role for a whole vault, or 'foundry: { journal: false }' for a folder whose pages "
+      + "exist to make compendium documents rather than articles. Applied once, where "
+      + "frontmatter is read, so the wiki, the Foundry sync and the module compiler all see "
+      + "the same page.",
   },
   ignore: {
     default: [],
@@ -236,6 +262,12 @@ function defaults(): Settings {
 
 function matchesType(v: unknown, t: SettingType): boolean {
   if (t === "string[]") return Array.isArray(v) && v.every((item) => typeof item === "string");
+  if (t === "rules") {
+    return Array.isArray(v) && v.every((item) =>
+      item !== null && typeof item === "object" && !Array.isArray(item)
+      && typeof (item as Record<string, unknown>)["match"] === "string"
+      && typeof (item as Record<string, unknown>)["data"] === "object");
+  }
   return typeof v === t;
 }
 
@@ -249,7 +281,19 @@ function renderSettingsFile(values: Settings): string {
   for (const [key, def] of Object.entries(SCHEMA) as [keyof Settings, SettingDef<keyof Settings>][]) {
     lines.push(`# ${def.description}`);
     const value = (values as unknown as Record<string, unknown>)[key];
-    if (def.type === "string[]") {
+    if (def.type === "rules") {
+      const rules = (value ?? []) as unknown[];
+      if (rules.length === 0) {
+        lines.push(`${key}: []`);
+      } else {
+        // Round-tripped through the YAML dumper rather than hand-formatted:
+        // the value is arbitrarily nested frontmatter, and a bespoke printer
+        // for it would be a second YAML implementation waiting to disagree
+        // with the one that parsed it.
+        lines.push(`${key}:`);
+        for (const line of dumpYaml(rules).trimEnd().split("\n")) lines.push(`  ${line}`);
+      }
+    } else if (def.type === "string[]") {
       const arr = (value ?? []) as string[];
       if (arr.length === 0) {
         lines.push(`${key}: []`);
