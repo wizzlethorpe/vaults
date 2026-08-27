@@ -2,8 +2,9 @@
 title: Foundry VTT integration
 ---
 
-The companion **Wizzlethorpe Vaults** Foundry VTT module syncs a deployed
-vault into a Foundry world: every page becomes a JournalEntryPage, every wikilink rewrites to a `@UUID[JournalEntry.…]` enricher, every embedded image is downloaded into the world's local data dir.
+The companion **Wizzlethorpe Vaults** Foundry VTT module syncs a deployed vault into **compendium packs** in a Foundry world: every page becomes a JournalEntryPage, every wikilink rewrites to a `@UUID[Compendium.…]` enricher, every embedded image is downloaded into the world's local data dir.
+
+The packs belong to the vault, and nothing else writes to them, so a sync can always replace their contents without weighing that against work a GM has done. You then import what you want, when you want it, and the documents in your world are yours: a later sync updates the pack, not the copy you have been editing.
 
 > [!tip] Install
 > The module is on the [Foundry package directory](https://foundryvtt.com/packages/vaults).
@@ -17,9 +18,9 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 
 | Source | Foundry object |
 |---|---|
-| Each `.md` page | One `JournalEntry` + `JournalEntryPage` (HTML body, foldered to match the vault) |
+| Each `.md` page | One `JournalEntry` + `JournalEntryPage` in the vault's journal pack (HTML body, foldered to match the vault) |
 | `image:` (or auto-discovered cover) | Image cached under `worlds/<id>/vaults-cache/<vault-id>/...` |
-| `[[Other Page]]` wikilinks | Rewritten to `@UUID[JournalEntry.<id>]{label}` enrichers |
+| `[[Other Page]]` wikilinks | Rewritten to `@UUID[Compendium.world.<vault>-journal.JournalEntry.<id>…]{label}` enrichers |
 | Audio / PDFs / other files | Downloaded alongside images |
 | `foundry.base: <UUID>` | New `Actor` or `Item` cloned from the template (see below) |
 | `foundry.base: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
@@ -29,7 +30,7 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 | `foundry.embed: false` | Skip auto-embedding the page article into the doc's description field |
 | `foundry.journal: false` | Instantiate the derived doc but keep the article out of the journal sidebar. An Actor or Scene that needs no wiki entry of its own |
 | `foundry.link` | `journal` (default) or `doc`: where wikilinks to this page point. `doc` sends them at the instantiated document instead of its journal page. Implied by `journal: false` |
-| `foundry.folder` | A `/`-separated folder path the instantiated doc is filed under, nested inside the vault's own sidebar folder. Absent means the vault folder itself |
+| `foundry.folder` | A `/`-separated folder path the instantiated doc is filed under inside its pack. Absent means the page's own vault directory |
 | `foundry.data` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); `"@moulinette/<pack_ref>/<filepath>"` strings resolve against the reader's own Moulinette library (see below) |
 | `foundry.data_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.data` (use for exported sheets / community-shared dumps) |
 | `foundry.id` | 16-char `[A-Za-z0-9]` Foundry id pinned for this page's `JournalEntryPage` and (if `foundry.base` is set) its instantiated doc |
@@ -57,9 +58,9 @@ foundry:
 On sync, the Foundry module:
 
 1. Calls `fromUuid(foundry.base)` to load the template.
-2. Clones it into the world under a **deterministic id** derived from
-   `(vault.id, page.path)` and re-syncs update the same doc rather than
-   creating duplicates.
+2. Clones it into the vault's pack for that document type, under a
+   **deterministic id** derived from `(vault.id, page.path)`, so re-syncs
+   update the same doc rather than creating duplicates.
 3. Layers on the page-driven defaults: `name` ← page title, `img` ← cover
    image, description ← `@Embed[…]` of the page's JournalEntryPage.
 4. Deep-merges `foundry.data` on top, so HP/CR/etc. land exactly where
@@ -201,22 +202,24 @@ Cross-page wikilinks `[[Mossfoot Great Hall]]` re-resolve through the
 override automatically — they'll point at `mossfootHall0001` rather
 than the SHA1.
 
-[[Mossfoot Great Hall]] is the live demo. The user can drop a macro
-on their hotbar that runs:
+[[Mossfoot Great Hall]] is the live demo. Once the scene has been imported with "Keep Document IDs", a hotbar macro can run:
 
 ```javascript
 game.scenes.get("mossfootHall0001").view();
 ```
 
-…and it works regardless of vault id, page rename, or repo redeploy.
+…and it works regardless of vault id, page rename, or repo redeploy. To reach the copy still sitting in the pack, name the pack instead:
+
+```javascript
+(await fromUuid("Compendium.world.<vault-id>-scenes.Scene.mossfootHall0001"));
+```
 
 The parent `JournalEntry` id (folder-shared, since one entry covers
 every page in a directory) is intentionally *not* overridable per page:
 two siblings can't both claim it. If you change a page's `foundry.id`
-between syncs, the previously-created doc with the old id becomes
-orphaned in the world; the module won't auto-delete it (same
-"manually-edited docs are safe" rule that protects user-touched
-content). Drop it by hand from the sidebar if you need to.
+between syncs, the previously-created doc with the old id is left behind in
+the pack under the old id, and anything you had already imported keeps the
+old id too. Neither is auto-deleted. Drop them by hand if you need to.
 
 ---
 
@@ -285,7 +288,7 @@ foundry:
 `foundry.base` accepts a **priority list**, tried in order, so one page can serve readers with different content installed. A Moulinette rung names no document type of its own — only the reader's library knows whether an asset is a Scene or an Actor, and the CLI has to answer that question at build time with no library to ask — so **a list containing one must also contain a rung that names the type**. That entry is doing double duty: it tells the build what the page creates, and it is what a reader without the pack falls back to.
 
 > [!warning] The base is only read when the document is first created
-> A page whose document already exists takes the update path, which applies `foundry.data` and `data_json` but never re-clones. That protects work a GM has done in the world from being discarded. To adopt a changed `base`, delete the document and **Force Sync**.
+> A page whose document already exists takes the update path, which applies `foundry.data` and `data_json` but never re-clones. To adopt a changed `base`, delete the document from the pack and **Force Sync**.
 
 ### Versioning, and why the asset rung ages better
 
@@ -318,6 +321,27 @@ with the map referenced from `@moulinette/` inside that file. The licensing line
 >   - "@moulinette/13648/json/scene/06-junkyard-empty.json"
 >   - Scene
 > ```
+
+## Packs, and getting content into your world
+
+A vault syncs into its own compendium packs, one per document type, grouped in a sidebar folder named after the vault:
+
+```
+Compendium Packs
+└── Marlo Mystery
+    ├── Marlo Mystery: Journals
+    ├── Marlo Mystery: Actors
+    └── Marlo Mystery: Scenes
+```
+
+To bring content across, right-click a pack and choose **Import All**, or drag individual documents out. Either way the documents become yours: a later sync updates the pack, and leaves what you imported alone.
+
+> [!tip] Check "Keep Document IDs"
+> Import All offers this, and it is worth taking. Vault documents have derived ids, so keeping them is what lets cross-references survive the trip: a scene's map note finds its article, and a re-import updates what you already brought over instead of adding a second copy.
+
+**The packs themselves are GM-only, and that is not a setting.** Foundry gates compendium visibility per *pack*, by user role, with no per-document filter, so any pack a player could open would show them every name and image in it. Per-page roles cannot be expressed at that granularity, so vault packs are never player-visible.
+
+Roles still work, in the world where Foundry can enforce them. Each document carries the ownership its page's role earned it, and Import All preserves that, so a `role: public` page lands player-visible and a `role: dm` page lands GM-only. Dragging a single document out is the exception: Foundry clears ownership on that path, and the document arrives GM-only whatever its role.
 
 ## Per-vault dmRole setting
 
@@ -396,9 +420,9 @@ pages fall back to plain text rather than dangling `@UUID[…]` enrichers.
 > false` is the one that keeps the page out altogether.
 
 Setting the flag on a page that already synced **deletes** its
-`JournalEntryPage` on the next sync, treating it exactly like a page removed
-from the vault. That is usually what you want, but it is a deletion: if you
-hand-edited that journal page in Foundry, copy anything worth keeping first.
+`JournalEntryPage` from the pack on the next sync, treating it exactly like a
+page removed from the vault. A copy you had already imported into the world is
+yours and stays.
 
 The alternative is `ignore:` in `settings.md`, which drops the page from the
 build entirely so it reaches neither the wiki nor Foundry. Reach for `ignore:`

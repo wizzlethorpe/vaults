@@ -7,11 +7,15 @@ Module ID: `vaults`. Requires Foundry V14 or newer.
 ## Quick start
 
 1. Deploy a vault with `vaults push`.
-2. Install this module, click **Sync Vault** in the Journal sidebar.
+2. Install this module, click **Sync Vault** in the Compendium sidebar.
 3. **Add Vault** → paste the deploy URL. The module probes `/_manifest.json`; for multi-role deploys click **Authenticate** to elevate above the public tier.
 4. **Sync**. The module fetches the manifest, diffs against the last sync, and pulls only changed pages / media.
 
 ## What lands in Foundry
+
+A vault syncs into its own **compendium packs**, one per document type, grouped in a sidebar folder named after the vault. Nothing else writes to them, so a sync can always replace their contents. Use **Import All** (with "Keep Document IDs") to bring content into the world; what you import is then yours, and later syncs update the pack rather than your copy.
+
+The packs are GM-only and cannot be made otherwise: Foundry gates compendium visibility per pack by user role, with no per-document filter, so a player-visible pack would expose every name and image in it. Per-page roles are carried on the documents instead and take effect on import. Requires Foundry v14, whose Import All is what preserves them.
 
 - **Journals.** Each vault folder becomes one `JournalEntry`; each page becomes a `JournalEntryPage`. Folder structure mirrors the vault.
 - **Wikilinks.** `[[Page]]` rewrites to a Foundry `@UUID[…]` link. Cross-vault links work too.
@@ -50,13 +54,13 @@ The doc gets a deterministic id derived from `(vault, page path)`, so re-syncs u
 
 `foundry.embed: false` skips embedding the page article into the doc description (useful for stats-only or DM-private notes).
 
-`foundry.sync: false` keeps the page out of Foundry entirely — no `JournalEntryPage`, no derived doc, and wikilinks to it from other pages fall back to plain text. The page still renders on the wiki. Use it for material that belongs in the vault but not at the table: toolchain notes, build docs, drafts. Setting it on a page that synced previously deletes its `JournalEntryPage` on the next sync, exactly as if the page had been removed from the vault.
+`foundry.sync: false` keeps the page out of Foundry entirely — no `JournalEntryPage`, no derived doc, and wikilinks to it from other pages fall back to plain text. The page still renders on the wiki. Use it for material that belongs in the vault but not at the table: toolchain notes, build docs, drafts. Setting it on a page that synced previously deletes its `JournalEntryPage` from the pack on the next sync, exactly as if the page had been removed from the vault.
 
 `foundry.journal: false` makes the derived document *without* the `JournalEntryPage` that normally accompanies it. For pages that exist to carry a Scene or an Actor and whose article adds nothing to the sidebar. Setting it on a page that already synced deletes its journal page on the next sync, so it is not a one-way door. The article still renders on the wiki, and the description embed is suppressed automatically — there would be no page left to point at.
 
 The three are independent: `sync` drops everything, `journal` drops only the page, `embed` drops only the article inside the doc's description. `foundry.embed: false` and `foundry.sync: false` are not the same thing: `embed` only suppresses the article inside a derived doc's description, and the journal page is still created.
 
-`foundry.id` (16 chars `[A-Za-z0-9]`) pins both the `JournalEntryPage` and its instantiated doc to an explicit id. Lets external macros / scene flags reference the doc by a stable known id. Changing it between syncs leaves the previous doc orphaned (the module never auto-deletes manually-pinned ids).
+`foundry.id` (16 chars `[A-Za-z0-9]`) pins both the `JournalEntryPage` and its instantiated doc to an explicit id. Lets external macros / scene flags reference the doc by a stable known id. Changing it between syncs leaves the previous doc orphaned in the pack (the module never auto-deletes manually-pinned ids).
 
 ## Handler-asset import
 

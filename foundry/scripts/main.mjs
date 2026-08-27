@@ -26,7 +26,9 @@ Hooks.once("ready", async () => {
   }, 0);
 });
 
-Hooks.on("renderJournalDirectory", (_app, html) => {
+// The Compendium tab, not the Journal tab: a sync fills compendium packs, and
+// the control for it belongs where its output appears.
+Hooks.on("renderCompendiumDirectory", (_app, html) => {
   if (!game.user.isGM) return;
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(".vaults-button")) return;
