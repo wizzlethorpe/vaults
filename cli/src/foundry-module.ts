@@ -88,6 +88,33 @@ const DESCRIPTION_PATH: Record<string, string> = {
  * it — so guessing would be worse than reading what the author already
  * declared two fields away.
  */
+/**
+ * The system a module's documents belong to.
+ *
+ * Foundry requires every Actor and Item pack to declare one, and refuses to
+ * load the whole manifest if any is missing. Most modules never set a
+ * top-level `system` key: they name it in `relationships.requires` with
+ * `type: "system"`, which is what the package schema actually documents. Only
+ * reading the top-level key meant WANDS shipped ten packs with none, and
+ * Foundry rejected the module outright.
+ */
+export function systemIdOf(manifest: Record<string, unknown>): string | null {
+  const top = manifest["system"];
+  if (typeof top === "string" && top) return top;
+  const rel = (manifest["relationships"] ?? {}) as Record<string, unknown>;
+  for (const key of ["systems", "requires"]) {
+    const list = Array.isArray(rel[key]) ? rel[key] : [];
+    for (const raw of list) {
+      if (!raw || typeof raw !== "object") continue;
+      const entry = raw as Record<string, unknown>;
+      // `systems` entries are systems by definition; `requires` is mixed.
+      if (key === "requires" && entry["type"] !== "system") continue;
+      if (typeof entry["id"] === "string" && entry["id"]) return entry["id"];
+    }
+  }
+  return null;
+}
+
 function statsFor(manifest: Record<string, unknown>): Record<string, unknown> {
   const compat = (manifest["compatibility"] ?? {}) as Record<string, unknown>;
   const rel = (manifest["relationships"] ?? {}) as Record<string, unknown>;
@@ -98,7 +125,7 @@ function statsFor(manifest: Record<string, unknown>): Record<string, unknown> {
   const systemCompat = (system?.["compatibility"] ?? {}) as Record<string, unknown>;
   return {
     coreVersion: compat["verified"] ?? compat["minimum"] ?? null,
-    systemId: system?.["id"] ?? manifest["system"] ?? null,
+    systemId: systemIdOf(manifest),
     systemVersion: systemCompat["verified"] ?? systemCompat["minimum"] ?? null,
     createdTime: null, modifiedTime: null, lastModifiedBy: null,
     compendiumSource: null, duplicateSource: null, exportSource: null,
@@ -864,6 +891,10 @@ async function finishModule(
 
   const packs: Array<Record<string, unknown>> = [];
   const packNames: string[] = [];
+  // Declared on every pack, the way vfmc did: Foundry only demands it for
+  // Actor and Item packs, but a module whose packs disagree about which
+  // system they belong to is not a thing worth being able to express.
+  const systemId = systemIdOf(manifest);
 
   // One Adventure holding everything, rather than a pack per document type.
   // The buckets are still built the same way — the folders and documents an
@@ -912,7 +943,7 @@ async function finishModule(
       label: `${manifest["title"] ?? moduleId}`,
       path: `packs/${packName}`,
       type: "Adventure",
-      ...(typeof manifest["system"] === "string" ? { system: manifest["system"] } : {}),
+      ...(systemId ? { system: systemId } : {}),
     });
     packNames.push(packName);
     console.log(`    ${packName}: 1 adventure holding ${documents} document(s)`);
@@ -945,7 +976,7 @@ async function finishModule(
         : `${manifest["title"] ?? moduleId}: ${PACK_LABEL[bucket.decl.type] ?? bucket.decl.type}`,
       path: `packs/${packName}`,
       type: bucket.decl.type,
-      ...(typeof manifest["system"] === "string" ? { system: manifest["system"] } : {}),
+      ...(systemId ? { system: systemId } : {}),
     });
     packNames.push(packName);
     console.log(`    ${packName}: ${bucket.docs.length} document(s), ${folderDocs.length} folder(s)`);

@@ -185,3 +185,33 @@ describe("journal scoping", () => {
     assert.equal(inScope(null, "anything.md"), true);
   });
 });
+
+describe("pack system declarations", () => {
+  it("reads the system from relationships, not just a top-level key", async () => {
+    // Foundry refuses to load a manifest where any Actor or Item pack omits
+    // `system`, and most modules never set a top-level `system` key — they
+    // name it in relationships.requires, which is what the package schema
+    // documents. WANDS does exactly that, shipped ten packs with none, and
+    // Foundry rejected the module at install time. Nothing at build time
+    // noticed, which is why this is pinned here.
+    const { systemIdOf } = await import("../src/foundry-module.js");
+
+    assert.equal(systemIdOf({
+      relationships: { requires: [{ id: "dnd5e", type: "system" }] },
+    }), "dnd5e");
+
+    // A module relationship is not a system, and picking the first entry
+    // whatever its type would declare packs belonging to "babele".
+    assert.equal(systemIdOf({
+      relationships: {
+        requires: [{ id: "babele", type: "module" }, { id: "dnd5e", type: "system" }],
+      },
+    }), "dnd5e");
+
+    assert.equal(systemIdOf({ relationships: { systems: [{ id: "pf2e" }] } }), "pf2e");
+    assert.equal(systemIdOf({ system: "dnd5e" }), "dnd5e");
+    // System-agnostic modules exist; they must not gain a bogus declaration.
+    assert.equal(systemIdOf({}), null);
+    assert.equal(systemIdOf({ relationships: { requires: [{ id: "babele", type: "module" }] } }), null);
+  });
+});
