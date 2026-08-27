@@ -234,6 +234,24 @@ A compendium the vault owns is rebuilt wholesale: always overwrite, no
 per-field ownership, no create-only rules, no reporting-rather-than-repairing.
 The GM's copy is whatever they imported, and the vault never sees it.
 
+None of that costs the incremental sync. The two are orthogonal: the manifest
+diff decides *which* documents are touched, and always-overwrite decides *how*
+the touched ones are written. An unchanged page hash still means no fetch and
+no write.
+
+It improves the incremental path, in fact. `findMissingDocuments` exists
+because a page whose hash has not changed is never revisited, so a document
+deleted in the world stays missing while every later sync reports "already up
+to date" — and it can only report, because re-creating something a GM deleted
+on purpose would be wrong. Against a compendium the vault owns, deleting an
+entry is not a decision to respect, so the same check can repair instead. Force
+Sync stops being a destructive button and becomes merely a slow one.
+
+What does not change is the failure bookkeeping: `failedPages` and
+`failedDeletes` still have to keep their hashes out of the persisted manifest,
+so a page that failed is retried rather than looking synced forever. That is
+about failure, not ownership.
+
 It lowers the stakes on ids too. `ID_SCHEME` exists because changing the
 derivation orphans every document in every synced world and cannot be undone
 by the user. Orphaning entries in a compendium the vault owns is fixed by
