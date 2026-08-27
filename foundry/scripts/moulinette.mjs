@@ -71,7 +71,16 @@ async function loadIndex(log) {
     log(`could not load the Moulinette index: ${err?.message ?? err}`);
     return null;
   }
-  return { mod, collection, assets: mod.cache?.allAssets ?? [] };
+  // `cache.allAssets` carries no contract, so its shape is checked rather than
+  // assumed. `?? []` would cover an absent index but not a changed one, and a
+  // non-array reaching `.find()` throws — which is the one thing this module
+  // promises never to do to a sync.
+  const assets = mod.cache?.allAssets;
+  if (!Array.isArray(assets)) {
+    log("Moulinette's asset index is not a list; skipping");
+    return null;
+  }
+  return { mod, collection, assets };
 }
 
 /**
@@ -83,14 +92,18 @@ async function loadIndex(log) {
  * yet, so resolving has to be able to fetch.
  */
 function findAsset(ref, index, log) {
-  const matches = index.assets.filter(
+  // `find`, not `filter`: a real library is tens of thousands of assets and
+  // this runs once per distinct reference. pack_ref plus filepath names one
+  // asset, so there is no second match worth collecting — the array was left
+  // over from a multi-match warning the index rewrite removed.
+  const match = index.assets.find(
     (a) => String(a?.pack_id) === ref.pack && a?.url === ref.file,
   );
-  if (matches.length === 0) {
+  if (!match) {
     log(`no asset ${ref.file} in pack ${ref.pack} — not subscribed, or it moved`);
     return null;
   }
-  return matches[0];
+  return match;
 }
 
 /**

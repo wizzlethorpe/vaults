@@ -138,6 +138,37 @@ test("a missing or inactive module leaves the reference unresolved, not thrown",
   }, { active: false });
 });
 
+test("an index that is not a list is skipped, not thrown on", async () => {
+  // cache.allAssets carries no contract. `?? []` covers an absent index but
+  // not a changed one, and a non-array reaching .find() would throw — the one
+  // thing this module promises never to do to a sync.
+  const prev = globalThis.game;
+  globalThis.game = {
+    modules: {
+      get: () => ({
+        active: true,
+        cache: { allAssets: { 0: GHELFI, length: 1 } },   // array-like, not an array
+        cloudclient: { apiGET: async () => ({ id: 1 }) },
+        getSessionId: () => "session",
+        collections: [{
+          getId: () => "mou-cloud-cached",
+          initialize: async () => {},
+          selectAsset: async () => "local/x",
+          downloadAsset: async () => ({ status: "success" }),
+        }],
+      }),
+    },
+  };
+  try {
+    const warnings = [];
+    const doc = { path: REF };
+    const stats = await resolveMoulinetteRefs(doc, (m) => warnings.push(m));
+    assert.equal(doc.path, undefined);
+    assert.equal(stats.unresolved, 1);
+    assert.match(warnings.join("\n"), /not a list/);
+  } finally { globalThis.game = prev; }
+});
+
 test("a module whose internals moved warns once and resolves nothing", async () => {
   await withMoulinette([GHELFI], async () => {
     const warnings = [];

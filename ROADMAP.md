@@ -202,8 +202,8 @@ it has no place there. It belongs where asset paths already live, in the
 ```yaml
 foundry:
   base:
-    - Compendium.mad-modcaverns.mad-modcaverns-maps.Scene.DiQAiq8wUMRGevDg  # owns the module
-    - Scene                                                                 # doesn't
+    - Compendium.mad-modcaverns.mad-modcaverns-maps.Scene.DiQAiq8wUMRGevDg  # if the module is installed
+    - Scene                                                                 # blank scene if it is not
   data:
     grid: { size: 140 }
     background:
