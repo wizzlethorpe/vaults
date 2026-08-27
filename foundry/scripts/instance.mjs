@@ -6,7 +6,7 @@
 // the page's journal on top. Re-syncing updates the same doc in place,
 // so user edits to non-canonical fields (HP, conditions) survive.
 
-import { ensurePack, getPack, journalPageUuid, vaultPacks } from "./packs.mjs";
+import { journalPageUuid } from "./packs.mjs";
 import { entryId, pageId, instanceId, folderId, subdocId, folderOfPath } from "./ids.mjs";
 import { localFileUrl } from "./media.mjs";
 import { MODULE_ID } from "./settings.mjs";
@@ -109,7 +109,7 @@ export function wantsJournalNote(docName, fm) {
   return docName === "Scene" && fm?.journal !== false;
 }
 
-export async function applyInstance(vault, vaultPath, meta, { forceFull = false } = {}) {
+export async function applyInstance(target, vault, vaultPath, meta, { forceFull = false } = {}) {
   const fm = meta?.foundry;
   // No foundry block at all → nothing to instantiate.
   if (!fm || typeof fm !== "object") return null;
@@ -153,14 +153,10 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
     return { ok: false, reason: "mixed-types" };
   }
 
-  let pack;
-  try {
-    pack = await ensurePack(vault, docName);
-  } catch (err) {
-    console.warn(`Vaults | foundry.base: no pack for ${docName} (${vaultPath}): ${err.message}`);
+  if (!CONFIG[docName]) {
+    console.warn(`Vaults | foundry.base: this world has no ${docName} documents; skipping ${vaultPath}.`);
     return { ok: false, reason: "no-collection" };
   }
-  const docClass = CONFIG[docName].documentClass;
   // foundry.id pins this page's instance doc to an explicit Foundry id
   // (16 chars [A-Za-z0-9], validated CLI-side). Enables stable references
   // from external Foundry code (macros, scene flags) without depending on
@@ -186,7 +182,7 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
     await ensureEmbeddedIds(dataJson, vault.id, vaultPath);
   }
   const derived = {};
-  const overlay = await buildOverlay(pack, vault, vaultPath, meta, docName, derived);
+  const overlay = await buildOverlay(target, vault, vaultPath, meta, docName, derived);
   // The cover-derived token texture is a default, so it only applies when
   // nothing more specific named one.
   const tokenFloor = derived.tokenTexture
@@ -195,7 +191,7 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
     ? { prototypeToken: { texture: { src: derived.tokenTexture } } }
     : null;
 
-  const existing = await pack.getDocument(id);
+  const existing = await target.get(docName, id);
   if (existing) {
     // Update: data_json + overlay applied together, since the existing
     // doc already absorbed the previous data_json on its create.
@@ -220,7 +216,7 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
     // the way the vault says" button, and does move it.
     if (!forceFull) delete updatePatch.folder;
     try {
-      await existing.update(updatePatch);
+      await target.put(docName, deepMerge(structuredClone(existing), updatePatch));
     } catch (err) {
       console.warn(`Vaults | foundry.base update failed for ${vaultPath}:`, err);
       return { ok: false, reason: "update-failed" };
@@ -252,14 +248,7 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
   }
 
   try {
-    // keepId: keep our pinned/deterministic _id on the parent doc.
-    // keepEmbeddedIds: keep _ids on items inside embedded collections
-    // (cards, walls, sounds, …). Default is true everywhere EXCEPT
-    // Cards.createDocuments, which silently overrides to false and
-    // strips our deterministic ids — so the next sync sees no matching
-    // ids and adds the cards a second time. Always-passing true here
-    // is a no-op for the other doc types and the fix for Cards.
-    await docClass.create(baseData, { pack: pack.collection, keepId: true, keepEmbeddedIds: true });
+    await target.put(docName, baseData);
   } catch (err) {
     console.warn(`Vaults | foundry.base create failed for ${vaultPath}:`, err);
     return { ok: false, reason: "create-failed" };
@@ -270,7 +259,7 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
   // notifies the GM and `continue`s past it — the batch completes, the promise
   // resolves, and nothing was written. Counting that as success is how a sync
   // reports "instantiated 36 documents" with 35 in the world.
-  const created = await pack.getDocument(id);
+  const created = await target.get(docName, id);
   if (!created) {
     console.warn(
       `Vaults | foundry.base: ${vaultPath} → ${docName} ${id} was rejected on create; `
@@ -490,14 +479,14 @@ export async function missingBasePackages(metas) {
  * records which — so this asks each of the vault's existing packs. Packs that
  * were never created are not consulted, which is most of them for most vaults.
  */
-export async function deleteInstance(vault, vaultPath) {
+export async function deleteInstance(target, vault, vaultPath) {
   const id = await instanceId(vault.id, vaultPath);
-  for (const pack of vaultPacks(vault)) {
-    const doc = await pack.getDocument(id);
+  for (const docName of BLANK_DOC_TYPES) {
+    const doc = await target.get(docName, id);
     if (!doc) continue;
-    if (doc.getFlag(MODULE_ID, "vaultId") !== vault.id) continue;
-    try { await doc.delete(); }
-    catch (err) { console.warn(`Vaults | failed to delete ${doc.documentName} for ${vaultPath}:`, err); }
+    if (doc.flags?.[MODULE_ID]?.vaultId !== vault.id) continue;
+    try { await target.remove(docName, id); }
+    catch (err) { console.warn(`Vaults | failed to delete ${docName} for ${vaultPath}:`, err); }
   }
 }
 
@@ -513,38 +502,20 @@ export async function deleteInstance(vault, vaultPath) {
  * Idempotent: folder ids are deterministic, so repeated calls reuse folders
  * rather than making new ones.
  */
-async function ensureInstanceFolder(pack, vault, docName, subPath = "") {
+async function ensureInstanceFolder(target, vault, docName, subPath = "") {
   let parentId = null;
   let key = `${vault.id}/__instance__/${docName}`;
   for (const segment of splitFolderPath(subPath)) {
     key += `/${segment}`;
     const fId = await folderId(vault.id, key);
-    if (!await upsertInstanceFolder(pack, fId, segment, docName, parentId, vault)) return parentId;
+    try { await target.putFolder(docName, { _id: fId, name: segment, folder: parentId }); }
+    catch (err) {
+      console.warn(`Vaults | could not create ${docName} folder for ${vault.label}:`, err);
+      return parentId;
+    }
     parentId = fId;
   }
   return parentId;
-}
-
-/** Create or rename one folder. Returns false when Foundry refused it. */
-async function upsertInstanceFolder(pack, fId, name, docName, parentId, vault) {
-  const existing = pack.folders.get(fId);
-  if (existing) {
-    if (existing.name !== name) {
-      try { await existing.update({ name }); }
-      catch (err) { console.warn(`Vaults | could not rename ${docName} folder for ${vault.label}:`, err); }
-    }
-    return true;
-  }
-  try {
-    await Folder.create(
-      { _id: fId, name, type: docName, folder: parentId },
-      { pack: pack.collection, keepId: true },
-    );
-    return true;
-  } catch (err) {
-    console.warn(`Vaults | could not create ${docName} folder for ${vault.label}:`, err);
-    return false;
-  }
 }
 
 /** "/NPCs//Solaris/" → ["NPCs", "Solaris"]. Tolerates the slashes authors type. */
@@ -573,14 +544,14 @@ function instanceSubPath(vaultPath, meta) {
   return folderOfPath(vaultPath);
 }
 
-async function buildOverlay(pack, vault, vaultPath, meta, docName, derived = {}) {
+async function buildOverlay(target, vault, vaultPath, meta, docName, derived = {}) {
   const overlay = {
     // Prefer the page's frontmatter `title:` over the filename — the wiki
     // already treats title as the page's display name, and a doc named
     // "Potion of Healing (Mossfoot Brew)" reads better in the Foundry
     // sidebar than "Healing Potion".
     name: meta.title || baseName(vaultPath),
-    folder: await ensureInstanceFolder(pack, vault, docName, instanceSubPath(vaultPath, meta)),
+    folder: await ensureInstanceFolder(target, vault, docName, instanceSubPath(vaultPath, meta)),
     flags: { [MODULE_ID]: { vaultId: vault.id, path: vaultPath } },
   };
 
@@ -685,12 +656,12 @@ async function attachJournalNote(sceneData, geom, vault, vaultPath, meta) {
     ? idOverride
     : await pageId(vault.id, vaultPath);
   // `entryId` is an id-only foreign field to a *world* JournalEntry, so it has
-  // no way to name a pack. While the scene sits in its compendium the note
-  // points at nothing; it resolves once the GM imports both packs with "Keep
-  // Document IDs" checked, since the ids are derived and therefore identical
-  // on both sides. Writing it anyway is right: the alternative is importing a
-  // scene with no way back to its article, and an unresolved id is stored
-  // without complaint (the field validates the shape, not the target).
+  // no way to name a pack. In an adventure that costs nothing: import creates
+  // the journal with this very id, so the note resolves. In a compendium the
+  // note points at nothing until the GM imports both packs with "Keep Document
+  // IDs" checked. Written either way — the alternative is a scene with no way
+  // back to its article, and an unresolved id stores without complaint (the
+  // field validates the shape, not the target).
   const note = {
     _id: await subdocId(vault.id, vaultPath, "/notes/__journalLink__"),
     entryId: eId,
@@ -929,27 +900,21 @@ function deepMerge(target, source) {
  * @param entries `{ logicalPath, meta }` for every syncable page.
  * @returns `[{ path, missing }]`, `missing` being "journal", "document", or both.
  */
-export async function findMissingDocuments(vault, entries) {
+export async function findMissingDocuments(target, vault, entries) {
   const out = [];
   // A pack lookup is a request, not a map read, and this walks every page the
   // sync did not touch — so each pack is read once up front rather than once
   // per page. Journals need whole documents (an embedded page id is not in the
   // index); instance documents need only ids, so their index is enough.
   const journalPages = new Set();
-  const journalPack = getPack(vault, "JournalEntry");
-  if (journalPack) {
-    for (const entry of await journalPack.getDocuments()) {
-      for (const page of entry.pages.contents) journalPages.add(`${entry.id}.${page.id}`);
-    }
+  for (const entry of await target.contents("JournalEntry")) {
+    for (const page of entry.pages ?? []) journalPages.add(`${entry._id}.${page._id}`);
   }
   const idsByType = new Map();
   const packIds = async (docName) => {
-    if (!idsByType.has(docName)) {
-      const pack = getPack(vault, docName);
-      // No pack means nothing of that type has ever been created, so every
-      // document of it is missing — which is what an empty set reports.
-      idsByType.set(docName, new Set(pack ? (await pack.getIndex()).map((e) => e._id) : []));
-    }
+    // Nothing of a type ever created reports an empty set, so every document
+    // of it is missing — which is the right answer.
+    if (!idsByType.has(docName)) idsByType.set(docName, await target.ids(docName));
     return idsByType.get(docName);
   };
 

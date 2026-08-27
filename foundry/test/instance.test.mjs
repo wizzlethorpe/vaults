@@ -163,28 +163,26 @@ test("a compendium Scene UUID reads as a Scene", () => {
 // ── drift detection ──────────────────────────────────────────────────────
 
 /**
- * Stub the vault's compendium packs: `journals` maps an entry id to the page
- * ids it holds, and `actors` is the ids in the Actor pack. Mirrors what
- * findMissingDocuments actually reaches for — game.packs, keyed the way
- * packs.mjs names them — and nothing else.
+ * Stub the sync target, which is what findMissingDocuments reads now: the two
+ * shapes (compendium packs, one Adventure) answer the same questions, so the
+ * drift check works against the interface rather than either storage layout.
  *
- * A pack that is absent from `game.packs` is not the same as an empty one:
- * a vault that never instantiated an Actor has no Actor pack at all, and the
- * lookup has to survive that rather than throw.
+ * `journals` maps an entry id to the page ids it holds; `actors` is the ids of
+ * Actor documents, or null for a vault that has never made one — which is not
+ * the same as an empty set and has to survive being asked.
  */
-async function withWorld({ journals = {}, actors = null }, fn) {
-  const prev = globalThis.game;
-  const packs = new Map();
-  packs.set(`world.${VAULT.id}-journal`, {
-    getDocuments: async () => Object.entries(journals).map(([id, pages]) => ({
-      id, pages: { contents: pages.map((p) => ({ id: p })) },
-    })),
-  });
-  if (actors !== null) {
-    packs.set(`world.${VAULT.id}-actors`, { getIndex: async () => actors.map((id) => ({ _id: id })) });
-  }
-  globalThis.game = { packs };
-  try { return await fn(); } finally { globalThis.game = prev; }
+function fakeTarget({ journals = {}, actors = null }) {
+  return {
+    async contents(docName) {
+      if (docName !== "JournalEntry") return [];
+      return Object.entries(journals).map(([_id, pages]) => ({
+        _id, pages: pages.map((p) => ({ _id: p })),
+      }));
+    },
+    async ids(docName) {
+      return new Set(docName === "Actor" && actors ? actors : []);
+    },
+  };
 }
 
 const VAULT = { id: "4ec31e8cb283" };
@@ -194,10 +192,8 @@ test("a page whose journal and document both exist is not reported", async () =>
   const { findMissingDocuments } = await import("../scripts/instance.mjs");
   const path = "Creatures/Beefy.md";
   const [e, p, i] = [await entryId(VAULT.id, path), await pageId(VAULT.id, path), await instanceId(VAULT.id, path)];
-  await withWorld({ journals: { [e]: [p] }, actors: [i] }, async () => {
-    const missing = await findMissingDocuments(VAULT, [{ logicalPath: path, meta: { foundry: { base: "Actor:npc" } } }]);
-    assert.deepEqual(missing, []);
-  });
+  const missing = await findMissingDocuments(fakeTarget({ journals: { [e]: [p] }, actors: [i] }), VAULT, [{ logicalPath: path, meta: { foundry: { base: "Actor:npc" } } }]);
+  assert.deepEqual(missing, []);
 });
 
 test("a deleted Actor is reported as a missing document", async () => {
@@ -207,10 +203,8 @@ test("a deleted Actor is reported as a missing document", async () => {
   const { findMissingDocuments } = await import("../scripts/instance.mjs");
   const path = "Creatures/Beefy.md";
   const [e, p] = [await entryId(VAULT.id, path), await pageId(VAULT.id, path)];
-  await withWorld({ journals: { [e]: [p] }, actors: [] }, async () => {
-    const missing = await findMissingDocuments(VAULT, [{ logicalPath: path, meta: { foundry: { base: "Actor:npc" } } }]);
-    assert.deepEqual(missing, [{ path, missing: "document" }]);
-  });
+  const missing = await findMissingDocuments(fakeTarget({ journals: { [e]: [p] }, actors: [] }), VAULT, [{ logicalPath: path, meta: { foundry: { base: "Actor:npc" } } }]);
+  assert.deepEqual(missing, [{ path, missing: "document" }]);
 });
 
 test("a page needing a document type the vault has no pack for is reported", async () => {
@@ -221,28 +215,22 @@ test("a page needing a document type the vault has no pack for is reported", asy
   const { findMissingDocuments } = await import("../scripts/instance.mjs");
   const path = "Places/Tavern.md";
   const [e, p] = [await entryId(VAULT.id, path), await pageId(VAULT.id, path)];
-  await withWorld({ journals: { [e]: [p] }, actors: null }, async () => {
-    const missing = await findMissingDocuments(VAULT, [{ logicalPath: path, meta: { foundry: { base: "Actor:npc" } } }]);
-    assert.deepEqual(missing, [{ path, missing: "document" }]);
-  });
+  const missing = await findMissingDocuments(fakeTarget({ journals: { [e]: [p] }, actors: null }), VAULT, [{ logicalPath: path, meta: { foundry: { base: "Actor:npc" } } }]);
+  assert.deepEqual(missing, [{ path, missing: "document" }]);
 });
 
 test("a deleted journal page is reported", async () => {
   const { findMissingDocuments } = await import("../scripts/instance.mjs");
-  await withWorld({ journals: {}, actors: [] }, async () => {
-    const missing = await findMissingDocuments(VAULT, [{ logicalPath: "Lore/Thing.md", meta: {} }]);
-    assert.deepEqual(missing, [{ path: "Lore/Thing.md", missing: "journal" }]);
-  });
+  const missing = await findMissingDocuments(fakeTarget({ journals: {}, actors: [] }), VAULT, [{ logicalPath: "Lore/Thing.md", meta: {} }]);
+  assert.deepEqual(missing, [{ path: "Lore/Thing.md", missing: "journal" }]);
 });
 
 test("both missing is reported once, naming both", async () => {
   const { findMissingDocuments } = await import("../scripts/instance.mjs");
-  await withWorld({ journals: {}, actors: [] }, async () => {
-    const missing = await findMissingDocuments(VAULT, [
-      { logicalPath: "Creatures/Beefy.md", meta: { foundry: { base: "Actor:npc" } } },
-    ]);
-    assert.deepEqual(missing, [{ path: "Creatures/Beefy.md", missing: "journal + document" }]);
-  });
+  const missing = await findMissingDocuments(fakeTarget({ journals: {}, actors: [] }), VAULT, [
+    { logicalPath: "Creatures/Beefy.md", meta: { foundry: { base: "Actor:npc" } } },
+  ]);
+  assert.deepEqual(missing, [{ path: "Creatures/Beefy.md", missing: "journal + document" }]);
 });
 
 test("a page with journal: false is not expected to have one", async () => {
@@ -250,12 +238,10 @@ test("a page with journal: false is not expected to have one", async () => {
   const { findMissingDocuments } = await import("../scripts/instance.mjs");
   const path = "Scenes/Map.md";
   const i = await instanceId(VAULT.id, path);
-  await withWorld({ journals: {}, actors: [i] }, async () => {
-    const missing = await findMissingDocuments(VAULT, [
-      { logicalPath: path, meta: { foundry: { base: "Actor:npc", journal: false } } },
-    ]);
-    assert.deepEqual(missing, []);
-  });
+  const missing = await findMissingDocuments(fakeTarget({ journals: {}, actors: [i] }), VAULT, [
+    { logicalPath: path, meta: { foundry: { base: "Actor:npc", journal: false } } },
+  ]);
+  assert.deepEqual(missing, []);
 });
 
 test("a pinned foundry.id is honoured instead of the derived one", async () => {
@@ -263,12 +249,10 @@ test("a pinned foundry.id is honoured instead of the derived one", async () => {
   const { findMissingDocuments } = await import("../scripts/instance.mjs");
   const path = "Creatures/Beefy.md";
   const e = await entryId(VAULT.id, path);
-  await withWorld({ journals: { [e]: ["pinned0000000001"] }, actors: ["pinned0000000001"] }, async () => {
-    const missing = await findMissingDocuments(VAULT, [
-      { logicalPath: path, meta: { foundry: { base: "Actor:npc", id: "pinned0000000001" } } },
-    ]);
-    assert.deepEqual(missing, []);
-  });
+  const missing = await findMissingDocuments(fakeTarget({ journals: { [e]: ["pinned0000000001"] }, actors: ["pinned0000000001"] }), VAULT, [
+    { logicalPath: path, meta: { foundry: { base: "Actor:npc", id: "pinned0000000001" } } },
+  ]);
+  assert.deepEqual(missing, []);
 });
 
 // --- the journal-link Map Note -----------------------------------------

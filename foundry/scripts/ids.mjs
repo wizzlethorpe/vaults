@@ -36,3 +36,8 @@ export const instanceId = (vaultId, path) => det("instance", `${vaultId}:${path}
 // re-syncs as long as the array order stays the same — reordering shifts
 // ids, which is acceptable since reordering is an authorial action.
 export const subdocId = (vaultId, path, pointer) => det("subdoc", `${vaultId}:${path}:${pointer}`);
+
+// The single Adventure document a vault syncs into, when it is packaged that
+// way. Keyed by vault alone: there is exactly one per vault, and it has to be
+// found again on the next sync to be updated rather than replaced.
+export const adventureId = (vaultId) => det("adventure", vaultId);

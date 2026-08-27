@@ -16,7 +16,7 @@
 // wrap a single entry with no other entries to group with.
 
 import { MODULE_ID } from "./settings.mjs";
-import { ensurePack, instanceUuid } from "./packs.mjs";
+import { instanceUuid } from "./packs.mjs";
 import { docNameFromBase } from "./foundry-base.mjs";
 import { entryId, pageId, folderId, folderOfPath, instanceId } from "./ids.mjs";
 import { transformHtmlForFoundry } from "./links.mjs";
@@ -37,7 +37,7 @@ const NON_INDEX_SORT_BASE = 100000;
  * directory hierarchy under the vault's configured root folder. Returns
  * the deepest folder's id.
  */
-async function ensureFolderChain(pack, vault, segments) {
+async function ensureFolderChain(target, vault, segments) {
   // No root folder inside the pack: the pack *is* the vault's container, and
   // wrapping its whole contents in a single folder named after it would add a
   // level every reader has to open before seeing anything.
@@ -46,30 +46,10 @@ async function ensureFolderChain(pack, vault, segments) {
   for (const seg of segments) {
     acc += "/" + seg;
     const fId = await folderId(vault.id, acc);
-    await upsertFolder(pack, fId, seg, parentId);
+    await target.putFolder("JournalEntry", { _id: fId, name: seg, folder: parentId });
     parentId = fId;
   }
   return parentId;
-}
-
-async function upsertFolder(pack, id, name, parentId) {
-  const existing = pack.folders.get(id);
-  if (existing) {
-    if (existing.name !== name || existing.folder?.id !== parentId) {
-      await existing.update({ name, folder: parentId });
-    }
-    return existing;
-  }
-  await Folder.create(
-    { _id: id, name, type: pack.documentName, folder: parentId },
-    { pack: pack.collection, keepId: true },
-  );
-  // A rejected folder is not thrown either, and ensureFolderChain returns the
-  // id it *asked* for — so every entry beneath it would be created pointing at
-  // a folder that doesn't exist and land at the pack root instead.
-  const created = pack.folders.get(id);
-  if (!created) throw new Error(`Folder ${id} ("${name}") was rejected on create`);
-  return created;
 }
 
 /**
@@ -123,7 +103,7 @@ function isIndexFile(filename) {
  * folder-keyed (see ids.mjs). The first call for a folder creates the
  * entry with the file's page; subsequent calls embed additional pages.
  */
-export async function upsertFile(vault, path, body, index, meta, folderInfo, mediaRefs) {
+export async function upsertFile(target, vault, path, body, index, meta, folderInfo, mediaRefs) {
   let html = await transformHtmlForFoundry(vault, body, index, mediaRefs);
   html = await appendInstanceDocLink(html, vault, path, meta);
 
@@ -139,8 +119,7 @@ export async function upsertFile(vault, path, body, index, meta, folderInfo, med
   // hosts every page in the folder regardless.
   const leaf = !!fInfo && folderPath !== "" && !fInfo.hasSubfolders;
   const hostSegs = leaf ? segs.slice(0, -1) : segs;
-  const pack = await ensurePack(vault, "JournalEntry");
-  const folderFId = await ensureFolderChain(pack, vault, hostSegs);
+  const folderFId = await ensureFolderChain(target, vault, hostSegs);
 
   // Entry name is the directory's display name; the page name keeps the
   // page's own frontmatter title (or filename) so the page tab in Foundry
@@ -181,44 +160,29 @@ export async function upsertFile(vault, path, body, index, meta, folderInfo, med
     ...(pageOwnership !== null ? { ownership: { default: pageOwnership } } : {}),
   };
 
-  const existing = await pack.getDocument(eId);
+  const existing = await target.get("JournalEntry", eId);
   if (existing) {
-    const entryPatch = {};
-    if (existing.name !== entryName) entryPatch.name = entryName;
-    if (existing.folder?.id !== folderFId) entryPatch.folder = folderFId;
-    if (Object.keys(entryPatch).length > 0) await existing.update(entryPatch);
-
-    const existingPage = existing.pages.get(pId);
-    if (existingPage) await existingPage.update(pageData);
-    else {
-      await existing.createEmbeddedDocuments("JournalEntryPage", [pageData], { keepId: true });
-      // Same contract as the create below: a rejected embedded document is
-      // reported to the GM and skipped, not thrown, so the page can be absent
-      // with the promise resolved.
-      if (!existing.pages.get(pId)) throw new Error(`JournalEntryPage ${pId} was rejected on create`);
-    }
+    // Replace this page, keep every sibling. One entry hosts a whole vault
+    // directory, and a sync only ever visits the pages that changed.
+    const pages = (existing.pages ?? []).filter((pg) => pg._id !== pId);
+    pages.push(pageData);
+    await target.put("JournalEntry", {
+      ...existing, name: entryName, folder: folderFId, pages, flags,
+    });
     return "modified";
   }
 
-  await JournalEntry.create({
+  return target.put("JournalEntry", {
     _id: eId,
     name: entryName,
     folder: folderFId,
     pages: [pageData],
     flags,
-    // Bootstrap the entry visible at the page's tier so player-visible
-    // pages aren't hidden in the gap between create and the post-sync
-    // reconcileOwnership pass. Mixed-tier folders converge to max(pages)
-    // via reconcile.
+    // Bootstrap the entry visible at the page's tier so player-visible pages
+    // aren't hidden in the gap before reconcileEntries runs. Mixed-tier
+    // folders converge to max(pages) there.
     ...(pageOwnership !== null ? { ownership: { default: pageOwnership } } : {}),
-  }, { pack: pack.collection, keepId: true });
-  // create() resolving is not proof the document exists: Foundry validates in
-  // ClientDatabaseBackend##preCreateDocumentArray and, on failure, notifies the
-  // GM and continues past it — the batch completes and nothing was written.
-  // Without this check the caller counts an "added" page that isn't there, and
-  // records its hash as synced so it is never retried.
-  if (!await pack.getDocument(eId)) throw new Error(`JournalEntry ${eId} was rejected on create`);
-  return "added";
+  });
 }
 
 /**
@@ -266,18 +230,22 @@ function pageOwnershipLevelFor(vault, pageRole) {
  *
  * Idempotent: no writes when the current state already matches.
  */
-export async function reconcileEntries(vault, folderInfo, bodyMetaIndex) {
-  const pack = await ensurePack(vault, "JournalEntry");
-  // Every document in the pack is this vault's, so the flag check is not
+export async function reconcileEntries(target, vault, folderInfo, bodyMetaIndex) {
+  // Everything the target holds is this vault's, so the flag check is not
   // about telling vaults apart any more. It is about leaving alone anything
   // the GM dropped into the pack by hand, which has no flag and should not be
   // silently re-filed or re-owned by a sync.
-  const ours = (await pack.getDocuments())
-    .filter((j) => j.getFlag(MODULE_ID, "vaultId") === vault.id);
+  const ours = (await target.contents("JournalEntry"))
+    .filter((j) => j.flags?.[MODULE_ID]?.vaultId === vault.id);
   const gated = !!vault.dmRole && !!vault.knownRoles?.length;
   for (const entry of ours) {
-    await reconcilePlacement(pack, vault, entry, folderInfo);
-    if (gated) await reconcileOwnership(vault, entry, bodyMetaIndex);
+    const patched = reconcileOwnershipData(gated ? vault : null, entry, bodyMetaIndex);
+    const folder = await expectedFolder(target, vault, entry, folderInfo);
+    if (folder !== undefined && folder !== (patched.folder ?? null)) patched.folder = folder;
+    if (JSON.stringify(patched) !== JSON.stringify(entry)) {
+      try { await target.put("JournalEntry", patched); }
+      catch (err) { console.warn(`Vaults | reconcile failed for ${entry.name}:`, err); }
+    }
   }
 }
 
@@ -292,44 +260,38 @@ export async function reconcileEntries(vault, folderInfo, bodyMetaIndex) {
  * single entry hosts pages of different tiers, and entry-level ownership alone
  * would leak a DM page through a public sibling.
  */
-async function reconcileOwnership(vault, entry, bodyMetaIndex) {
+function reconcileOwnershipData(vault, entry, bodyMetaIndex) {
+  const patched = structuredClone(entry);
+  if (!vault) return patched;
   let entryMax = null;
-  for (const page of entry.pages.contents) {
-    const pPath = page.getFlag(MODULE_ID, "path");
+  for (const page of patched.pages ?? []) {
+    const pPath = page.flags?.[MODULE_ID]?.path;
     if (!pPath) continue;
     const meta = bodyMetaIndex.get(pPath.replace(/\.md$/i, ".body.html"));
     if (!meta) continue;
     const level = pageOwnershipLevelFor(vault, meta.role);
     if (level === null) continue;
-    if (page.ownership?.default !== level) {
-      try { await page.update({ ownership: { default: level } }); }
-      catch (err) { console.warn(`Vaults | reconcile ownership ${pPath} → ${level} failed:`, err); }
-    }
+    page.ownership = { ...page.ownership, default: level };
     if (entryMax === null || level > entryMax) entryMax = level;
   }
-  if (entryMax !== null && entry.ownership?.default !== entryMax) {
-    try { await entry.update({ ownership: { default: entryMax } }); }
-    catch (err) { console.warn(`Vaults | reconcile entry ownership for ${entry.name} → ${entryMax} failed:`, err); }
-  }
+  if (entryMax !== null) patched.ownership = { ...patched.ownership, default: entryMax };
+  return patched;
 }
 
-/** Re-file one entry into the folder its path currently maps to. */
-async function reconcilePlacement(pack, vault, entry, folderInfo) {
+/** The folder an entry's path currently maps to, or undefined if unknowable. */
+async function expectedFolder(target, vault, entry, folderInfo) {
   // Each entry's first page carries the source path on the vaults flag. The
   // folder we want is derived from that path's folderPath, with leaf-collapse
-  // applied per the current folderInfo.
-  const path = entry.pages.contents[0]?.getFlag(MODULE_ID, "path");
-  if (!path) return;
+  // applied per the current folderInfo — which is what catches a directory
+  // that gained or lost a subfolder since the last sync.
+  const path = entry.pages?.[0]?.flags?.[MODULE_ID]?.path;
+  if (!path) return undefined;
   const segs = path.split("/");
   segs.pop();
   const folderPath = segs.join("/");
   const fInfo = folderInfo?.get(folderPath);
   const leaf = !!fInfo && folderPath !== "" && !fInfo.hasSubfolders;
-  const expected = await ensureFolderChain(pack, vault, leaf ? segs.slice(0, -1) : segs);
-  if ((entry.folder?.id ?? null) !== expected) {
-    try { await entry.update({ folder: expected }); }
-    catch (err) { console.warn(`Vaults | re-place ${path} → ${expected} failed:`, err); }
-  }
+  return ensureFolderChain(target, vault, leaf ? segs.slice(0, -1) : segs);
 }
 
 /**
@@ -338,15 +300,16 @@ async function reconcilePlacement(pack, vault, entry, folderInfo) {
  * entry itself sticks around as long as any page remains; once the last
  * page is removed we tear down the entry too.
  */
-export async function deleteFile(vault, path) {
+export async function deleteFile(target, vault, path) {
   const eId = await entryId(vault.id, path);
   const pId = await pageId(vault.id, path);
-  const pack = await ensurePack(vault, "JournalEntry");
-  const entry = await pack.getDocument(eId);
+  const entry = await target.get("JournalEntry", eId);
   if (!entry) return;
-  const page = entry.pages.get(pId);
-  if (page) await page.delete();
-  if (entry.pages.size === 0) await entry.delete();
+  const pages = (entry.pages ?? []).filter((pg) => pg._id !== pId);
+  // The entry covers a whole directory, so it outlives any one page. Once the
+  // last one goes there is nothing left for it to hold.
+  if (pages.length === 0) await target.remove("JournalEntry", eId);
+  else await target.put("JournalEntry", { ...entry, pages });
 }
 
 /**

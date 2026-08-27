@@ -17,6 +17,7 @@ import * as progress from "./progress.mjs";
 import { applyInstance, deleteInstance, findMissingDocuments, missingBasePackages } from "./instance.mjs";
 import { instanceId } from "./ids.mjs";
 import { tokenInfo } from "./auth.mjs";
+import { openTarget } from "./target.mjs";
 
 // `foundry.base` may name a world document another page instantiates
 // (`base: Actor.<id>`), which lets one page reskin another's statblock.
@@ -146,6 +147,11 @@ async function runSync(host, vault, { forceFull = false } = {}) {
   const knownRoles = Array.isArray(manifest.auth?.roles) ? manifest.auth.roles : [];
   const patch = {};
   if (vault.public !== isPublic) patch.public = isPublic;
+  // Which shape to build. A deploy that predates the setting advertises
+  // nothing, and reads as "compendium" — what the module produced before there
+  // was a choice.
+  const foundryPackage = manifest.foundry_package || "compendium";
+  if (vault.foundryPackage !== foundryPackage) patch.foundryPackage = foundryPackage;
   if (!arraysEqual(vault.knownRoles, knownRoles)) patch.knownRoles = knownRoles;
   // Cache the manifest's advertised asset paths so applyHandlerAssetsWithConfirm can
   // fetch them via the canonical URL. A bundle the manifest doesn't advertise
@@ -274,7 +280,8 @@ async function runSync(host, vault, { forceFull = false } = {}) {
   const untouched = new Set(bodyPaths);
   for (const p of toUpsert) untouched.delete(p);
   for (const p of toDelete) untouched.delete(p);
-  const missingDocs = await findMissingDocuments(vault, [...untouched].map((bodyPath) => ({
+  const target = await openTarget(vault);
+  const missingDocs = await findMissingDocuments(target, vault, [...untouched].map((bodyPath) => ({
     logicalPath: bodyPath.replace(/\.body\.html$/i, ".md"),
     meta: bodyMetaIndex.get(bodyPath),
   })));
@@ -371,10 +378,10 @@ async function runSync(host, vault, { forceFull = false } = {}) {
       // simply skipping means setting the flag on a page that already synced
       // takes its journal page away, instead of leaving it behind for good.
       if (pageMeta?.foundry?.journal === false) {
-        await deleteFile(vault, logicalPath);
+        await deleteFile(target, vault, logicalPath);
       } else {
         const refs = new Set();
-        const result = await upsertFile(vault, logicalPath, html, pathIndex, pageMeta, folderInfo, refs);
+        const result = await upsertFile(target, vault, logicalPath, html, pathIndex, pageMeta, folderInfo, refs);
         mediaRefs[bodyPath] = [...refs];
         if (result === "added") added++; else modified++;
       }
@@ -383,7 +390,7 @@ async function runSync(host, vault, { forceFull = false } = {}) {
       // render. Only fires when the page declared foundry.base.
       if (pageMeta?.foundry?.base) {
         try {
-          const outcome = await applyInstance(vault, logicalPath, pageMeta, { forceFull: fullPass });
+          const outcome = await applyInstance(target, vault, logicalPath, pageMeta, { forceFull: fullPass });
           // A declared base that produced no document returns { ok: false }
           // rather than throwing, so counting calls instead of outcomes would
           // report every skipped page as a success.
@@ -408,7 +415,7 @@ async function runSync(host, vault, { forceFull = false } = {}) {
   for (const bodyPath of toDelete) {
     const logicalPath = bodyPath.replace(/\.body\.html$/i, ".md");
     progress.step(logicalPath.split("/").pop());
-    try { await deleteFile(vault, logicalPath); removed++; }
+    try { await deleteFile(target, vault, logicalPath); removed++; }
     catch (err) {
       console.warn(`Vaults | delete failed for ${logicalPath}:`, err);
       // Same reasoning as a failed upsert, mirrored: the path is absent from
@@ -418,7 +425,7 @@ async function runSync(host, vault, { forceFull = false } = {}) {
     }
     // Tear down the derived Actor/Item too. Best-effort; only acts on docs
     // we created (vault flag check inside).
-    try { await deleteInstance(vault, logicalPath); }
+    try { await deleteInstance(target, vault, logicalPath); }
     catch (err) { console.warn(`Vaults | delete instance failed for ${logicalPath}:`, err); }
   }
 
@@ -445,7 +452,12 @@ async function runSync(host, vault, { forceFull = false } = {}) {
   // (a folder gained or lost subfolders), and bring per-page ownership back
   // in line with the manifest's roles — which catches pages whose role
   // flipped while their body hash did not, so they never appeared above.
-  await reconcileEntries(vault, folderInfo, bodyMetaIndex);
+  await reconcileEntries(target, vault, folderInfo, bodyMetaIndex);
+
+  // An adventure is one document, so everything above only staged changes in
+  // memory; this is where the sync actually lands. Before the state is
+  // persisted, so a failure here leaves the pages in the diff to retry.
+  await target.commit();
 
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
   host.notify("info", host.localize("VAULTS.Sync.Done", { added, modified, removed, seconds }));

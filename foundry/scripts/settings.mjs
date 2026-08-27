@@ -28,6 +28,11 @@ export const VAULT_DEFAULTS = {
   // endpoints). Refreshed from the manifest's auth.required flag on every
   // sync, so a public→private flip self-corrects on the next manifest fetch.
   public: false,
+  // How the vault asked to be packaged: "compendium" for browsable packs, or
+  // "adventure" for one importable Adventure document. Refreshed from the
+  // manifest each sync, like `public`. A deploy that predates the setting
+  // advertises nothing and reads as "compendium".
+  foundryPackage: "compendium",
   // Role order (lowest → highest) reported by the deploy's manifest. Cached
   // on the vault so the per-vault settings dialog can populate the dmRole
   // dropdown without re-fetching the manifest.

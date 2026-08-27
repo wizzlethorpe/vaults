@@ -30,10 +30,14 @@
 // it. `locked` defaults to false for world packs, so writes need no setup.
 
 import { PACK_KEY } from "./foundry-base.mjs";
+import { uuidPrefix } from "./target.mjs";
 
 /** The pack name (without the "world." scope) a vault's `docName` lands in. */
 export function packName(vault, docName) {
-  const key = PACK_KEY[docName];
+  // Not in PACK_KEY: an Adventure is a container for the others, never
+  // something a page produces, and the table is shared with the module
+  // compiler which only knows about page output.
+  const key = docName === "Adventure" ? "adventure" : PACK_KEY[docName];
   if (!key) return null;
   // vault.id is already a slug ("seylon-wiki-71c13dcb"), so it needs no
   // further munging to be a legal pack name.
@@ -56,13 +60,13 @@ export function packCollection(vault, docName) {
  * disagreeing and inbound links silently dying.
  */
 export function journalPageUuid(vault, entryId, pageId) {
-  return `Compendium.${packCollection(vault, "JournalEntry")}`
-    + `.JournalEntry.${entryId}.JournalEntryPage.${pageId}`;
+  return uuidPrefix(vault, "JournalEntry")
+    + `JournalEntry.${entryId}.JournalEntryPage.${pageId}`;
 }
 
 /** The UUID of the document a page instantiates, inside that type's pack. */
 export function instanceUuid(vault, docName, id) {
-  return `Compendium.${packCollection(vault, docName)}.${docName}.${id}`;
+  return uuidPrefix(vault, docName) + `${docName}.${id}`;
 }
 
 /** The vault's pack for `docName` if it exists, else null. Never creates. */
@@ -73,7 +77,7 @@ export function getPack(vault, docName) {
 
 /** Every pack belonging to `vault` that currently exists. */
 export function vaultPacks(vault) {
-  return Object.keys(PACK_KEY)
+  return [...Object.keys(PACK_KEY), "Adventure"]
     .map((docName) => getPack(vault, docName))
     .filter((pack) => pack !== null);
 }
@@ -203,6 +207,7 @@ async function ensurePackFolder(vault) {
 // Sidebar labels. The pack key is a slug and the document name is jargon;
 // neither reads well as the thing a GM scans for in a sidebar.
 const LABEL = {
+  Adventure: "Adventure",
   Actor: "Actors",
   Item: "Items",
   Scene: "Scenes",
