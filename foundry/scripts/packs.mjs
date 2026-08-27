@@ -30,7 +30,6 @@
 // it. `locked` defaults to false for world packs, so writes need no setup.
 
 import { PACK_KEY } from "./foundry-base.mjs";
-import { uuidPrefix } from "./target.mjs";
 
 /** The pack name (without the "world." scope) a vault's `docName` lands in. */
 export function packName(vault, docName) {
@@ -48,6 +47,53 @@ export function packName(vault, docName) {
 export function packCollection(vault, docName) {
   const name = packName(vault, docName);
   return name ? `world.${name}` : null;
+}
+
+/** Whether this vault packages itself as one Adventure rather than as packs. */
+export function isAdventure(vault) {
+  return vault.foundryPackage === "adventure";
+}
+
+/**
+ * The UUID prefix a link to one of this vault's documents needs.
+ *
+ * An adventure's documents are addressed as *world* documents, because that is
+ * what they become: Foundry's Adventure import creates with keepId, so a world
+ * UUID resolves to the copy the GM imported. A compendium UUID would keep
+ * naming the pack copy, leaving every link in an imported adventure pointing
+ * back out of the world at a second copy of the thing beside it.
+ */
+export function uuidPrefix(vault, docName) {
+  return isAdventure(vault) ? "" : `Compendium.${packCollection(vault, docName)}.`;
+}
+
+/**
+ * Delete the packs a vault no longer uses, after a change of packaging.
+ *
+ * Switching between the two shapes otherwise leaves the old packs beside the
+ * new ones with nothing to say which is live, and the stale copy never updates
+ * again. Safe to do without asking: these packs are named for the vault, only
+ * a sync writes to them, and this runs after the sync that already rebuilt
+ * their contents in the new shape.
+ */
+export async function pruneStalePacks(vault) {
+  const wanted = isAdventure(vault)
+    ? new Set(["Adventure"])
+    : new Set(Object.keys(PACK_KEY));
+  for (const docName of [...Object.keys(PACK_KEY), "Adventure"]) {
+    if (wanted.has(docName)) continue;
+    const pack = getPack(vault, docName);
+    if (!pack) continue;
+    try {
+      await pack.deleteCompendium();
+      console.info(
+        `Vaults | ${vault.label}: removed ${pack.collection}, left over from `
+        + `the previous foundry_package setting.`,
+      );
+    } catch (err) {
+      console.warn(`Vaults | could not remove the stale pack ${pack.collection}:`, err);
+    }
+  }
 }
 
 /**

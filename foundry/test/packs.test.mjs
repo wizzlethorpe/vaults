@@ -161,3 +161,63 @@ test("a public vault's packs are left browsable", async () => {
     assert.ok(!("PLAYER" in configured.ownership));
   } finally { globalThis.game = prev; }
 });
+
+// ── switching packaging ─────────────────────────────────────────────────────
+
+/** A world whose packs are `names`; records which get deleted. */
+function withPacks(names) {
+  const deleted = [];
+  const packs = new Map(names.map((n) => [`world.${n}`, {
+    collection: `world.${n}`,
+    deleteCompendium: async () => { deleted.push(n); },
+  }]));
+  globalThis.game = { packs };
+  return deleted;
+}
+
+test("switching to adventure removes the per-type packs", async () => {
+  // Otherwise both shapes sit in the sidebar with nothing to say which is
+  // live, and the stale one never updates again.
+  const { pruneStalePacks } = await import("../scripts/packs.mjs");
+  const prev = globalThis.game;
+  const deleted = withPacks([
+    `${VAULT.id}-journal`, `${VAULT.id}-actors`, `${VAULT.id}-adventure`,
+  ]);
+  try {
+    await pruneStalePacks({ ...VAULT, foundryPackage: "adventure" });
+    assert.deepEqual(deleted.sort(), [`${VAULT.id}-actors`, `${VAULT.id}-journal`]);
+  } finally { globalThis.game = prev; }
+});
+
+test("switching to compendium removes the adventure pack", async () => {
+  const { pruneStalePacks } = await import("../scripts/packs.mjs");
+  const prev = globalThis.game;
+  const deleted = withPacks([`${VAULT.id}-journal`, `${VAULT.id}-adventure`]);
+  try {
+    await pruneStalePacks({ ...VAULT, foundryPackage: "compendium" });
+    assert.deepEqual(deleted, [`${VAULT.id}-adventure`]);
+  } finally { globalThis.game = prev; }
+});
+
+test("another vault's packs are never touched", async () => {
+  // They are named by vault id, and this runs on every sync.
+  const { pruneStalePacks } = await import("../scripts/packs.mjs");
+  const prev = globalThis.game;
+  const deleted = withPacks([
+    `${VAULT.id}-adventure`, "southaven-91b2cc04-journal", "southaven-91b2cc04-adventure",
+  ]);
+  try {
+    await pruneStalePacks({ ...VAULT, foundryPackage: "adventure" });
+    assert.deepEqual(deleted, []);
+  } finally { globalThis.game = prev; }
+});
+
+test("a steady-state sync deletes nothing", async () => {
+  const { pruneStalePacks } = await import("../scripts/packs.mjs");
+  const prev = globalThis.game;
+  const deleted = withPacks([`${VAULT.id}-adventure`]);
+  try {
+    await pruneStalePacks({ ...VAULT, foundryPackage: "adventure" });
+    assert.deepEqual(deleted, []);
+  } finally { globalThis.game = prev; }
+});

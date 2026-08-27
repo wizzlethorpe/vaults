@@ -22,13 +22,9 @@
 // document data and `put` takes the whole thing. An Adventure holds data, not
 // documents, so anything richer would only be implementable on one side.
 
-import { ensurePack, getPack, packCollection } from "./packs.mjs";
+import { ensurePack, getPack, isAdventure } from "./packs.mjs";
 import { adventureId } from "./ids.mjs";
 import { MODULE_ID } from "./settings.mjs";
-
-export function isAdventure(vault) {
-  return vault.foundryPackage === "adventure";
-}
 
 /** Open the sync target for a vault. Creates packs as needed. */
 export async function openTarget(vault) {
@@ -201,11 +197,4 @@ async function openAdventure(vault) {
       }
     },
   };
-}
-
-/** The UUID prefix a link to one of this vault's documents needs. */
-export function uuidPrefix(vault, docName) {
-  // An adventure's documents are addressed as world documents, because that is
-  // what they become. See the note at the top of this file.
-  return isAdventure(vault) ? "" : `Compendium.${packCollection(vault, docName)}.`;
 }

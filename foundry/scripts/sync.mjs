@@ -18,6 +18,7 @@ import { applyInstance, deleteInstance, findMissingDocuments, missingBasePackage
 import { instanceId } from "./ids.mjs";
 import { tokenInfo } from "./auth.mjs";
 import { openTarget } from "./target.mjs";
+import { pruneStalePacks } from "./packs.mjs";
 
 // `foundry.base` may name a world document another page instantiates
 // (`base: Actor.<id>`), which lets one page reskin another's statblock.
@@ -458,6 +459,9 @@ async function runSync(host, vault, { forceFull = false } = {}) {
   // memory; this is where the sync actually lands. Before the state is
   // persisted, so a failure here leaves the pages in the diff to retry.
   await target.commit();
+
+  // After the commit, so the new shape exists before the old one goes.
+  await pruneStalePacks(vault);
 
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
   host.notify("info", host.localize("VAULTS.Sync.Done", { added, modified, removed, seconds }));

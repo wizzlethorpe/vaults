@@ -9,7 +9,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { openTarget, isAdventure, uuidPrefix } from "../scripts/target.mjs";
+import { openTarget } from "../scripts/target.mjs";
+import { isAdventure, uuidPrefix } from "../scripts/packs.mjs";
 
 const VAULT = { id: "marlo-4ec31e8c", label: "Marlo Mystery", url: "https://v.example",
                 foundryPackage: "adventure" };
