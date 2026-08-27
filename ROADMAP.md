@@ -359,6 +359,29 @@ author asked for nothing, so nothing should change under the GM.
 
 ### Open questions
 
+- **A vault targets one Foundry generation.** Not built, and not needed while
+  v14 is the only target, but the decision is made: supporting several means
+  deploying a separate copy of the vault per generation, not branching inside
+  pages.
+
+  This separates two things the Moulinette work conflated. A `foundry.base`
+  priority list is for **content availability** — does this reader own that
+  pack, is that module installed. We ended up also using it for **version
+  compatibility**, and those are independent axes: every rung became a guess
+  about two variables at once, and the combinations multiply past what anyone
+  could test or a reader could reason about.
+
+  Declared instead, probably as a `foundry_version` setting, it gives one
+  honest answer up front rather than a scattered map to puzzle over. The
+  generation-skew warning already built then has a better question to ask —
+  "does this pack match what the vault was built for" rather than "does it
+  match this world" — and priority lists go back to meaning one thing.
+
+  It also matches how the content is actually published: creators re-export
+  per generation as a new pack, so a vault built against their v14 catalogue
+  is a different vault from one built against their v13 catalogue, and
+  pretending otherwise is what makes a single page try to serve both.
+
 - **Composing a scene from Moulinette *assets* is the stronger pattern, not
   the fallback.** The two rungs age differently. A document inherits the
   creator's walls, lights and ambience but is coupled to a Foundry generation,
