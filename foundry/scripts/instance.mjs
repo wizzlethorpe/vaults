@@ -249,16 +249,22 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
   // Scene thumbnails: V14's Scene._preCreate already attempts this, but it
   // only fires when `canvas.ready && initialLevel.background.src` — neither
   // is reliably true mid-sync (no scene is being viewed; the cache file
-  // might still be settling). An explicit post-create pass is idempotent
-  // and means the scene's sidebar tile actually shows the map.
-  if (docName === "Scene") {
-    if (!created.thumb) {
-      try {
-        const { thumb } = await created.createThumbnail();
-        if (thumb) await created.update({ thumb });
-      } catch (err) {
-        console.warn(`Vaults | scene thumbnail generation failed for ${vaultPath}:`, err);
-      }
+  // might still be settling), and a Foundry 13 export has no level background
+  // at all because its map is a tile. An explicit post-create pass is
+  // idempotent and means the scene's sidebar tile actually shows the map.
+  //
+  // A thumb carried in by a template does not count as having one. It names a
+  // file in *that* pack's layout rather than ours, and it depicts the template
+  // rather than the scene we built from it — every `foundry.data` override is
+  // absent from it. Regenerating is cheap and always depicts what the reader
+  // actually got.
+  if (docName === "Scene" && (!created.thumb || resolved.from)) {
+    try {
+      const { thumb } = await created.createThumbnail();
+      if (thumb) await created.update({ thumb });
+      else console.warn(`Vaults | scene thumbnail came back empty for ${vaultPath}`);
+    } catch (err) {
+      console.warn(`Vaults | scene thumbnail generation failed for ${vaultPath}:`, err);
     }
   }
 
