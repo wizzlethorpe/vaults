@@ -145,7 +145,7 @@ test("an already-restricted pack is not rewritten every sync", async () => {
   } finally { globalThis.game = prev; }
 });
 
-test("a public vault's packs are left browsable", async () => {
+test("a public vault's packs are browsable", async () => {
   // Nothing in a public vault is withheld from anyone on the wiki, so there is
   // nothing to protect here and a GM may well want players browsing it.
   const { ensurePack } = await import("../scripts/packs.mjs");
@@ -158,7 +158,42 @@ test("a public vault's packs are left browsable", async () => {
   globalThis.game = { packs: new Map([[pack.collection, pack]]) };
   try {
     await ensurePack({ ...VAULT, public: true }, "JournalEntry");
-    assert.ok(!("PLAYER" in configured.ownership));
+    assert.equal(configured.ownership.PLAYER, "OBSERVER");
+  } finally { globalThis.game = prev; }
+});
+
+test("a vault that becomes public reopens packs that were shut", async () => {
+  // Stated as a state, not a delta: the check asks whether each key it wants
+  // already matches, so a branch naming fewer keys compares equal against
+  // whatever the other branch left behind and nothing is reconfigured.
+  const { ensurePack } = await import("../scripts/packs.mjs");
+  const prev = globalThis.game;
+  let configured = null;
+  const pack = {
+    collection: `world.${VAULT.id}-journal`, locked: false,
+    config: { ownership: { GAMEMASTER: "OWNER", ASSISTANT: "OWNER", TRUSTED: "NONE", PLAYER: "NONE" } },
+    configure: async (c) => { configured = c; },
+  };
+  globalThis.game = { packs: new Map([[pack.collection, pack]]) };
+  try {
+    await ensurePack({ ...VAULT, public: true }, "JournalEntry");
+    assert.equal(configured?.ownership.PLAYER, "OBSERVER");
+  } finally { globalThis.game = prev; }
+});
+
+test("a vault that stops being public shuts packs that were open", async () => {
+  const { ensurePack } = await import("../scripts/packs.mjs");
+  const prev = globalThis.game;
+  let configured = null;
+  const pack = {
+    collection: `world.${VAULT.id}-journal`, locked: false,
+    config: { ownership: { GAMEMASTER: "OWNER", ASSISTANT: "OWNER", TRUSTED: "OBSERVER", PLAYER: "OBSERVER" } },
+    configure: async (c) => { configured = c; },
+  };
+  globalThis.game = { packs: new Map([[pack.collection, pack]]) };
+  try {
+    await ensurePack({ ...VAULT, public: false }, "JournalEntry");
+    assert.equal(configured?.ownership.PLAYER, "NONE");
   } finally { globalThis.game = prev; }
 });
 

@@ -185,8 +185,16 @@ export async function ensurePack(vault, docName) {
  * to INHERIT so the intent survives a later change to the PLAYER entry.
  */
 function ownershipFor(vault) {
-  if (vault.public) return { GAMEMASTER: "OWNER", ASSISTANT: "OWNER" };
-  return { GAMEMASTER: "OWNER", ASSISTANT: "OWNER", TRUSTED: "NONE", PLAYER: "NONE" };
+  // Every role named in both branches, not just the ones that matter for one
+  // of them. The comparison below asks whether each key it wants already
+  // matches, so a branch that omits PLAYER compares equal against packs still
+  // carrying PLAYER: NONE — and a vault that went from gated to public kept
+  // packs its players could no longer open. (The dangerous direction was
+  // always caught: going gated names PLAYER: NONE, which mismatches OBSERVER.)
+  const base = { GAMEMASTER: "OWNER", ASSISTANT: "OWNER" };
+  return vault.public
+    ? { ...base, TRUSTED: "OBSERVER", PLAYER: "OBSERVER" }
+    : { ...base, TRUSTED: "NONE", PLAYER: "NONE" };
 }
 
 /** Reassert pack visibility, and say so when it actually changed something. */

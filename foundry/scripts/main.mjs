@@ -222,7 +222,18 @@ async function handleListAction(action, vaultId, dialog) {
         // after the first sync, which is a worse first-run experience).
         // Captures `public` + `knownRoles` + the deploy's display name.
         const probe = await probeManifest(entry);
-        const patch = { public: probe.public, knownRoles: probe.knownRoles };
+        const patch = {
+          public: probe.public,
+          knownRoles: probe.knownRoles,
+          foundryPackage: probe.foundryPackage,
+        };
+        // Said here rather than left for the first sync to fail on. A vault
+        // that opted out ships no importer, so the sync would stop at a 404
+        // that reads like a broken deploy.
+        if (probe.foundryPackage === "none") {
+          ui.notifications.warn(game.i18n.format("VAULTS.Dialog.NoFoundryPackage",
+            { name: probe.name || entry.label }));
+        }
         // Prefer the deploy's vault_name over the host-derived slug so
         // "Southaven" wins over "southaven". Only applied at add-time —
         // later edits in the settings dialog are user intent and survive
@@ -298,6 +309,9 @@ async function probeManifest(vault) {
       public: m?.auth?.required === false,
       knownRoles: Array.isArray(m?.auth?.roles) ? m.auth.roles : [],
       name: typeof m?.name === "string" ? m.name.trim() : "",
+      // Absent means a deploy older than the setting, which is not the same as
+      // a vault that opted out — and the two need different advice.
+      foundryPackage: m?.foundry_package || "compendium",
     };
   } catch (err) {
     console.warn("Vaults | probe failed; assuming protected vault, no known roles:", err);

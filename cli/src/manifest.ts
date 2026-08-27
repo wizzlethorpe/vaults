@@ -77,9 +77,11 @@ export interface Manifest {
   id_scheme: typeof ID_SCHEME;
   name: string;
   /** How the Foundry module should package this vault: "compendium" for
-   *  browsable packs, "adventure" for a single importable Adventure. Absent on
-   *  deploys that predate the setting, and on vaults with no integration. */
-  foundry_package?: FoundryPackage;
+   *  browsable packs, "adventure" for a single importable Adventure, or "none"
+   *  for a vault with no Foundry integration. "none" is advertised rather than
+   *  omitted so a client can tell an opted-out vault from a deploy that
+   *  predates the setting, and say which. Absent means the latter. */
+  foundry_package: FoundryPackage;
   auth: { required: boolean; roles: string[] };
   /** Paths to handler asset bundles, when emitted. Clients fetch these
    *  instead of guessing well-known paths so future renames don't break. */
@@ -147,8 +149,7 @@ export async function buildManifest(
     cli_version: CLI_VERSION,
     id_scheme: ID_SCHEME,
     name: vaultName,
-    // Not advertised when there is no integration to configure.
-    ...(foundryPackage === "none" ? {} : { foundry_package: foundryPackage }),
+    foundry_package: foundryPackage,
     auth: { required: authRequired, roles },
     ...(Object.keys(assetBlock).length > 0 ? { assets: assetBlock } : {}),
     files,
