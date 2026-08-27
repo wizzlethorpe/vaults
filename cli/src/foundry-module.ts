@@ -31,7 +31,9 @@ import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import matter from "gray-matter";
 import { loadDataJson } from "./foundry-meta.js";
+import { loadConfig } from "./config.js";
 import { buildFolders, renderBody, type LinkEntry } from "./foundry-module-render.js";
+import { loadSettings } from "./settings.js";
 import { scanVault } from "./scan.js";
 
 const execFileAsync = promisify(execFile);
@@ -293,10 +295,12 @@ interface ModulePage {
   path: string;
   title: string;
   body: string;
+  role: string;
+  image: string;
   foundry: Record<string, unknown> | null;
 }
 
-async function scanPages(vaultPath: string): Promise<ModulePage[]> {
+async function scanPages(vaultPath: string, defaultRole: string): Promise<ModulePage[]> {
   const files = await scanVault(vaultPath);
   const pages: ModulePage[] = [];
   for (const f of files) {
@@ -308,6 +312,8 @@ async function scanPages(vaultPath: string): Promise<ModulePage[]> {
       path: f.path,
       title: typeof fm["title"] === "string" ? fm["title"] : f.path.split("/").pop()!.replace(/\.md$/i, ""),
       body: parsed.content,
+      role: typeof fm["role"] === "string" && fm["role"] ? fm["role"] : defaultRole,
+      image: typeof fm["image"] === "string" ? fm["image"] : "",
       foundry: fo && typeof fo === "object" && !Array.isArray(fo) ? fo as Record<string, unknown> : null,
     });
   }
@@ -375,6 +381,25 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
   const flags = (manifest["flags"] ?? {}) as Record<string, Record<string, unknown>>;
   const decls = ((flags["vaults"]?.["packs"] ?? flags["vfmc"]?.["packs"]) ?? []) as PackDecl[];
 
+  // Which roles may be redistributed.
+  //
+  // A module is handed to other people, so the default is the vault's lowest
+  // role and nothing else: a `role: dm` page carries content its author chose
+  // not to publish, and compiling it into a downloadable zip publishes it
+  // further than the wiki ever would. Widening is possible but has to be said
+  // out loud, in module.json, rather than being the default nobody checked.
+  const cfg = await loadConfig(opts.vaultPath, {});
+  const roles = cfg.roles.length > 0 ? cfg.roles : ["public"];
+  const settings = await loadSettings(opts.vaultPath);
+  const configuredDefault = String(settings.values.default_role ?? "");
+  const defaultRole = roles.includes(configuredDefault) ? configuredDefault : roles[0]!;
+  const declaredRoles = flags["vaults"]?.["roles"];
+  const allowedRoles = new Set(
+    Array.isArray(declaredRoles) && declaredRoles.length > 0
+      ? declaredRoles.filter((r): r is string => typeof r === "string")
+      : [roles[0]!],
+  );
+
   const cli = await findFoundryCli(opts.vaultPath);
   if (!cli) {
     console.warn(
@@ -396,8 +421,20 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
   const skipped: ModuleSkip[] = [];
   const planned: Planned[] = [];
 
-  for (const page of await scanPages(opts.vaultPath)) {
+  // Vault files by path, plus a basename key, so a cover written the Obsidian
+  // way (a bare filename) resolves the same as a full path.
+  const imageIndex = new Map<string, string>();
+  for (const f of await scanVault(opts.vaultPath)) {
+    if (!/\.(png|jpe?g|webp|gif|svg|avif)$/i.test(f.path)) continue;
+    imageIndex.set(f.path, f.path);
+    const key = `basename:${f.path.split("/").pop()!.toLowerCase()}`;
+    if (!imageIndex.has(key)) imageIndex.set(key, f.path);
+  }
+
+  const gated: string[] = [];
+  for (const page of await scanPages(opts.vaultPath, defaultRole)) {
     if (!page.foundry) continue;
+    if (!allowedRoles.has(page.role)) { gated.push(page.path); continue; }
     const block = page.foundry;
     const specs = (Array.isArray(block["base"]) ? block["base"] : [block["base"]])
       .filter((x): x is string => typeof x === "string" && x.length > 0);
@@ -426,6 +463,13 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     });
   }
 
+  if (gated.length > 0) {
+    console.log(
+      `    ${gated.length} page(s) left out: not in role(s) ${[...allowedRoles].join(", ")}.`
+      + ` A module is redistributable, so gated pages stay out unless`
+      + ` flags.vaults.roles says otherwise.`,
+    );
+  }
   if (planned.length === 0) {
     console.warn("  --module: no page produced a document this module can carry; nothing built.");
     return null;
@@ -468,7 +512,11 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     // The page's prose is the compendium entry for most types; a sidecar
     // exported from Foundry generally carries an empty description because
     // the writing lives in the vault.
-    const descPath = DESCRIPTION_PATH[p.docType];
+    // `embed: false` exists to keep an article off a document sheet — usually
+    // because the page carries DM-only material. Rendering the same body into
+    // a module's description would do exactly what the flag forbids, and into
+    // something redistributable.
+    const descPath = block["embed"] === false ? "" : DESCRIPTION_PATH[p.docType];
     if (descPath) {
       const html = renderBody(p.page.body, linkIndex);
       // Set even when empty. A page whose prose lives entirely in a handler
@@ -491,6 +539,25 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     doc["flags"] ??= {};
     doc["ownership"] ??= { default: 0 };
     doc["_stats"] ??= stats;
+
+    // The cover the wiki shows. The sync path sets a document's img from it,
+    // and a prototype token for an Actor, so a module that skipped it would
+    // hand over the same document with no picture.
+    if (p.page.image) {
+      const rel = resolveCover(p.page, imageIndex);
+      if (rel) {
+        assets.add(rel);
+        const url = `modules/${moduleId}/assets/${rel}`;
+        doc["img"] ??= url;
+        if (p.docType === "Actor") {
+          const token = (doc["prototypeToken"] ??= {}) as Record<string, unknown>;
+          const texture = (token["texture"] ??= {}) as Record<string, unknown>;
+          texture["src"] ??= url;
+        }
+      } else {
+        console.warn(`    ${p.page.path}: cover image '${p.page.image}' not found in the vault.`);
+      }
+    }
 
     if (p.docType === "RollTable") assembleRollTableResults(doc, p.id, stats);
 
@@ -548,6 +615,20 @@ function assembleRollTableResults(
   doc["formula"] ??= `1d${raw.length || 1}`;
   doc["replacement"] ??= true;
   doc["displayRoll"] ??= true;
+}
+
+/**
+ * Resolve an `image:` value to a vault-relative path.
+ *
+ * Obsidian lets a cover be a bare basename, so accept that as well as a real
+ * path, the same way the wiki's own image index does.
+ */
+function resolveCover(page: ModulePage, index: Map<string, string>): string | null {
+  const raw = page.image.replace(/^\/+/, "");
+  if (index.has(raw)) return raw;
+  const sibling = [...page.path.split("/").slice(0, -1), raw].join("/");
+  if (index.has(sibling)) return sibling;
+  return index.get(`basename:${raw.split("/").pop()!.toLowerCase()}`) ?? null;
 }
 
 /** A page with `foundry.variants` becomes one document per variant. */
