@@ -389,15 +389,26 @@ function subfolderOf(page: ModulePage, decl: PackDecl): string {
  * module.json to build from, which is how a vault opts out by not having one.
  */
 export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleResult | null> {
-  const manifestSource = join(opts.vaultPath, "module.json");
-  let manifest: Record<string, unknown>;
-  try {
-    manifest = JSON.parse(await readFile(manifestSource, "utf8")) as Record<string, unknown>;
-  } catch {
+  // The module lives wherever its manifest does. A vault that distributes
+  // through its own deploy keeps one at the root; a vault that already has a
+  // module directory it maintains by hand — lang files, styles, Babele
+  // translations — keeps one there, and the compiled packs belong beside them.
+  let manifest: Record<string, unknown> | null = null;
+  let moduleDirRel = "";
+  for (const dir of ["", "foundry"]) {
+    try {
+      manifest = JSON.parse(
+        await readFile(join(opts.vaultPath, dir, "module.json"), "utf8"),
+      ) as Record<string, unknown>;
+      moduleDirRel = dir;
+      break;
+    } catch { /* try the other location */ }
+  }
+  if (!manifest) {
     console.warn(
-      "  --module: no module.json at the vault root. Add one with at least"
-      + ' { "id", "title", "version", "compatibility" } — every other key you put'
-      + " there is preserved, only `packs` is rewritten.",
+      "  --module: no module.json at the vault root or in foundry/. Add one with"
+      + ' at least { "id", "title", "version", "compatibility" } — every other key'
+      + " you put there is preserved, only `packs` is rewritten.",
     );
     return null;
   }
@@ -539,9 +550,22 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
   // with `flags.vaults.journal: false`. That is a real case, not a
   // hypothetical: WANDS's prose is already the text of each item, so carrying
   // it a second time as an article would duplicate the whole compendium.
-  const wantsJournal = flags["vaults"]?.["journal"] !== false;
+  // `journal` is `false`, `true`, or a list of folders. The list is the case
+  // that matters: WANDS wants its Rules chapters as articles but not its
+  // Compendium pages, whose prose is already the text of each item and would
+  // otherwise ship twice.
+  const journalFlag = flags["vaults"]?.["journal"];
+  const journalFolders = Array.isArray(journalFlag)
+    ? journalFlag.filter((f): f is string => typeof f === "string")
+    : null;
+  const wantsJournal = journalFlag !== false;
+  const inJournalScope = (path: string): boolean =>
+    journalFolders === null
+      ? true
+      : journalFolders.some((f) => path === f || path.startsWith(`${f.replace(/\/+$/, "")}/`));
   if (opts.renderedDir && wantsJournal) {
     for (const page of journalPages) {
+      if (!inJournalScope(page.path)) continue;
       const html = await readRenderedBody(opts, page.path);
       if (html === null) continue;
       journalSources.push({ path: page.path, title: page.title, html });
@@ -668,7 +692,7 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     documents += entries.length;
   }
 
-  return finishModule(opts, manifest, moduleId, version, cli, byPack, assets, moulinette, skipped, documents, stats);
+  return finishModule(opts, manifest, moduleId, version, cli, byPack, assets, moulinette, skipped, documents, stats, moduleDirRel);
 }
 
 /**
@@ -776,9 +800,21 @@ async function finishModule(
   skipped: ModuleSkip[],
   documents: number,
   stats: Record<string, unknown>,
+  moduleDirRel: string,
 ): Promise<ModuleResult> {
+  // Two ways a module reaches a reader, and the manifest already says which.
+  //
+  // A manifest that names its own `download` is published elsewhere — a
+  // GitHub release, usually — so the compiled packs belong beside it, in the
+  // module directory its own release tooling zips, and those URLs are the
+  // author's to manage. Rewriting them would break the versioned-URL dance a
+  // release script does at tag time.
+  //
+  // A manifest with no `download` is served by this vault, so it gets a zip in
+  // the deploy and a relative URL pointing at it.
+  const inPlace = typeof manifest["download"] === "string" && manifest["download"].length > 0;
   const staging = await mkdtemp(join(tmpdir(), "vaults-module-"));
-  const moduleDir = join(staging, moduleId);
+  const moduleDir = inPlace ? join(opts.vaultPath, moduleDirRel) : join(staging, moduleId);
   const jsonDir = join(staging, "_json");
   await mkdir(join(moduleDir, "packs"), { recursive: true });
 
@@ -831,21 +867,27 @@ async function finishModule(
   // Own only `packs`, the way vfmc does: everything else the author put in
   // module.json is theirs and survives.
   manifest["packs"] = packs;
-  const outDir = join(opts.vaultPath, opts.outputDir);
-  await mkdir(outDir, { recursive: true });
-  const manifestPath = join(outDir, "module.json");
   const zipName = `${moduleId}-${version}.zip`;
+  let manifestPath: string;
+  let zipPath = "";
 
-  // Relative, so it resolves on whichever host serves the vault and can be
-  // signed for a gated install. An absolute URL cannot be either.
-  manifest["download"] = `/${opts.outputDir}/${zipName}`;
-  manifest["manifest"] = `/${opts.outputDir}/module.json`;
-  await writeFile(join(moduleDir, "module.json"), JSON.stringify(manifest, null, 2) + "\n");
-  await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
-
-  const zipPath = join(outDir, zipName);
-  await rm(zipPath, { force: true });
-  await execFileAsync("zip", ["-qr", resolve(zipPath), moduleId], { cwd: staging });
+  if (inPlace) {
+    manifestPath = join(moduleDir, "module.json");
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  } else {
+    const outDir = join(opts.vaultPath, opts.outputDir);
+    await mkdir(outDir, { recursive: true });
+    manifestPath = join(outDir, "module.json");
+    // Relative, so it resolves on whichever host serves the vault and can be
+    // signed for a gated install. An absolute URL cannot be either.
+    manifest["download"] = `/${opts.outputDir}/${zipName}`;
+    manifest["manifest"] = `/${opts.outputDir}/module.json`;
+    await writeFile(join(moduleDir, "module.json"), JSON.stringify(manifest, null, 2) + "\n");
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+    zipPath = join(opts.vaultPath, opts.outputDir, zipName);
+    await rm(zipPath, { force: true });
+    await execFileAsync("zip", ["-qr", resolve(zipPath), moduleId], { cwd: staging });
+  }
   await rm(staging, { recursive: true, force: true });
 
   if (moulinette.size > 0) {

@@ -165,3 +165,23 @@ describe("journal HTML", () => {
     assert.deepEqual([...assets], ["attachments/map.webp"]);
   });
 });
+
+// --- where a module goes, and what it may rewrite --------------------------
+//
+// Two ways a module reaches a reader, and the manifest already says which. One
+// that names its own `download` is published elsewhere — a GitHub release —
+// so its packs belong beside it and those URLs are the author's. One with no
+// download is served by the vault, so it gets a zip and a relative URL.
+
+describe("journal scoping", () => {
+  it("takes a list of folders, not just on or off", () => {
+    // The case that matters: WANDS wants its Rules chapters as articles but
+    // not its Compendium pages, whose prose is already each item's text.
+    const inScope = (folders: string[] | null, path: string): boolean =>
+      folders === null ? true : folders.some((f) => path === f || path.startsWith(`${f}/`));
+    assert.equal(inScope(["Rules"], "Rules/Chapter 1 - Houses.md"), true);
+    assert.equal(inScope(["Rules"], "Compendium/Spells/Accio.md"), false);
+    assert.equal(inScope(["Rules"], "Rulesmith/x.md"), false, "prefix must be a whole segment");
+    assert.equal(inScope(null, "anything.md"), true);
+  });
+});
