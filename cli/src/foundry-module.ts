@@ -39,6 +39,7 @@ import {
   type JournalSource, type JournalTarget,
 } from "./foundry-module-journal.js";
 import { loadSettings } from "./settings.js";
+import type { FoundryPackage } from "./settings.js";
 import { scanVault } from "./scan.js";
 
 const execFileAsync = promisify(execFile);
@@ -130,6 +131,13 @@ const PACK_LABEL: Record<string, string> = {
 };
 
 /** LevelDB collection prefix per document type. */
+// Adventure schema field per document type. `journal`, not `journals`.
+// Mirrors foundry/scripts/target.mjs; the Foundry-side copy is canonical.
+const ADVENTURE_FIELD: Record<string, string> = {
+  Actor: "actors", Item: "items", Scene: "scenes", JournalEntry: "journal",
+  RollTable: "tables", Macro: "macros", Cards: "cards", Playlist: "playlists",
+};
+
 export const PACK_KEY: Record<string, string> = {
   Actor: "actors", Item: "items", Scene: "scenes", JournalEntry: "journal",
   RollTable: "tables", Macro: "macros", Cards: "cards", Playlist: "playlists",
@@ -317,6 +325,15 @@ export interface ModuleOptions {
    * carries documents only.
    */
   renderedDir?: string;
+  /**
+   * How the vault asked to be packaged, from settings.md. "adventure" emits a
+   * single Adventure document, whose links are world UUIDs because Foundry's
+   * Adventure import creates with keepId; "compendium" emits browsable packs
+   * whose links name those packs. Reading the same setting the sync client
+   * reads is what keeps an installed module and a synced vault producing the
+   * same documents.
+   */
+  foundryPackage: FoundryPackage;
   /** Which variant subdirectory the rendered bodies live in. */
   renderedRole?: string;
 }
@@ -542,9 +559,17 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
   // Every compiled page, by name, so a wikilink between them becomes a real
   // @UUID cross-reference rather than losing its link and keeping its text.
   // Built before rendering, since a page can link to one compiled after it.
+  const adventure = opts.foundryPackage === "adventure";
+  // An adventure's documents are addressed as world documents, because that is
+  // what import turns them into. A compendium UUID would keep naming the pack
+  // copy, so every link in an imported adventure would lead back out of the
+  // world to a second copy of the thing beside it.
+  const uuidFor = (packName: string, rest: string) =>
+    adventure ? rest : `Compendium.${moduleId}.${packName}.${rest}`;
+
   const linkIndex = new Map<string, LinkEntry>();
   for (const p of planned) {
-    const uuid = `Compendium.${moduleId}.${p.decl.name}.${p.docType}.${p.id}`;
+    const uuid = uuidFor(p.decl.name, `${p.docType}.${p.id}`);
     linkIndex.set(p.page.title.toLowerCase(), { uuid, name: p.page.title });
     const basename = p.page.path.split("/").pop()!.replace(/\.md$/i, "");
     if (!linkIndex.has(basename.toLowerCase())) linkIndex.set(basename.toLowerCase(), { uuid, name: basename });
@@ -578,7 +603,7 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
       const eId = journalEntryId(moduleId, page.path);
       const pId = journalPageId(moduleId, page.path);
       journalTargets.set(page.path, {
-        uuid: `Compendium.${moduleId}.${journalPackName}.JournalEntry.${eId}.JournalEntryPage.${pId}`,
+        uuid: uuidFor(journalPackName, `JournalEntry.${eId}.JournalEntryPage.${pId}`),
         entryId: eId, pageId: pId,
       });
       // A link is written against the page's URL, which has no .md on it.
@@ -772,6 +797,19 @@ function resolveCover(page: ModulePage, index: Map<string, string>): string | nu
 }
 
 /** A page with `foundry.variants` becomes one document per variant. */
+/** A deep copy with every `_key` removed. */
+function stripKeys<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(stripKeys) as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k !== "_key") out[k] = stripKeys(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 function expandVariants(
   base: Record<string, unknown>, block: Record<string, unknown>, prefix: string,
 ): Array<Record<string, unknown>> {
@@ -826,6 +864,61 @@ async function finishModule(
 
   const packs: Array<Record<string, unknown>> = [];
   const packNames: string[] = [];
+
+  // One Adventure holding everything, rather than a pack per document type.
+  // The buckets are still built the same way — the folders and documents an
+  // adventure carries are the ones a compendium would have — they are just
+  // gathered into a single document instead of written to separate packs.
+  if (opts.foundryPackage === "adventure") {
+    const packName = `${moduleId}-adventure`;
+    const dir = join(jsonDir, packName);
+    await mkdir(dir, { recursive: true });
+    const advId = derivedId(`vaults-module-adventure:${moduleId}`);
+    const adventure: Record<string, unknown> = {
+      _id: advId,
+      // The LevelDB row key. A document without one fails the whole pack.
+      _key: `!adventures!${advId}`,
+      name: (manifest["title"] as string) ?? moduleId,
+      caption: (manifest["description"] as string) ?? "",
+      description: (manifest["description"] as string) ?? "",
+      folders: [],
+      flags: {},
+    };
+    for (const field of Object.values(ADVENTURE_FIELD)) adventure[field] = [];
+    for (const [packName2, bucket] of byPack) {
+      const field = ADVENTURE_FIELD[bucket.decl.type];
+      if (!field) {
+        skipped.push({ path: packName2, reason: `an Adventure cannot hold a ${bucket.decl.type}` });
+        continue;
+      }
+      const { folderDocs, leafFor } = buildFolders(
+        bucket.entries, packName2, bucket.decl.type, stats,
+      );
+      for (const entry of bucket.entries) entry.key["folder"] = leafFor.get(entry.key) ?? null;
+      // `_key` addresses a row in a pack. Inside an adventure these are data
+      // in a field, not rows, so the keys the compendium layout stamped on
+      // them mean nothing here and are stripped rather than shipped.
+      (adventure["folders"] as unknown[]).push(...folderDocs.map(stripKeys));
+      (adventure[field] as unknown[]).push(...bucket.docs.map(stripKeys));
+    }
+    await writeFile(join(dir, `${adventure["_id"] as string}.json`),
+      JSON.stringify(adventure, null, 2));
+    await execFileAsync(process.execPath, [
+      cli, "package", "pack", "-n", packName, "--type", "Module", "--id", moduleId,
+      "--in", dir, "--out", join(moduleDir, "packs"),
+    ]);
+    packs.push({
+      name: packName,
+      label: `${manifest["title"] ?? moduleId}`,
+      path: `packs/${packName}`,
+      type: "Adventure",
+      ...(typeof manifest["system"] === "string" ? { system: manifest["system"] } : {}),
+    });
+    packNames.push(packName);
+    console.log(`    ${packName}: 1 adventure holding ${documents} document(s)`);
+    byPack.clear();
+  }
+
   for (const [packName, bucket] of byPack) {
     const dir = join(jsonDir, packName);
     await mkdir(dir, { recursive: true });

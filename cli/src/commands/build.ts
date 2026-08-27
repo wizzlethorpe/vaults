@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { buildFoundryModule } from "../foundry-module.js";
+import { loadSettings } from "../settings.js";
 import { loadConfig } from "../config.js";
 import { buildSite } from "../build.js";
 import { defaultOutputDir, requireInitialisedVault } from "../paths.js";
@@ -31,6 +32,7 @@ export async function build(vaultPath: string, opts: BuildOptions): Promise<void
       outputDir: "downloads",
       renderedDir: outputDir,
       renderedRole: await lowestRole(vaultPath),
+      foundryPackage: (await loadSettings(vaultPath)).values.foundry_package,
     });
     if (built) {
       // An in-place build (the author's module.json already names a download
