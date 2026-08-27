@@ -59,6 +59,23 @@ const DIRECT_CONCURRENCY = 8;
  * (single-role builds don't deploy /_batch). Returns the same Map shape
  * either way so callers don't care which path ran.
  */
+/**
+ * The /_batch URL for one role's rendering.
+ *
+ * Exported so this is testable, because it was wrong in a way nothing caught:
+ * built by appending `?role=…` to url(), which has already put the bearer in
+ * the query. The second "?" folded the role into the *token's* value, so the
+ * token failed to verify and the request quietly dropped to the lowest role,
+ * while `role` was never a parameter at all. Every page above that tier came
+ * back missing, with no 403 and no error — the guard never saw a role to
+ * reject, and a missing file is not an error to the batch endpoint.
+ */
+export function batchEndpoint(vault, role) {
+  const endpoint = new URL(url(vault, "/_batch"));
+  if (role) endpoint.searchParams.set("role", role);
+  return endpoint;
+}
+
 export async function fetchSourceBatch(vault, paths, role) {
   if (paths.length === 0) return new Map();
   if (vault.public) return fetchSourceDirect(vault, paths);
@@ -67,7 +84,12 @@ export async function fetchSourceBatch(vault, paths, role) {
   // matching its *own* role, not the syncing user's: a page marked readable by
   // players must hold the players' version of itself, and a base view filtered
   // by role renders differently for each tier.
-  const endpoint = url(vault, "/_batch") + (role ? `?role=${encodeURIComponent(role)}` : "");
+  // Set as a search param rather than appended as a string: url() has already
+  // put the bearer in the query, so a second "?" made the role part of the
+  // *token's* value. The token then failed to verify and the request fell back
+  // to the lowest role, while `role` was never a parameter at all — so every
+  // page above that tier came back missing and nothing reported an error.
+  const endpoint = batchEndpoint(vault, role);
   const chunks = [];
   for (let i = 0; i < paths.length; i += BATCH_SIZE) chunks.push(paths.slice(i, i + BATCH_SIZE));
 
@@ -76,7 +98,7 @@ export async function fetchSourceBatch(vault, paths, role) {
   const workers = Array.from({ length: Math.min(BATCH_CONCURRENCY, chunks.length) }, async () => {
     while (next < chunks.length) {
       const idx = next++;
-      const res = await fetch(endpoint, {
+      const res = await fetch(endpoint.toString(), {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: chunks[idx].join("\n"),

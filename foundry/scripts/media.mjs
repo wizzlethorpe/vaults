@@ -29,11 +29,16 @@ const BATCH_CONCURRENCY = 4;
  *      batch if we sent them
  *    - per-page hover-preview JSON (`.preview.json`); the wiki uses these,
  *      but Foundry never references them, so caching them is wasted bytes
+ *    - `module.json`, the manifest `vaults build --module` writes next to the
+ *      module zip. It is there to be installed from, not read from a page, and
+ *      Foundry refuses to overwrite a non-media file — so on the second sync it
+ *      failed the upload and reported an image error every time
  */
-function isCacheable(path) {
+export function isCacheable(path) {
   if (!CACHED_EXT_RE.test(path)) return false;
   if (path.startsWith("_") || path.includes("/_")) return false;
   if (/\.preview\.json$/i.test(path)) return false;
+  if (/(^|\/)module\.json$/i.test(path)) return false;
   return true;
 }
 
