@@ -95,6 +95,45 @@ const DESCRIPTION_FIELDS = {
  *   Callers count these; every non-ok path also warns with specifics.
  */
 /**
+ * The background image a scene shows, across both shapes the field takes.
+ *
+ * v14 moved it onto the Level; `background.src` at the top level is the v13
+ * form, which Scene#_preCreate migrates. A vault can supply either, since
+ * `foundry.data` is passed through and hand-shared scene JSON is often older.
+ */
+export function sceneBackgroundSrc(data) {
+  const levels = Array.isArray(data?.levels) ? data.levels : [];
+  const initial = levels.find((l) => l._id === data.initialLevel) ?? levels[0];
+  return initial?.background?.src || data?.background?.src || null;
+}
+
+/**
+ * Give a scene the thumbnail Foundry would have made for it.
+ *
+ * Scene#_preCreate composites one on create, but only for a real
+ * `Scene.create()`. An adventure never makes one — its scenes are data in an
+ * array — so they arrive with no thumb and the sheet shows a blank tile where
+ * every other document has a picture.
+ *
+ * Best-effort by design: this needs a live canvas and the image to load, and a
+ * scene that renders perfectly well is not worth failing a sync over.
+ */
+async function attachSceneThumb(data, docName, vaultPath) {
+  if (docName !== "Scene" || data.thumb) return;
+  const src = sceneBackgroundSrc(data);
+  if (!src) return;
+  try {
+    // The dimensions Scene#createThumbnail defaults to, so these look like
+    // every other scene thumbnail in the sidebar.
+    const { thumb } = await foundry.helpers.media.ImageHelper.createThumbnail(
+      src, { width: 300, height: 100 });
+    if (thumb) data.thumb = thumb;
+  } catch (err) {
+    console.warn(`Vaults | could not make a scene thumbnail for ${vaultPath}:`, err);
+  }
+}
+
+/**
  * Whether a page's document should carry the automatic Map Note.
  *
  * Only a Scene has anywhere to put one, and `journal: false` deletes the page's
@@ -216,7 +255,14 @@ export async function applyInstance(target, vault, vaultPath, meta, { forceFull 
     // the way the vault says" button, and does move it.
     if (!forceFull) delete updatePatch.folder;
     try {
-      await target.put(docName, deepMerge(structuredClone(existing), updatePatch));
+      const merged = deepMerge(structuredClone(existing), updatePatch);
+      // Only when there is nothing to show or the map itself moved: compositing
+      // a thumbnail loads the full-size image, and a scene's background is the
+      // largest file a vault ships.
+      if (sceneBackgroundSrc(merged) !== sceneBackgroundSrc(existing) || !existing.thumb) {
+        await attachSceneThumb(merged, docName, vaultPath);
+      }
+      await target.put(docName, merged);
     } catch (err) {
       console.warn(`Vaults | foundry.base update failed for ${vaultPath}:`, err);
       return { ok: false, reason: "update-failed" };
@@ -248,6 +294,7 @@ export async function applyInstance(target, vault, vaultPath, meta, { forceFull 
   }
 
   try {
+    await attachSceneThumb(baseData, docName, vaultPath);
     await target.put(docName, baseData);
   } catch (err) {
     console.warn(`Vaults | foundry.base create failed for ${vaultPath}:`, err);

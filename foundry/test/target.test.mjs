@@ -137,3 +137,24 @@ test("a document type an Adventure cannot hold is refused, not dropped", async (
     await assert.rejects(() => t.put("ActiveEffect", { _id: "x" }), /cannot hold/);
   });
 });
+
+// ── scene thumbnails ────────────────────────────────────────────────────────
+
+test("a scene's background is found in either shape of the field", async () => {
+  // v14 moved it onto the Level. A vault can supply either, because
+  // foundry.data is passed through and shared scene JSON is often older, and
+  // reading only one shape means no thumbnail for half of them.
+  const { sceneBackgroundSrc } = await import("../scripts/instance.mjs");
+
+  assert.equal(sceneBackgroundSrc({ background: { src: "old.webp" } }), "old.webp");
+  assert.equal(sceneBackgroundSrc({ levels: [{ _id: "l1", background: { src: "new.webp" } }] }),
+    "new.webp");
+  // A multi-level scene is thumbnailed from the level it opens on.
+  assert.equal(sceneBackgroundSrc({
+    initialLevel: "l2",
+    levels: [{ _id: "l1", background: { src: "ground.webp" } },
+             { _id: "l2", background: { src: "roof.webp" } }],
+  }), "roof.webp");
+  assert.equal(sceneBackgroundSrc({}), null);
+  assert.equal(sceneBackgroundSrc({ levels: [] }), null);
+});
