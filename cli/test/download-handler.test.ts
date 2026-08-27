@@ -55,23 +55,13 @@ describe("download rendering", () => {
     assert.match(render("file: releases/my module.zip"), /href="\/releases\/my%20module\.zip"/);
   });
 
-  it("offers the install-link button only when a manifest is named", () => {
-    assert.doesNotMatch(render("file: a.zip"), /vaults-download-manifest/);
-    const html = render("file: a.zip\nmanifest: releases/module.json");
-    assert.match(html, /data-manifest="\/releases\/module\.json"/);
-  });
 
-  it("warns that Foundry cannot check for updates through the link", () => {
-    // The link expires, so Foundry's stored manifest URL stops resolving.
-    // Saying so on the page is cheaper than the confused bug report.
-    assert.match(render("file: a.zip\nmanifest: m.json"), /cannot check for updates/);
-  });
 });
 
 describe("download staging", () => {
-  it("names both the file and its manifest for staging", () => {
-    const paths = downloadFilePaths("```download\nfile: releases/mod.zip\nmanifest: releases/module.json\n```\n");
-    assert.deepEqual(paths, ["releases/mod.zip", "releases/module.json"]);
+  it("names the file it was given", () => {
+    const paths = downloadFilePaths("```download\nfile: releases/mod.zip\n```\n");
+    assert.deepEqual(paths, ["releases/mod.zip"]);
   });
 
   it("ships a .zip, which the passthrough list would otherwise call unknown", async () => {
@@ -98,5 +88,70 @@ describe("download staging", () => {
       console.log = origLog; console.warn = origWarn;
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// --- foundry-manifest -----------------------------------------------------
+//
+// Split from `download` because the two only look alike. A download hands a
+// file to a person whose browser carries their session cookie. This hands a
+// URL to a machine: Foundry's installer runs on the Foundry server, sees no
+// cookie, and has nowhere to put a header, so the URL must authenticate on
+// its own.
+
+import {
+  foundryManifestHandler, foundryManifestPaths, manifestDownloadPath, parseManifestBlock,
+} from "../src/render/handlers/builtin/foundry-manifest.js";
+
+function renderManifest(content: string): string {
+  const ctx = { escape: (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;") } as never;
+  return (foundryManifestHandler.render(content, ctx) as { html: string }).html;
+}
+
+describe("foundry-manifest", () => {
+  it("needs a manifest and says so", () => {
+    assert.equal(parseManifestBlock("label: nope"), null);
+    assert.match(renderManifest("label: nope"), /vaults-download-error/);
+  });
+
+  it("renders the install button against the manifest path", () => {
+    const html = renderManifest("manifest: downloads/module.json\nlabel: My Module");
+    assert.match(html, /data-manifest="\/downloads\/module\.json"/);
+    assert.match(html, /My Module/);
+  });
+
+  it("says Foundry cannot check for updates through the link", () => {
+    // The link expires, so Foundry's stored manifest URL stops resolving.
+    // Saying so on the page is cheaper than the confused bug report.
+    assert.match(renderManifest("manifest: m.json"), /cannot check for updates/);
+  });
+
+  it("names only the manifest; the zip comes from the manifest itself", () => {
+    assert.deepEqual(
+      foundryManifestPaths("```foundry-manifest\nmanifest: downloads/module.json\n```\n"),
+      ["downloads/module.json"],
+    );
+  });
+
+  it("reads a relative download field as a vault path", () => {
+    const r = manifestDownloadPath(JSON.stringify({ download: "/downloads/mod.zip" }));
+    assert.equal(r.path, "downloads/mod.zip");
+    assert.equal(r.absolute, null);
+  });
+
+  it("reports an absolute download field rather than treating it as a path", () => {
+    // It cannot be signed when the vault is reached over a different hostname
+    // than the one it names, so the build warns instead of shipping a module
+    // whose install dies on its second fetch.
+    for (const url of ["https://x.pages.dev/mod.zip", "//x.pages.dev/mod.zip"]) {
+      const r = manifestDownloadPath(JSON.stringify({ download: url }));
+      assert.equal(r.path, null);
+      assert.equal(r.absolute, url);
+    }
+  });
+
+  it("stays quiet on a manifest with no download field", () => {
+    assert.deepEqual(manifestDownloadPath(JSON.stringify({ id: "x" })), { path: null, absolute: null });
+    assert.deepEqual(manifestDownloadPath("not json"), { path: null, absolute: null });
   });
 });
