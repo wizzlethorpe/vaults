@@ -227,6 +227,20 @@ const handleRequest = async (ctx) => {
   // Determine the user's role from the session cookie (default = lowest).
   const role = await readRole(request, env);
 
+  // Installing a Foundry module is two fetches: the manifest, then the zip its
+  // download field names. A gated manifest is a static file, so it cannot
+  // carry a live token for that second fetch, and the zip would 401 — the
+  // install fails halfway with nothing useful said about why.
+  //
+  // So a manifest fetched with a link token gets its download URL signed to
+  // match, with the same short expiry. The rewrite only ever fires when a
+  // valid link token is present and the field points back at this site, so it
+  // cannot be used to attach our signature to somebody else's URL.
+  const linkToken = new URL(request.url).searchParams.get("_token");
+  const linkRole = linkToken
+    ? await verifyToken(linkToken, env.SESSION_SECRET, TOKEN_TYPE_LINK)
+    : null;
+
   // env.ASSETS canonicalizes URLs (strips .html, strips index.html, redirects
   // with 308s); passing those redirects through to the browser would expose
   // the /_variants/<role>/ path, which the guard at the top of this function
@@ -242,6 +256,11 @@ const handleRequest = async (ctx) => {
       response = await env.ASSETS.fetch(rewritten);
     }
   }
+  if (linkRole && response.ok && /\.json$/i.test(url.pathname)) {
+    const signed = await signManifestDownload(response, url, env, linkRole);
+    if (signed) return signed;
+  }
+
   // Replace bare 404s with the variant's styled 404 page so the reader stays
   // inside the site (sidebar, search, sitemap intact). Only HTML navigation
   // requests get the page; asset/API requests get the bare 404 unchanged.
@@ -498,6 +517,34 @@ async function handleLink(request, env) {
     role,
     expiresInMinutes: Math.round(LINK_MAX_AGE / 60),
   }, 200);
+}
+
+/**
+ * Re-sign a module manifest's download URL so the second half of a Foundry
+ * install authenticates too.
+ *
+ * Returns null and leaves the response untouched for anything that is not a
+ * manifest with a same-origin download field, so an ordinary JSON asset
+ * fetched with a link token is served exactly as stored.
+ */
+async function signManifestDownload(response, url, env, role) {
+  let manifest;
+  try { manifest = await response.clone().json(); }
+  catch { return null; }
+  if (!manifest || typeof manifest.download !== "string") return null;
+
+  let target;
+  try { target = new URL(manifest.download, url.origin); }
+  catch { return null; }
+  if (target.origin !== url.origin) return null;
+
+  const token = await signToken(role, env.SESSION_SECRET, LINK_MAX_AGE, TOKEN_TYPE_LINK);
+  target.searchParams.set("_token", token);
+  manifest.download = target.toString();
+  return new Response(JSON.stringify(manifest), {
+    status: 200,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  });
 }
 
 function jsonResponse(body, status) {

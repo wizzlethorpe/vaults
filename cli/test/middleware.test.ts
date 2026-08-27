@@ -274,6 +274,54 @@ describe("generated auth middleware", () => {
     assert.equal(res.headers.get("Set-Cookie"), null);
   });
 
+  it("signs a manifest's download URL so the second install fetch works too", async () => {
+    // Installing is two fetches. The manifest is a static file and cannot
+    // carry a live token for the zip, so the middleware signs it on the way
+    // out; otherwise the install dies halfway with a 401 nobody can read.
+    const link = await forgeToken("l", "dm", 600);
+    const res = await call(
+      mw,
+      "https://v.example/releases/module.json?_token=" + link,
+      {},
+      { ASSETS: { fetch: () => new Response(JSON.stringify({
+        id: "x", download: "https://v.example/releases/mod.zip",
+      })) } },
+    );
+    const body = await res.json() as { download: string };
+    const signed = new URL(body.download);
+    assert.equal(signed.origin, "https://v.example");
+    assert.ok(signed.searchParams.get("_token"), "download URL must carry a token");
+
+    // And that token must actually open the zip.
+    const followed = await call(mw, signed.toString());
+    assert.equal(await followed.text(), "/_variants/dm/releases/mod.zip");
+  });
+
+  it("will not attach our signature to someone else's download URL", async () => {
+    const link = await forgeToken("l", "dm", 600);
+    const res = await call(
+      mw,
+      "https://v.example/releases/module.json?_token=" + link,
+      {},
+      { ASSETS: { fetch: () => new Response(JSON.stringify({
+        id: "x", download: "https://evil.example/mod.zip",
+      })) } },
+    );
+    const body = await res.json() as { download: string };
+    assert.equal(body.download, "https://evil.example/mod.zip", "left exactly as authored");
+  });
+
+  it("leaves an ordinary JSON asset alone", async () => {
+    const link = await forgeToken("l", "dm", 600);
+    const res = await call(
+      mw,
+      "https://v.example/data/scene.json?_token=" + link,
+      {},
+      { ASSETS: { fetch: () => new Response(JSON.stringify({ walls: [] })) } },
+    );
+    assert.deepEqual(await res.json(), { walls: [] });
+  });
+
   it("does not let a minted link be cached in between", async () => {
     const res = await call(mw, "https://v.example/_link?path=/a.zip", {
       headers: { Cookie: dmCookie },
