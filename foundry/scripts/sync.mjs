@@ -12,6 +12,7 @@ import { fetchManifest, fetchSourceBatch } from "./api.mjs";
 import { upsertFile, deleteFile, buildFolderInfo, reconcileEntryPlacement, reconcileOwnership } from "./importer.mjs";
 import { buildPathIndex } from "./links.mjs";
 import { syncImages } from "./media.mjs";
+import { localizeOr } from "./util.mjs";
 import * as progress from "./progress.mjs";
 import { applyInstance, deleteInstance, findMissingDocuments, missingBasePackages } from "./instance.mjs";
 import { instanceId } from "./ids.mjs";
@@ -444,7 +445,10 @@ async function runSync(host, vault, { forceFull = false } = {}) {
   // A silent skip here used to look like a clean sync: the journal pages land,
   // the actors never do, and the only trace is a console warning. Surface it.
   if (versionSkew.length > 0) {
-    host.notify("warn", host.localize("VAULTS.Sync.VersionSkew", { count: versionSkew.length }));
+    host.notify("warn", localizeOr(host, "VAULTS.Sync.VersionSkew",
+      "{count} document(s) came from a different Foundry generation and may not render "
+      + "correctly. See the console for which pack, and which version it targets.",
+      { count: versionSkew.length }));
     console.warn(
       `Vaults | ${vault.label}: ${versionSkew.length} document(s) were exported for a different `
       + `Foundry generation than this world (${game.release?.generation}). They import, but parts `

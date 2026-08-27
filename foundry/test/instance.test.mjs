@@ -341,3 +341,29 @@ test("stays quiet when either version is unreadable", () => {
     assert.equal(generationSkew({ _stats: { coreVersion: "13.344" } }, "r"), null);
   });
 });
+
+// --- bundle strings vs installed-module strings -------------------------
+//
+// The sync code is bundled by the CLI and ships with the vault; lang/en.json
+// ships with the installed module. They update on different schedules by
+// design, so a message the bundle introduces reaches modules that have never
+// heard of its key — and Foundry's i18n returns the key itself when it cannot
+// resolve one, which showed a GM a warning that read "VAULTS.Sync.VersionSkew".
+
+import { localizeOr } from "../scripts/util.mjs";
+
+const CURRENT = { localize: (k, a) => (k === "KNOWN" ? `translated ${a?.count}` : k) };
+const OLD = { localize: (k) => k };
+
+test("prefers the module's translation when it has one", () => {
+  assert.equal(localizeOr(CURRENT, "KNOWN", "fallback {count}", { count: 2 }), "translated 2");
+});
+
+test("falls back to the bundle's own text when the module predates the key", () => {
+  assert.equal(localizeOr(OLD, "MISSING", "{count} document(s) skewed", { count: 3 }),
+    "3 document(s) skewed");
+});
+
+test("leaves an unknown placeholder alone rather than printing undefined", () => {
+  assert.equal(localizeOr(OLD, "MISSING", "{count} of {total}", { count: 1 }), "1 of {total}");
+});
