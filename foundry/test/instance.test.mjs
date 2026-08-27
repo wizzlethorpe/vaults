@@ -288,3 +288,56 @@ test("rounds the origin up to a whole cell, as Foundry does", () => {
   const { x } = notePosition({ width: 2100, height: 2100, padding: 0.25, grid: { size: 140 } });
   assert.equal(x, 140 * 3.5, "not 140 * (3.75 - 0.5)");
 });
+
+// --- Foundry generation skew -------------------------------------------
+//
+// Creators re-export for each Foundry generation, and a back catalogue can be
+// a generation behind: The MAD Cartographer's newer packs are native v14 while
+// everything older is 13.344. A stale document mostly migrates — a v13 Scene
+// keeps all 153 walls, 17 lights and 10 sounds — but v14 moved the map onto
+// Level and draws that scene's tiles at the canvas origin instead of their
+// stored x/y. We import anyway and report it, rather than dropping work that
+// did survive or leaving the reader to wonder why a map looks wrong.
+
+import { generationSkew } from "../scripts/instance.mjs";
+
+function withRelease(generation, fn) {
+  const prev = globalThis.game;
+  globalThis.game = { release: { generation } };
+  try { return fn(); } finally { globalThis.game = prev; }
+}
+
+test("reports a document exported for an older generation", () => {
+  withRelease(14, () => {
+    const skew = generationSkew({ _stats: { coreVersion: "13.344" } }, "12977/json/scene/x.json");
+    assert.equal(skew?.exported, "13.344");
+    assert.equal(skew?.world, 14);
+    assert.equal(skew?.ref, "12977/json/scene/x.json");
+  });
+});
+
+test("says nothing when the generations agree", () => {
+  // Patch and minor differences inside one generation are exactly what
+  // Foundry's own document migration absorbs.
+  withRelease(14, () => {
+    assert.equal(generationSkew({ _stats: { coreVersion: "14.361" } }, "r"), null);
+    assert.equal(generationSkew({ _stats: { coreVersion: "14.367" } }, "r"), null);
+  });
+});
+
+test("reports a newer export too, not just an older one", () => {
+  withRelease(13, () => {
+    assert.equal(generationSkew({ _stats: { coreVersion: "14.364" } }, "r")?.world, 13);
+  });
+});
+
+test("stays quiet when either version is unreadable", () => {
+  // A document with no _stats is not evidence of a problem.
+  withRelease(14, () => {
+    assert.equal(generationSkew({}, "r"), null);
+    assert.equal(generationSkew({ _stats: {} }, "r"), null);
+  });
+  withRelease(undefined, () => {
+    assert.equal(generationSkew({ _stats: { coreVersion: "13.344" } }, "r"), null);
+  });
+});

@@ -74,7 +74,8 @@ const COLLECTION_FOR = {
  * full item data; see `resolveItemUuids`.
  *
  * @returns `null` when the page declares nothing to instantiate,
- *   `{ ok: true, action: "created" | "updated" }` on success, or
+ *   `{ ok: true, action: "created" | "updated", skew }` on success, where
+ *   `skew` names a document exported for a different Foundry generation, or
  *   `{ ok: false, reason }` when a declared base produced no document.
  *   Callers count these; every non-ok path also warns with specifics.
  */
@@ -261,7 +262,7 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
     }
   }
 
-  return { ok: true, action: "created" };
+  return { ok: true, action: "created", skew: resolved.skew ?? null };
 }
 
 
@@ -274,6 +275,20 @@ export async function applyInstance(vault, vaultPath, meta, { forceFull = false 
  * Every rejected candidate is collected and reported together: one line naming
  * what was tried and why each failed beats a warning per entry.
  */
+/**
+ * Report a document exported for a different Foundry generation, or null.
+ *
+ * Only the generation is compared. Patch and minor differences within one
+ * generation are what Foundry's own document migration exists to absorb; a
+ * generation boundary is where the schema actually moves.
+ */
+export function generationSkew(data, ref) {
+  const exported = Number.parseInt(String(data?._stats?.coreVersion ?? ""), 10);
+  const world = Number(game.release?.generation);
+  if (!Number.isFinite(exported) || !Number.isFinite(world) || exported === world) return null;
+  return { ref, exported: data._stats.coreVersion, world: game.release.generation };
+}
+
 async function resolveBase(candidates, vaultPath) {
   const tried = [];
   for (const parsed of candidates) {
@@ -296,6 +311,14 @@ async function resolveBase(candidates, vaultPath) {
         (msg) => console.warn(`Vaults | moulinette: ${vaultPath}: ${msg}`),
       );
       if (!data) { tried.push(`@moulinette/${parsed.ref} — did not resolve`); continue; }
+      // Creators re-export for each Foundry generation, and a back catalogue
+      // can be a generation behind. Most of a stale document migrates — a v13
+      // Scene keeps its walls, lights and sounds — but not all of it: v14
+      // moved the map onto Level, and draws a v13 scene's tiles at the canvas
+      // origin instead of their stored x/y. We import anyway, because what
+      // does survive is worth more than nothing, and report it rather than
+      // leaving the reader to wonder why a map looks wrong.
+      const skew = generationSkew(data, parsed.ref);
       delete data._id;
       // No compendiumSource: the document came from the reader's Moulinette
       // library, and there is no UUID in this world that names it.
@@ -305,7 +328,7 @@ async function resolveBase(candidates, vaultPath) {
           + `earlier candidate(s) skipped:\n  ` + tried.join("\n  "),
         );
       }
-      return { data, from: `@moulinette/${parsed.ref}` };
+      return { data, from: `@moulinette/${parsed.ref}`, skew };
     }
     const template = await safeFromUuid(parsed.uuid);
     if (!template) { tried.push(`${parsed.uuid} — did not resolve`); continue; }
