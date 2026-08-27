@@ -184,6 +184,7 @@ program
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .option("-o, --output <dir>", "Output directory (default: <vault>/.vaults/cache/rendered)")
   .option("--all-warnings", "Print every page with warnings instead of truncating at 20")
+  .option("--module", "Also compile the vault into an installable Foundry VTT module")
   .action(wrap(build));
 
 program
