@@ -205,6 +205,53 @@ describe("generated auth middleware", () => {
   // anonymous callers, cannot be talked into signing a link pointing somewhere
   // else, and hands back something that actually works.
 
+  // /_batch variant selection ---------------------------------------------
+  //
+  // A page carries its own role, and the sync client gives a page below the DM
+  // tier player-readable ownership. Filling such a page with the DM's
+  // rendering put DM content in front of players — a base view filtered by
+  // role renders three creatures for the DM and one for everyone else, on the
+  // same page. So a caller asks for the variant matching each page's role.
+
+  it("serves the caller's own variant when none is asked for", async () => {
+    // The batch handler passes ASSETS a URL string rather than a Request.
+    const res = await call(mw, "https://v.example/_batch", {
+      method: "POST", headers: { Cookie: dmCookie }, body: "a.body.html",
+    },
+      { ASSETS: { fetch: (r: Request | string) =>
+          new Response(new URL(typeof r === "string" ? r : r.url).pathname) } },
+    );
+    const body = await res.json() as { files: Record<string, string> };
+    assert.equal(body.files["a.body.html"], "/_variants/dm/a.body.html");
+  });
+
+  it("serves a lower variant when asked, which is the whole fix", async () => {
+    const res = await call(mw, "https://v.example/_batch?role=public", {
+      method: "POST", headers: { Cookie: dmCookie }, body: "a.body.html",
+    },
+      { ASSETS: { fetch: (r: Request | string) =>
+          new Response(new URL(typeof r === "string" ? r : r.url).pathname) } },
+    );
+    const body = await res.json() as { files: Record<string, string> };
+    assert.equal(body.files["a.body.html"], "/_variants/public/a.body.html");
+  });
+
+  it("refuses a variant above the caller's tier", async () => {
+    // The direction that matters: asking down is content you can already read,
+    // asking up is the whole role gate.
+    const res = await call(mw, "https://v.example/_batch?role=dm", {
+      method: "POST", body: "a.body.html",
+    });
+    assert.equal(res.status, 403, "anonymous must not reach the dm variant");
+  });
+
+  it("refuses a variant that is not a role at all", async () => {
+    const res = await call(mw, "https://v.example/_batch?role=../dm", {
+      method: "POST", headers: { Cookie: dmCookie }, body: "a.body.html",
+    });
+    assert.equal(res.status, 403);
+  });
+
   it("refuses to mint a link for an anonymous caller", async () => {
     const res = await call(mw, "https://v.example/_link?path=/releases/module.json");
     assert.equal(res.status, 401);

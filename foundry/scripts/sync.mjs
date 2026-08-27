@@ -311,7 +311,25 @@ async function runSync(host, vault, { forceFull = false } = {}) {
 
   let bodies;
   try {
-    bodies = await fetchSourceBatch(vault, toUpsert);
+    // One batch per role, each asking for that role's own rendering.
+    //
+    // Fetching everything as the syncing user leaked: a page marked
+    // `role: public` is given player-readable ownership below, so filling it
+    // with the DM's rendering put DM content in front of players. A base view
+    // filtered by role is exactly that — the same page lists three creatures
+    // for the DM and one for everyone else.
+    const byRole = new Map();
+    for (const bodyPath of toUpsert) {
+      const pageRole = bodyMetaIndex.get(bodyPath)?.role;
+      const key = pageRole || "";
+      if (!byRole.has(key)) byRole.set(key, []);
+      byRole.get(key).push(bodyPath);
+    }
+    bodies = new Map();
+    for (const [pageRole, group] of byRole) {
+      const fetched = await fetchSourceBatch(vault, group, pageRole || undefined);
+      for (const [k, v] of fetched) bodies.set(k, v);
+    }
   } catch (err) {
     console.error(`Vaults | batch fetch failed for ${vault.label}:`, err);
     host.notify("error", host.localize("VAULTS.Sync.Error", { message: err.message }));

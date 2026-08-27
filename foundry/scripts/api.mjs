@@ -59,11 +59,15 @@ const DIRECT_CONCURRENCY = 8;
  * (single-role builds don't deploy /_batch). Returns the same Map shape
  * either way so callers don't care which path ran.
  */
-export async function fetchSourceBatch(vault, paths) {
+export async function fetchSourceBatch(vault, paths, role) {
   if (paths.length === 0) return new Map();
   if (vault.public) return fetchSourceDirect(vault, paths);
 
-  const endpoint = url(vault, "/_batch");
+  // `role` asks for a specific rendering. A page is fetched in the variant
+  // matching its *own* role, not the syncing user's: a page marked readable by
+  // players must hold the players' version of itself, and a base view filtered
+  // by role renders differently for each tier.
+  const endpoint = url(vault, "/_batch") + (role ? `?role=${encodeURIComponent(role)}` : "");
   const chunks = [];
   for (let i = 0; i < paths.length; i += BATCH_SIZE) chunks.push(paths.slice(i, i + BATCH_SIZE));
 

@@ -391,10 +391,31 @@ async function handleBatchInner(request, env, maxPaths, encode) {
     if (!isSafePath(p)) return batchError(400, "Invalid path: " + p);
   }
 
-  // ASSETS.fetch is internal to the worker, so fan-out is cheap.
+  // Which rendering to return, which is not always the caller's own.
+  //
+  // A page carries its own role, and the sync client marks a page readable by
+  // players when that role is below the DM tier. If it then filled that page
+  // with the *DM's* rendering — which is what happens when the variant is
+  // always the caller's — a public page ends up holding DM content and
+  // readable by players. A base view filtered by role is exactly that shape:
+  // one row per creature for the DM, one for everyone else, same page.
+  //
+  // So a caller may ask for any variant at or below their own tier. Below,
+  // because that is content they can already read; never above.
   const url = new URL(request.url);
+  const requested = url.searchParams.get("role");
+  let variant = role;
+  if (requested !== null) {
+    const wantIdx = ROLES.indexOf(requested);
+    if (wantIdx === -1 || wantIdx > ROLES.indexOf(role)) {
+      return batchError(403, "Cannot request that variant.");
+    }
+    variant = requested;
+  }
+
+  // ASSETS.fetch is internal to the worker, so fan-out is cheap.
   const entries = await Promise.all(paths.map(async (p) => {
-    const target = new URL("/_variants/" + role + "/" + encodeVariantPath(p), url.origin).toString();
+    const target = new URL("/_variants/" + variant + "/" + encodeVariantPath(p), url.origin).toString();
     const res = await env.ASSETS.fetch(target);
     if (!res.ok) return [p, null];
     return [p, await encode(res)];
