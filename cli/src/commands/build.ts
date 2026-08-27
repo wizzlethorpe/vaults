@@ -28,15 +28,17 @@ export async function build(vaultPath: string, opts: BuildOptions): Promise<void
     console.log("Compiling Foundry module...");
     const built = await buildFoundryModule({
       vaultPath,
-      vaultId: vaultPath,
       outputDir: "downloads",
       renderedDir: outputDir,
       renderedRole: await lowestRole(vaultPath),
     });
     if (built) {
+      // An in-place build (the author's module.json already names a download
+      // URL, as WANDS's GitHub release does) writes the packs into the vault
+      // and produces no zip, so point at the manifest instead of an empty path.
       console.log(
         `  ${built.moduleId} ${built.version}: ${built.documents} document(s)`
-        + ` in ${built.packs.length} pack(s) -> ${built.zipPath}`,
+        + ` in ${built.packs.length} pack(s) -> ${built.zipPath || built.manifestPath}`,
       );
     }
   }

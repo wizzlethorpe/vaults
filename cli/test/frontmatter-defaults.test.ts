@@ -53,6 +53,17 @@ describe("default_frontmatter", () => {
     assert.equal(apply("Compendium/Spells/Accio.md", { foundry: false })["foundry"], false);
   });
 
+  it("treats null and arrays as not-an-object", () => {
+    // `typeof null` and `typeof []` are both "object", so a validator using it
+    // admits rules that then supply nothing, or index keys.
+    const bad = compileFrontmatterRules([
+      { match: "**", data: null as never },
+      { match: "**", data: ["a"] as never },
+      { match: "**", data: { ok: true } },
+    ]);
+    assert.deepEqual(applyFrontmatterDefaults("a.md", {}, bad), { ok: true });
+  });
+
   it("ignores a malformed rule instead of failing the build", () => {
     const bad = compileFrontmatterRules([
       { match: "**" } as never,

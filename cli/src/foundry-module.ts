@@ -181,8 +181,18 @@ function derivedId(seed: string): string {
     .replace(/[^A-Za-z0-9]/g, "").slice(0, 16).padEnd(16, "0");
 }
 
-function documentId(vaultId: string, pagePath: string): string {
-  return derivedId(`vaults-module:${vaultId}:${pagePath}`);
+/**
+ * A page's document id, when it did not pin one.
+ *
+ * Namespaced by module id rather than by anything about where the vault sits
+ * on disk. A filesystem path would make the ids depend on the build machine,
+ * so the same vault compiled in CI and locally would produce different `_id`s
+ * and every rebuild would read as an unrelated set of documents rather than an
+ * update to the existing ones. The journal ids already key off the module for
+ * the same reason.
+ */
+function documentId(moduleId: string, pagePath: string): string {
+  return derivedId(`vaults-module:${moduleId}:${pagePath}`);
 }
 
 /** Recursively rewrite `@vault/PATH` strings to a module-relative asset path. */
@@ -298,7 +308,6 @@ async function findFoundryCli(vaultPath: string): Promise<string | null> {
 
 export interface ModuleOptions {
   vaultPath: string;
-  vaultId: string;
   /** Vault-relative directory the manifest and zip are written to. */
   outputDir: string;
   /**
@@ -514,7 +523,7 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     planned.push({
       page, decl, docType: target.blank,
       ...(target.subtype ? { subtype: target.subtype } : {}),
-      id: typeof block["id"] === "string" && block["id"] ? block["id"] : documentId(opts.vaultId, page.path),
+      id: typeof block["id"] === "string" && block["id"] ? block["id"] : documentId(moduleId, page.path),
     });
   }
 

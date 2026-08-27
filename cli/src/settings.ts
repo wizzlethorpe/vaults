@@ -260,13 +260,19 @@ function defaults(): Settings {
   ) as unknown as Settings;
 }
 
+function isPlainObject(v: unknown): boolean {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
 function matchesType(v: unknown, t: SettingType): boolean {
   if (t === "string[]") return Array.isArray(v) && v.every((item) => typeof item === "string");
   if (t === "rules") {
     return Array.isArray(v) && v.every((item) =>
-      item !== null && typeof item === "object" && !Array.isArray(item)
+      isPlainObject(item)
       && typeof (item as Record<string, unknown>)["match"] === "string"
-      && typeof (item as Record<string, unknown>)["data"] === "object");
+      // A plain object: `typeof` also admits null and arrays, which would pass
+      // validation here and then supply nothing (or index keys) downstream.
+      && isPlainObject((item as Record<string, unknown>)["data"]));
   }
   return typeof v === t;
 }

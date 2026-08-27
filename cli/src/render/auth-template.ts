@@ -514,7 +514,9 @@ async function handleConnectApprove(request, env) {
  */
 async function handleLink(request, env) {
   const url = new URL(request.url);
-  const role = await readRole(request, env);
+  // Minting requires a session or a bearer, never a link token: otherwise one
+  // leaked install URL renews itself indefinitely instead of expiring.
+  const role = await readRole(request, env, { rejectLinkTokens: true });
   if (role === ROLES[0]) {
     return jsonResponse({ error: "not signed in" }, 401);
   }
@@ -1080,7 +1082,7 @@ async function readStateCookie(request, secret) {
 
 // ── Cookie + role lookup ──────────────────────────────────────────────────
 
-async function readRole(request, env) {
+async function readRole(request, env, opts) {
   const fallback = ROLES[0];
   if (!env.SESSION_SECRET) return fallback;
 
@@ -1126,7 +1128,11 @@ async function readRole(request, env) {
   //
   // It authenticates one request and sets no cookie, so a shared link does
   // not turn into a session at someone else's role.
-  if (queryToken) {
+  // Not accepted where a caller could use one to obtain another. A link token
+  // is a ten-minute grant, and a request that can mint a fresh one renews
+  // itself forever — which would quietly turn the short window that justifies
+  // honouring these on navigation into no window at all.
+  if (queryToken && !opts?.rejectLinkTokens) {
     const role = await verifyToken(queryToken, env.SESSION_SECRET, TOKEN_TYPE_LINK);
     if (role && ROLES.includes(role)) return role;
   }

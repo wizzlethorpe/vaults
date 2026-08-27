@@ -292,6 +292,32 @@ describe("generated auth middleware", () => {
     assert.equal(res.status, 400);
   });
 
+  it("will not mint a link token from a link token", async () => {
+    // Otherwise the ten-minute window is not a limit: one leaked install URL
+    // calls /_link to obtain the next, and renews itself forever. That window
+    // is the entire reason link tokens are honoured on navigation at all.
+    const link = await forgeToken("l", "dm", 600);
+    const res = await call(mw, "https://v.example/_link?path=/a.zip&_token=" + link);
+    assert.equal(res.status, 401);
+  });
+
+  it("still mints from a session cookie", async () => {
+    const res = await call(mw, "https://v.example/_link?path=/a.zip", {
+      headers: { Cookie: dmCookie },
+    });
+    assert.equal(res.status, 200);
+  });
+
+  it("still mints from a bearer, which is not renewable in the same way", async () => {
+    // A bearer is already a 90-day credential deliberately issued through
+    // /connect; minting a shorter-lived link from one grants nothing new.
+    const bearer = await forgeToken("b", "dm", 3600);
+    const res = await call(mw, "https://v.example/_link?path=/a.zip", {
+      headers: { Authorization: "Bearer " + bearer },
+    });
+    assert.equal(res.status, 200);
+  });
+
   it("keeps a 90-day bearer out of top-level navigation", async () => {
     // The rule a link token is deliberately exempt from. A bearer in a URL is
     // a shareable 90-day credential; it must not quietly browse the site.

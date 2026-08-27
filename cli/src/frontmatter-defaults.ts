@@ -47,7 +47,12 @@ export interface CompiledRule {
  */
 export function compileFrontmatterRules(rules: FrontmatterRule[]): CompiledRule[] {
   return rules
-    .filter((r) => r && typeof r.match === "string" && r.data && typeof r.data === "object")
+    // A plain object, not merely `typeof "object"`, which also admits null and
+    // arrays. An array here would merge its indices in as keys — silently, and
+    // as frontmatter. Checked here as well as in the settings validator
+    // because this is the one that runs on every build.
+    .filter((r) => r && typeof r.match === "string"
+      && r.data !== null && typeof r.data === "object" && !Array.isArray(r.data))
     .map((r) => ({
       // dot: true so a rule can reach a page under a dotted directory, matching
       // how `ignore` globs already behave in this build.
