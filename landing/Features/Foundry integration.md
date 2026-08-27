@@ -23,12 +23,14 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 | Audio / PDFs / other files | Downloaded alongside images |
 | `foundry.base: <UUID>` | New `Actor` or `Item` cloned from the template (see below) |
 | `foundry.base: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
+| `foundry.base: [<spec>, …]` | A priority list, tried in order, so one page serves readers with different content installed. End it with a type so it always produces something |
+| `foundry.base: "@moulinette/<pack>/<file>"` | A document cloned from the reader's own [Moulinette](https://assets.moulinette.cloud/) library (see below) |
 | `foundry.sync: false` | Skip this page entirely: no `JournalEntry`, no derived doc (see below) |
 | `foundry.embed: false` | Skip auto-embedding the page article into the doc's description field |
 | `foundry.journal: false` | Instantiate the derived doc but keep the article out of the journal sidebar. An Actor or Scene that needs no wiki entry of its own |
 | `foundry.link` | `journal` (default) or `doc`: where wikilinks to this page point. `doc` sends them at the instantiated document instead of its journal page. Implied by `journal: false` |
 | `foundry.folder` | A `/`-separated folder path the instantiated doc is filed under, nested inside the vault's own sidebar folder. Absent means the vault folder itself |
-| `foundry.data` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`) |
+| `foundry.data` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); `"@moulinette/PACK/FILE"` strings resolve against the reader's own Moulinette library (see below) |
 | `foundry.data_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.data` (use for exported sheets / community-shared dumps) |
 | `foundry.id` | 16-char `[A-Za-z0-9]` Foundry id pinned for this page's `JournalEntryPage` and (if `foundry.base` is set) its instantiated doc |
 
@@ -217,6 +219,109 @@ orphaned in the world; the module won't auto-delete it (same
 content). Drop it by hand from the sidebar if you need to.
 
 ---
+
+## Moulinette: assets and scenes from the reader's own library
+
+A vault can point at content it does not ship. Reference a map, a track, or a whole scene from [Moulinette](https://assets.moulinette.cloud/), and on sync it resolves against **the reader's own Moulinette library** — so the licensing question stays between them and the creator, exactly as it does when `foundry.base` names a compendium UUID. Nothing is redistributed, and a reader who is not subscribed simply gets less.
+
+Requires the [Moulinette](https://foundryvtt.com/packages/moulinette) module, installed and signed in.
+
+### The reference format
+
+```
+@moulinette/<pack_ref>/<filepath>
+```
+
+**`pack_ref` is the number in a marketplace URL.** Browse to a product at [assets.moulinette.cloud](https://assets.moulinette.cloud/) and read it off the address bar:
+
+```
+https://assets.moulinette.cloud/marketplace/product/13648/the-mad-cartographer-sci-fi/outer-rim
+                                                    ^^^^^
+```
+
+That pack is `13648`. The two segments after it are the creator and product names run through a slugifier, purely for readability — they change when a creator renames a pack, so they are not part of the reference.
+
+**`filepath` is the asset's path inside that pack**, which the Moulinette Browser shows for any asset. It keeps its slashes, because creators nest folders:
+
+```
+@moulinette/13648/images/maps/06-junkyard.webp
+@moulinette/442/SFX/Basic/Environment/Waterfall (Loop).ogg
+```
+
+### Assets: maps, images and audio
+
+An asset reference goes wherever a path goes, in `foundry.data` or a `data_json` file, alongside `@vault/`:
+
+```yaml
+foundry:
+  base: Scene
+  data:
+    width: 4200
+    height: 2800
+    levels:
+      - _id: defaultLevel0000
+        background:
+          src: "@moulinette/11938/images/maps/05BoarsTears/MAD_Taverns_05_FVTT_20x30_Boars_Tears_Taverna.webp"
+    sounds:
+      - name: Ambience
+        path: "@moulinette/2333/Ambiences/Basic/City/School of Magic Refectory.ogg"
+```
+
+**An unresolved reference takes its container with it**, propagating exactly one level. A sound that loses its `path` is dropped from the array; a `background` that loses its `src` is deleted. But one missing track never discards the document — the scene still syncs, correctly sized and gridded, just without that piece. That is what makes a page degrade rather than point Foundry at a file that is not there.
+
+### Documents: whole scenes, actors and items
+
+A `@moulinette/` reference can also be a rung on `foundry.base`, where it names a *document* to clone rather than a file to point at — a creator's own scene, with their walls, lighting and ambience:
+
+```yaml
+foundry:
+  base:
+    - "@moulinette/13648/json/scene/06-junkyard-empty.json"   # if the reader owns it
+    - Scene                                                    # if not
+  data:
+    navName: Junkyard
+```
+
+`foundry.base` accepts a **priority list**, tried in order, so one page can serve readers with different content installed. A Moulinette rung names no document type of its own — only the reader's library knows whether an asset is a Scene or an Actor, and the CLI has to answer that question at build time with no library to ask — so **a list containing one must also contain a rung that names the type**. That entry is doing double duty: it tells the build what the page creates, and it is what a reader without the pack falls back to.
+
+> [!warning] The base is only read when the document is first created
+> A page whose document already exists takes the update path, which applies `foundry.data` and `data_json` but never re-clones. That protects work a GM has done in the world from being discarded. To adopt a changed `base`, delete the document and **Force Sync**.
+
+### Versioning, and why the asset rung ages better
+
+Creators re-export their catalogue for each new Foundry generation, and republish it as a **new pack with a new `pack_ref`** — often under the same name. So a `pack_ref` pins a Foundry version as much as it pins content, and that matters more than it sounds.
+
+A **document** is coupled to the generation it was exported for. A Foundry 13 scene imported into a Foundry 14 world keeps its walls, lights and sounds, but its map does not land where it belongs, because v14 moved a scene's background onto its Level. Foundry ships no conversion for this on the import path, so vaults does not attempt one. It reports it instead:
+
+> *N document(s) came from a different Foundry generation and may not render correctly.*
+
+with the pack and both versions in the console. Point the base at a pack built for the reader's generation, or ask the creator for a re-export.
+
+An **asset** has no such problem. A `.webp` is a `.webp`, and always will be.
+
+That asymmetry makes composing a scene yourself the more durable pattern, and often the better one:
+
+```yaml
+foundry:
+  base: Scene
+  data_json: Scenes/tavern.json     # your dimensions, grid, walls, lights, levels
+```
+
+with the map referenced from `@moulinette/` inside that file. The licensing line falls where it should — you cannot redistribute a creator's art, but wall geometry and lighting are *your* work and ship freely in the vault. The vault carries the structure it owns; the reader's library supplies the licensed pixels. See [[Battlemaps]] for the same pattern applied to layered maps.
+
+> [!tip] Prefer a compendium rung when a creator offers one
+> Many creators distribute through both Moulinette and their own Foundry module. If the reader has the module installed, a compendium UUID is the better rung: Foundry migrates compendium packs on load, which is exactly the step a raw Moulinette import skips.
+>
+> ```yaml
+> base:
+>   - Compendium.mad-taverns.mad-taverns-maps.Scene.F3wyDaiec72h5sFG
+>   - "@moulinette/13648/json/scene/06-junkyard-empty.json"
+>   - Scene
+> ```
+
+### What this vault demonstrates
+
+Nothing, deliberately. Every other feature on this site is demonstrated by a live page, but a Moulinette reference only resolves for a reader who owns that pack — a demo would be a broken page for almost everyone who visits. The examples above are drawn from real vaults instead.
 
 ## Per-vault dmRole setting
 
