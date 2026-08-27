@@ -105,3 +105,59 @@ test("a pinned foundry.id is honoured on both branches", async () => {
   assert.equal(await targetUuid(VAULT, path, { idOverrides, docTargets: new Map([[path, "Actor"]]) }),
     `Compendium.world.${VAULT.id}-actors.Actor.PINNEDPINNED1234`);
 });
+
+// ── pack visibility ─────────────────────────────────────────────────────────
+
+test("a gated vault's packs are shut to players, explicitly", async () => {
+  // Not assumed. An unconfigured world pack inherits CompendiumOwnershipField's
+  // default of {PLAYER: "OBSERVER", ASSISTANT: "OWNER"}, and a compendium index
+  // is not filtered per document — so leaving it unset publishes every DM name
+  // and image in the pack to every player.
+  const { ensurePack } = await import("../scripts/packs.mjs");
+  const prev = globalThis.game;
+  let configured = null;
+  const pack = {
+    collection: `world.${VAULT.id}-journal`, locked: false, config: {},
+    configure: async (c) => { configured = c; },
+  };
+  globalThis.game = { packs: new Map([[pack.collection, pack]]) };
+  try {
+    await ensurePack({ ...VAULT, public: false }, "JournalEntry");
+    assert.equal(configured.ownership.PLAYER, "NONE");
+    assert.equal(configured.ownership.TRUSTED, "NONE");
+    assert.equal(configured.ownership.GAMEMASTER, "OWNER");
+  } finally { globalThis.game = prev; }
+});
+
+test("an already-restricted pack is not rewritten every sync", async () => {
+  const { ensurePack } = await import("../scripts/packs.mjs");
+  const prev = globalThis.game;
+  let calls = 0;
+  const pack = {
+    collection: `world.${VAULT.id}-journal`, locked: false,
+    config: { ownership: { GAMEMASTER: "OWNER", ASSISTANT: "OWNER", TRUSTED: "NONE", PLAYER: "NONE" } },
+    configure: async () => { calls++; },
+  };
+  globalThis.game = { packs: new Map([[pack.collection, pack]]) };
+  try {
+    await ensurePack({ ...VAULT, public: false }, "JournalEntry");
+    assert.equal(calls, 0);
+  } finally { globalThis.game = prev; }
+});
+
+test("a public vault's packs are left browsable", async () => {
+  // Nothing in a public vault is withheld from anyone on the wiki, so there is
+  // nothing to protect here and a GM may well want players browsing it.
+  const { ensurePack } = await import("../scripts/packs.mjs");
+  const prev = globalThis.game;
+  let configured = null;
+  const pack = {
+    collection: `world.${VAULT.id}-journal`, locked: false, config: {},
+    configure: async (c) => { configured = c; },
+  };
+  globalThis.game = { packs: new Map([[pack.collection, pack]]) };
+  try {
+    await ensurePack({ ...VAULT, public: true }, "JournalEntry");
+    assert.ok(!("PLAYER" in configured.ownership));
+  } finally { globalThis.game = prev; }
+});

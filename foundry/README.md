@@ -15,7 +15,7 @@ Module ID: `vaults`. Requires Foundry V14 or newer.
 
 A vault syncs into its own **compendium packs**, one per document type, grouped in a sidebar folder named after the vault. Nothing else writes to them, so a sync can always replace their contents. Use **Import All** (with "Keep Document IDs") to bring content into the world; what you import is then yours, and later syncs update the pack rather than your copy.
 
-The packs are GM-only and cannot be made otherwise: Foundry gates compendium visibility per pack by user role, with no per-document filter, so a player-visible pack would expose every name and image in it. Per-page roles are carried on the documents instead and take effect on import. Requires Foundry v14, whose Import All is what preserves them.
+A gated vault's packs are set GM-only on every sync. Foundry gates compendium visibility per pack by user role, with no per-document filter, so a player-visible pack would expose every name and image in it; per-page roles are carried on the documents instead and take effect on import. This is set explicitly, because an unconfigured world pack is player-readable by default. A public vault's packs are left browsable. Requires Foundry v14, whose Import All preserves document ownership.
 
 - **Journals.** Each vault folder becomes one `JournalEntry`; each page becomes a `JournalEntryPage`. Folder structure mirrors the vault.
 - **Wikilinks.** `[[Page]]` rewrites to a Foundry `@UUID[…]` link. Cross-vault links work too.

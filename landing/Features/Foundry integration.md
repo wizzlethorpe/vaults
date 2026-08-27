@@ -339,7 +339,9 @@ To bring content across, right-click a pack and choose **Import All**, or drag i
 > [!tip] Check "Keep Document IDs"
 > Import All offers this, and it is worth taking. Vault documents have derived ids, so keeping them is what lets cross-references survive the trip: a scene's map note finds its article, and a re-import updates what you already brought over instead of adding a second copy.
 
-**The packs themselves are GM-only, and that is not a setting.** Foundry gates compendium visibility per *pack*, by user role, with no per-document filter, so any pack a player could open would show them every name and image in it. Per-page roles cannot be expressed at that granularity, so vault packs are never player-visible.
+**A gated vault's packs are made GM-only.** Foundry gates compendium visibility per *pack*, by user role, with no per-document filter, so any pack a player could open would show them every name and image in it. Per-page roles cannot be expressed at that granularity, so vault packs are shut to players and the roles take effect on import instead.
+
+This is set on every sync, not left to Foundry. An unconfigured world pack is readable by players by default (`{PLAYER: "OBSERVER"}`), so a pack created before this behaviour existed is repaired the next time the vault syncs. Packs for a **public** vault are left browsable: nothing in one is withheld from anyone on the wiki, so there is nothing to protect.
 
 Roles still work, in the world where Foundry can enforce them. Each document carries the ownership its page's role earned it, and Import All preserves that, so a `role: public` page lands player-visible and a `role: dm` page lands GM-only. Dragging a single document out is the exception: Foundry clears ownership on that path, and the document arrives GM-only whatever its role.
 

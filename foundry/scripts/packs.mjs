@@ -7,19 +7,27 @@
 // game with, so it can always overwrite its own packs without asking whether
 // the GM has since edited something.
 //
-// Packs are GM-only, and that is a property of the format rather than a
-// setting we chose. Compendium visibility is per *pack*, keyed by Foundry
-// user role — `CompendiumCollection#_getVisibleTreeContents` returns the
-// whole index with no per-document filter — so a pack a player can open is a
-// pack where every name and image in it is visible to them. Per-page roles
-// cannot be expressed at that granularity, so they are not expressed at all
-// here: documents carry their `ownership` into the pack, Foundry's Import All
-// preserves it (`clearOwnership: false`), and the per-page tiers take effect
-// in the world where Foundry can actually enforce them.
+// A gated vault's packs are made GM-only, explicitly, on every sync.
 //
-// A new world pack needs no configuration to get this: `ownership` defaults
-// to PLAYER: INHERIT, which resolves to NONE, and `locked` defaults to false
-// for world packs.
+// Compendium visibility is per *pack*, keyed by Foundry user role:
+// `CompendiumCollection#_getVisibleTreeContents` returns the whole index with
+// no per-document filter, so a pack a player can open is a pack where every
+// name and image in it is visible to them. Per-page roles cannot be expressed
+// at that granularity. They are carried on the documents instead, where
+// Foundry's Import All preserves them (`clearOwnership: false`) and the world
+// can enforce them.
+//
+// This must be set, not assumed. An unconfigured pack inherits the *package*
+// default from `CompendiumOwnershipField`, which is
+// `{PLAYER: "OBSERVER", ASSISTANT: "OWNER"}` — every vault pack readable by
+// every player. (`CompendiumCollection.CONFIG_FIELD` says `PLAYER: INHERIT`,
+// but that describes config a GM has already set, not the fallback.) It is
+// reasserted on every sync rather than only at creation, so a vault whose
+// packs were made before this shipped is repaired rather than left open.
+//
+// A public vault is left at Foundry's default: it has no tiers, nothing in it
+// is withheld from anyone on the wiki, and a GM may well want players browsing
+// it. `locked` defaults to false for world packs, so writes need no setup.
 
 import { PACK_KEY } from "./foundry-base.mjs";
 
@@ -108,6 +116,7 @@ export async function ensurePack(vault, docName) {
   const existing = game.packs.get(collection);
   if (existing) {
     assertWritable(existing, vault);
+    await enforceOwnership(existing, vault);
     return existing;
   }
 
@@ -117,6 +126,32 @@ export async function ensurePack(vault, docName) {
   const promise = createPack(vault, docName, collection).finally(() => inFlight.delete(collection));
   inFlight.set(collection, promise);
   return promise;
+}
+
+/**
+ * What a vault's packs should be visible to.
+ *
+ * GAMEMASTER only accepts OWNER. TRUSTED is named explicitly rather than left
+ * to INHERIT so the intent survives a later change to the PLAYER entry.
+ */
+function ownershipFor(vault) {
+  if (vault.public) return { GAMEMASTER: "OWNER", ASSISTANT: "OWNER" };
+  return { GAMEMASTER: "OWNER", ASSISTANT: "OWNER", TRUSTED: "NONE", PLAYER: "NONE" };
+}
+
+/** Reassert pack visibility, and say so when it actually changed something. */
+async function enforceOwnership(pack, vault) {
+  const want = ownershipFor(vault);
+  const have = pack.config.ownership;
+  if (have && Object.entries(want).every(([k, v]) => have[k] === v)) return;
+  await pack.configure({ ownership: want });
+  if (!vault.public) {
+    console.info(
+      `Vaults | ${pack.collection}: restricted to GM. It was readable by `
+      + `${have?.PLAYER ?? "PLAYER: OBSERVER (Foundry's default)"}, which exposes `
+      + `every name and image in the pack index.`,
+    );
+  }
 }
 
 async function createPack(vault, docName, collection) {
@@ -138,6 +173,7 @@ async function createPack(vault, docName, collection) {
   if (!pack) throw new Error(`Compendium pack ${collection} was not created`);
   await pack.setFolder(await ensurePackFolder(vault));
   assertWritable(pack, vault);
+  await enforceOwnership(pack, vault);
   return pack;
 }
 
