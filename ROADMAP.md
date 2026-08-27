@@ -211,6 +211,34 @@ entries read-only in place, so a reader browses the vault without importing —
 and an unimported page stays current, because sync updates the compendium under
 it. The living-wiki property survives.
 
+It also settles a question the current design keeps having to answer badly:
+**how much of a document does the vault own?** Writing into a world means
+picking, per field, between the vault's answer and the GM's, and the codebase
+is full of that choice being made one case at a time:
+
+- `foundry.data` is reapplied every sync and everything else is preserved,
+  which is a rule authors have to learn and the docs have to warn about.
+- `if (!forceFull) delete updatePatch.folder` — a GM who drags a document into
+  their own folder keeps it there, so folder placement is the GM's except when
+  it is not.
+- `foundry.base` is consulted only on create, so a GM editing a document is
+  never silently re-based — which is also why a changed base does nothing and
+  says nothing, recorded above as a gap.
+- Missing documents are reported rather than repaired, because re-creating one
+  a GM deleted on purpose would be worse than leaving it missing.
+- The Map Note is replaced every sync, which also moves it back if the GM
+  moved it.
+
+Every one of those is a reasonable answer to a question that would not exist.
+A compendium the vault owns is rebuilt wholesale: always overwrite, no
+per-field ownership, no create-only rules, no reporting-rather-than-repairing.
+The GM's copy is whatever they imported, and the vault never sees it.
+
+It lowers the stakes on ids too. `ID_SCHEME` exists because changing the
+derivation orphans every document in every synced world and cannot be undone
+by the user. Orphaning entries in a compendium the vault owns is fixed by
+deleting the compendium and syncing again.
+
 What it costs:
 
 - **An imported document stops receiving updates, silently.** That is the same
