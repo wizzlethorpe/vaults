@@ -258,7 +258,7 @@ test("a pinned foundry.id is honoured instead of the derived one", async () => {
 // may say nothing at all — so the note was placed against 4000x3000 at grid
 // 100 and landed somewhere arbitrary on a map of any other size.
 
-import { notePosition } from "../scripts/instance.mjs";
+import { notePosition, wantsJournalNote } from "../scripts/instance.mjs";
 
 test("places the note against the scene's own geometry", () => {
   // 2100x2100 at grid 140, padding 0.25: origin is ceil(15 * 0.25) = 4 cells,
@@ -389,7 +389,3 @@ test("only Scenes get one at all", () => {
   assert.equal(wantsJournalNote("Actor", {}), false);
   assert.equal(wantsJournalNote("Playlist", {}), false);
 });
-
-function wantsJournalNote(docName, fm) {
-  return docName === "Scene" && fm?.journal !== false;
-}
