@@ -322,6 +322,41 @@ creator + pack + exact filename rather than an id.
 3. **Not doing:** cloud documents (`Scene 1`, `Actor 5`, `Item 6`, …) via
    `fromDropData`.
 
+### A changed `foundry.base` is silently ignored
+
+Found while testing the Moulinette document rung: repointing a page's `base` at
+a different scene did nothing, and neither a normal sync nor a Force Sync said
+so. The document had to be deleted by hand before the new base took effect.
+
+`applyInstance` branches on whether the document exists, and only the create
+path consults `base`. That is deliberate — re-cloning would discard walls,
+tokens and lighting a GM had added, and it would happen the moment they
+installed a module that outranked the current rung. But the line is in an
+inconsistent place: `forceFull` already reasserts vault authority over folder
+placement (`if (!forceFull) delete updatePatch.folder`), so it reasserts where
+a document lives but not what it is.
+
+Two smaller edges stack on top, both hit in the same session:
+
+- Deleting a document does not make an incremental sync rebuild it — the page
+  hash is unchanged, so it never re-enters the upsert set. This one at least
+  warns, through `findMissingDocuments`.
+- Nothing records what a document was built *from*. `flags.vaults` carries
+  `vaultId` and `path`; `resolveBase` computes a `from` (a compendium UUID, or
+  `@moulinette/…`) and discards it.
+
+Proposed:
+
+1. Stamp the authored spec list as `flags.vaults.baseSpec` on create. A string
+   compare, deliberately not a comparison of *resolved* sources — that would
+   mean re-running `resolveBase` every sync, and for a Moulinette rung that is
+   a scene download to learn that nothing changed.
+2. On a normal sync, warn when the recorded spec differs from the current one.
+3. On Force Sync, rebuild, behind a confirm naming what is lost.
+
+Still not re-clone on a newly-installed higher-priority package: the vault
+author asked for nothing, so nothing should change under the GM.
+
 ### Open questions
 
 - **A creator's back catalogue may be a Foundry version behind.** Verified: The
