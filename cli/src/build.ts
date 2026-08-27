@@ -540,7 +540,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // sync time. Skipped entirely when the vault has opted out of the Foundry
   // integration — it is ~60KB shipped to every deploy, and a course site or
   // research wiki will never fetch it.
-  const foundryEnabled = settings.values.foundry;
+  const foundryEnabled = settings.values.foundry_package !== "none";
   if (foundryEnabled) await writeFoundryImporter(opts.outputDir);
   // Foundry-import bundles are written per-variant inside the role loop
   // below (instead of at the root) so the middleware role-gates them. A
@@ -680,6 +680,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
         hasFoundryJs: foundryEnabled && (handlerAssets.foundry?.js.length ?? 0) > 0,
         hasFoundryCss: foundryEnabled && (handlerAssets.foundry?.css.length ?? 0) > 0,
       },
+      settings.values.foundry_package,
     );
     await writeFile(join(variantDir, "_manifest.json"), JSON.stringify(manifest));
   }

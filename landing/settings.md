@@ -54,8 +54,8 @@ auto_image: true
 # Ship files with unrecognized extensions to every deploy variant. Default false skips them (with a warning) so a stray file in your vault can't accidentally bypass role gating. Recognized media types (audio/video/pdf/epub) are reference-gated like images regardless of this setting.
 include_unknown_files: false
 
-# Ship the Foundry VTT integration with this deploy: the importer bundle the Foundry module fetches, the /_batch read API it syncs through, and any handler assets marked for Foundry import. Set false for a vault that has nothing to do with Foundry (a course site, a research wiki) and the deploy drops ~60KB and the sync endpoints it would never use. Pages keep their 'foundry:' frontmatter either way; it simply isn't advertised.
-foundry: true
+# How this vault reaches Foundry VTT. 'adventure' packages it as a single Adventure document: import it once and every internal link resolves to the documents you imported, which is what a campaign or module wants. 'compendium' produces browsable compendium packs, one per document type, which is what a reference library wants — you look one thing up rather than importing the lot. 'none' ships no Foundry integration at all: the deploy drops the importer bundle (~60KB) and the /_batch sync endpoints it would never use, for a vault that has nothing to do with Foundry. Pages keep their 'foundry:' frontmatter under 'none'; it simply isn't advertised.
+foundry_package: compendium
 
 # Markdown text rendered in a small <footer> at the bottom of every page. Supports inline markdown (links, *italic*, **bold**). Set to an empty string to hide the footer entirely.
 footer: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com)."

@@ -32,16 +32,34 @@ export interface Settings {
   auto_image: boolean;
   include_unknown_files: boolean;
   footer: string;
-  foundry: boolean;
+  foundry_package: FoundryPackage;
   site_url: string;
 }
 
 type SettingType = "string" | "number" | "boolean" | "string[]" | "rules";
 
+/**
+ * How a vault's content is packaged for Foundry, which decides both what a
+ * sync produces and what `build --module` compiles.
+ *
+ * The two are different products, and the difference is not cosmetic: an
+ * adventure's internal links must resolve to the copies the GM imported, so
+ * they are world UUIDs and Foundry's Adventure import remaps nothing (it
+ * creates with keepId and updates what already exists). A compendium's links
+ * name the packs, because nothing is ever imported as a unit and the pack copy
+ * is the copy. Baking one shape and using it the other way is what leaves a
+ * page pointing at a second copy of the thing beside it.
+ */
+export type FoundryPackage = "none" | "compendium" | "adventure";
+
+const FOUNDRY_PACKAGES: FoundryPackage[] = ["none", "compendium", "adventure"];
+
 interface SettingDef<K extends keyof Settings> {
   default: Settings[K];
   type: SettingType;
   description: string;
+  /** For a string setting with a fixed vocabulary; anything else is rejected. */
+  choices?: readonly string[];
 }
 
 /**
@@ -174,11 +192,12 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     description:
       "Ship files with unrecognized extensions to every deploy variant. Default false skips them (with a warning) so a stray file in your vault can't accidentally bypass role gating. Recognized media types (audio/video/pdf/epub) are reference-gated like images regardless of this setting.",
   },
-  foundry: {
-    default: true,
-    type: "boolean",
+  foundry_package: {
+    default: "compendium",
+    type: "string",
+    choices: FOUNDRY_PACKAGES,
     description:
-      "Ship the Foundry VTT integration with this deploy: the importer bundle the Foundry module fetches, the /_batch read API it syncs through, and any handler assets marked for Foundry import. Set false for a vault that has nothing to do with Foundry (a course site, a research wiki) and the deploy drops ~60KB and the sync endpoints it would never use. Pages keep their 'foundry:' frontmatter either way; it simply isn't advertised.",
+      "How this vault reaches Foundry VTT. 'adventure' packages it as a single Adventure document: import it once and every internal link resolves to the documents you imported, which is what a campaign or module wants. 'compendium' produces browsable compendium packs, one per document type, which is what a reference library wants \u2014 you look one thing up rather than importing the lot. 'none' ships no Foundry integration at all: the deploy drops the importer bundle (~60KB) and the /_batch sync endpoints it would never use, for a vault that has nothing to do with Foundry. Pages keep their 'foundry:' frontmatter under 'none'; it simply isn't advertised.",
   },
   site_url: {
     default: "",
@@ -231,6 +250,12 @@ export async function loadSettings(vaultPath: string): Promise<LoadedSettings> {
     const v = fm[key];
     if (!matchesType(v, def.type)) {
       warnings.push(`settings.md: '${key}' should be a ${def.type}, got ${describeType(v)}. Using default.`);
+      continue;
+    }
+    if (def.choices && !def.choices.includes(v as string)) {
+      warnings.push(
+        `settings.md: '${key}' should be one of ${def.choices.join(", ")}, got '${String(v)}'. Using default.`,
+      );
       continue;
     }
     (values as unknown as Record<string, unknown>)[key] = v;

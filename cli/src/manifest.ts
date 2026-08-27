@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { contentTypeForExt } from "./render/extensions.js";
+import type { FoundryPackage } from "./settings.js";
 import { CLI_VERSION, MANIFEST_VERSION, ID_SCHEME } from "./version.js";
 
 export interface BodyMeta {
@@ -75,6 +76,10 @@ export interface Manifest {
    *  detected by clients holding entries derived under the prior scheme. */
   id_scheme: typeof ID_SCHEME;
   name: string;
+  /** How the Foundry module should package this vault: "compendium" for
+   *  browsable packs, "adventure" for a single importable Adventure. Absent on
+   *  deploys that predate the setting, and on vaults with no integration. */
+  foundry_package?: FoundryPackage;
   auth: { required: boolean; roles: string[] };
   /** Paths to handler asset bundles, when emitted. Clients fetch these
    *  instead of guessing well-known paths so future renames don't break. */
@@ -93,6 +98,7 @@ export async function buildManifest(
   roles: string[],
   vaultName: string,
   assets: AssetAdvertisement,
+  foundryPackage: FoundryPackage,
 ): Promise<Manifest> {
   const files: ManifestEntry[] = [];
   const seen = new Set<string>();
@@ -141,6 +147,8 @@ export async function buildManifest(
     cli_version: CLI_VERSION,
     id_scheme: ID_SCHEME,
     name: vaultName,
+    // Not advertised when there is no integration to configure.
+    ...(foundryPackage === "none" ? {} : { foundry_package: foundryPackage }),
     auth: { required: authRequired, roles },
     ...(Object.keys(assetBlock).length > 0 ? { assets: assetBlock } : {}),
     files,
