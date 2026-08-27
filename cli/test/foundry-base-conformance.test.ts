@@ -14,6 +14,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CASES } from "../../foundry/test/foundry-base.test.mjs";
 import { foundryBaseDocName } from "../src/foundry-meta.js";
+import { resolveSelfContainedBase } from "../src/foundry-module.js";
 
 describe("foundry.base doc-type conformance", () => {
   it("matches the Foundry module on every case", () => {
@@ -35,5 +36,27 @@ describe("foundry.base doc-type conformance", () => {
       }
     }
     assert.deepEqual(mismatches, [], "CLI and Foundry module disagree on foundry.base");
+  });
+
+  // The module compiler reads `foundry.base` a third time. It answers a
+  // narrower question — what can be built with no reader and no world — so it
+  // cannot share `foundryBaseDocName` outright. But where a spec names a blank
+  // document, all three implementations must agree on which type that is, or a
+  // page compiles into one kind of document and links as another.
+  it("the module compiler agrees on every blank-document case", () => {
+    const mismatches: string[] = [];
+    for (const [input, expected] of CASES) {
+      const specs = (Array.isArray(input) ? input : [input])
+        .filter((s): s is string => typeof s === "string" && s.length > 0);
+      // Only the self-contained forms: a UUID or a Moulinette reference is
+      // deliberately unbuildable by the module, and that is tested elsewhere.
+      const buildable = specs.filter((s) => !s.includes(".") && !s.startsWith("@moulinette/"));
+      if (buildable.length === 0) continue;
+      const actual = resolveSelfContainedBase(specs)?.blank ?? null;
+      if (actual !== expected) {
+        mismatches.push(`${JSON.stringify(input)}: module=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+      }
+    }
+    assert.deepEqual(mismatches, [], "module compiler disagrees on foundry.base");
   });
 });

@@ -30,18 +30,13 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import matter from "gray-matter";
-import { loadDataJson } from "./foundry-meta.js";
+import { canonicalFoundryType, loadDataJson } from "./foundry-meta.js";
 import { loadConfig } from "./config.js";
 import { buildFolders, renderBody, type LinkEntry } from "./foundry-module-render.js";
 import { loadSettings } from "./settings.js";
 import { scanVault } from "./scan.js";
 
 const execFileAsync = promisify(execFile);
-
-/** Document types a blank can be made for; mirrors foundry/scripts/foundry-base.mjs. */
-const BLANK_DOC_TYPES = [
-  "Actor", "Item", "Scene", "JournalEntry", "RollTable", "Macro", "Cards", "Playlist",
-];
 
 /**
  * Embedded collections that a LevelDB pack stores as their own keyed entries
@@ -55,7 +50,20 @@ const EMBEDDED_FIELDS = new Set([
   "drawings", "lights", "notes", "templates", "tiles", "tokens", "walls", "regions",
 ]);
 
-/** Where a rendered page body lands, per document type. */
+/**
+ * Where a rendered page body lands, per document type.
+ *
+ * Deliberately not the same table as the sync path's DESCRIPTION_FIELDS, which
+ * is keyed by game system and covers only Actor and Item on dnd5e. The two
+ * answer different questions: sync embeds a live JournalEntryPage and can
+ * check `game.system.id` because it is running inside the world, while a
+ * module inlines rendered HTML at build time, where no system is running and
+ * a RollTable's description is a plain field every system shares.
+ *
+ * The consequence worth knowing: a synced RollTable has an empty description
+ * and a module RollTable carries the page's prose. That is the sync path being
+ * conservative rather than this one overreaching, but they do differ.
+ */
 const DESCRIPTION_PATH: Record<string, string> = {
   Item: "system.description.value",
   Actor: "system.details.biography.value",
@@ -143,7 +151,10 @@ function parseBase(spec: unknown): { blank: string; subtype?: string } | null {
   if (spec.startsWith("@moulinette/")) return null;
   if (spec.includes(".")) return null; // a UUID: not self-contained
   const [typeRaw, subtype] = spec.split(":");
-  const blank = BLANK_DOC_TYPES.find((t) => t.toLowerCase() === (typeRaw ?? "").toLowerCase());
+  // The package's one copy of the type table, not a second: cli/src can import
+  // across itself, and this repo has already paid for the version of this
+  // question where five copies disagreed.
+  const blank = canonicalFoundryType(typeRaw);
   return blank ? { blank, ...(subtype ? { subtype } : {}) } : null;
 }
 

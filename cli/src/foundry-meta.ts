@@ -102,12 +102,12 @@ export function foundryBaseDocName(spec: string): string | null {
  * whole foundry.base dropped. Kept in step with
  * foundry/scripts/foundry-base.mjs by cli/test/foundry-base-conformance.test.ts.
  */
-function canonicalFoundryType(raw: string | undefined): string | null {
+export function canonicalFoundryType(raw: string | undefined): string | null {
   if (!raw) return null;
   return FOUNDRY_BLANK_DOC_TYPES.find((t) => t.toLowerCase() === raw.toLowerCase()) ?? null;
 }
 
-const FOUNDRY_BLANK_DOC_TYPES = [
+export const FOUNDRY_BLANK_DOC_TYPES = [
   "Actor", "Item", "Scene", "JournalEntry",
   "RollTable", "Macro", "Cards", "Playlist",
 ];
