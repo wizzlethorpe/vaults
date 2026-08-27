@@ -129,13 +129,32 @@ test("a Scene or Scene Packer asset resolves to no path and is treated as unreso
   }, { select: async () => "" });
 });
 
-test("a missing or inactive module leaves the reference unresolved, not thrown", async () => {
+test("an inactive module leaves the reference unresolved, and says why", async () => {
   await withMoulinette([GHELFI], async () => {
+    const warnings = [];
     const doc = { path: REF };
-    const stats = await resolveMoulinetteRefs(doc, () => {});
+    const stats = await resolveMoulinetteRefs(doc, (m) => warnings.push(m));
     assert.equal(doc.path, undefined);
     assert.equal(stats.unresolved, 1);
+    assert.match(warnings.join("\n"), /installed but not enabled/);
   }, { active: false });
+});
+
+test("an uninstalled module says so once, not once per reference", async () => {
+  // The ordinary case: a reader who simply does not have Moulinette. Silence
+  // here is indistinguishable from a vault that forgot to ship its assets.
+  const prev = globalThis.game;
+  globalThis.game = { modules: { get: () => undefined } };
+  try {
+    const warnings = [];
+    const doc = { a: REF, b: REF, nested: { c: REF } };
+    const stats = await resolveMoulinetteRefs(doc, (m) => warnings.push(m));
+    assert.equal(stats.unresolved, 1, "one distinct reference");
+    assert.equal(warnings.length, 1, "one warning, not one per occurrence");
+    assert.match(warnings[0], /not installed/);
+    assert.equal(doc.a, undefined);
+    assert.equal(doc.nested, undefined, "the container goes with it");
+  } finally { globalThis.game = prev; }
 });
 
 test("an index that is not a list is skipped, not thrown on", async () => {

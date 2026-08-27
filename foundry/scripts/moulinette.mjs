@@ -58,7 +58,19 @@ export function parseMoulinetteRef(s) {
  */
 async function loadIndex(log) {
   const mod = game.modules?.get("moulinette");
-  if (!mod?.active) return null;
+  // Said out loud, because this is the ordinary case rather than an edge one:
+  // a reader who simply does not have Moulinette gets every reference dropped,
+  // and silence there is indistinguishable from a vault that forgot to ship
+  // its assets. Deduplicated by the caller, so one line however many
+  // references a page carries.
+  if (!mod) {
+    log("references need the Moulinette module, which is not installed");
+    return null;
+  }
+  if (!mod.active) {
+    log("references need the Moulinette module, which is installed but not enabled in this world");
+    return null;
+  }
   const collection = mod.collections?.find((c) => c.getId?.() === CACHED_COLLECTION);
   if (!collection?.initialize || !collection.selectAsset || !collection.downloadAsset) {
     log("Moulinette is installed but its asset index is not where we expect; skipping");
