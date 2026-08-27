@@ -11,7 +11,7 @@ import {
   copyReferencedImages,
   copyReferencedPassthroughs,
 } from "./asset-refs.js";
-import { downloadFilePaths } from "./render/handlers/builtin/download.js";
+import { absoluteManifestDownloads, downloadFilePaths } from "./render/handlers/builtin/download.js";
 import { buildManifest, type BodyMeta } from "./manifest.js";
 import { collectBodyMeta, warnFoundryDocCollisions } from "./foundry-meta.js";
 import { compressImage } from "./images.js";
@@ -325,6 +325,22 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     const missing = [...downloadPaths].filter((p) => !withinLimit.some((f) => f.path === p));
     for (const p of missing) {
       console.warn(`  download block names '${p}', which is not in the vault; the link will 404.`);
+    }
+    // A module manifest with an absolute download URL cannot be signed when
+    // the vault is reached over a different hostname than the one it names —
+    // the middleware cannot tell the vault's own second domain from anyone
+    // else's, so it refuses, and the install dies on its second fetch. Cheaper
+    // to say so here than to debug it from inside Foundry.
+    for (const f of withinLimit) {
+      if (!downloadPaths.has(f.path) || !/\.json$/i.test(f.path)) continue;
+      const absolute = absoluteManifestDownloads(await readFile(f.absolute, "utf8"));
+      if (absolute) {
+        console.warn(
+          `  ${f.path}: "download" is an absolute URL (${absolute}).`
+          + ` Make it relative (e.g. "/${[...downloadPaths].find((p) => !/\.json$/i.test(p)) ?? "downloads/module.zip"}")`
+          + ` so it resolves on whichever host serves this vault, and can be signed for gated installs.`,
+        );
+      }
     }
     if (promoted.length > 0) {
       console.log(`  staging ${promoted.length} download file(s) named by \`\`\`download blocks`);

@@ -533,6 +533,17 @@ async function signManifestDownload(response, url, env, role) {
   catch { return null; }
   if (!manifest || typeof manifest.download !== "string") return null;
 
+  // Relative resolves onto whichever host this request arrived on, which is
+  // the point: a vault can be served from several (a pages.dev name and a
+  // custom domain), and a manifest that hard-codes one of them is wrong on
+  // the others whether or not tokens are involved.
+  //
+  // An absolute URL naming a different host is left alone. That is the guard
+  // against attaching our signature to somebody else's URL, and it cannot
+  // distinguish the vault's own second hostname from anyone else's — so a
+  // manifest that hard-codes the pages.dev name will not be signed when
+  // fetched over the custom domain. Write the field relative. The CLI warns
+  // when it is not.
   let target;
   try { target = new URL(manifest.download, url.origin); }
   catch { return null; }

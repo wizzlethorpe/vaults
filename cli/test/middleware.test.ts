@@ -297,6 +297,42 @@ describe("generated auth middleware", () => {
     assert.equal(await followed.text(), "/_variants/dm/releases/mod.zip");
   });
 
+  it("signs a relative download URL onto whichever host the request arrived on", async () => {
+    // The case that matters in practice: a vault served from both a pages.dev
+    // name and a custom domain. A relative field resolves onto the host in
+    // hand, so one manifest is correct on every domain that serves it.
+    const link = await forgeToken("l", "dm", 600);
+    const res = await call(
+      mw,
+      "https://custom.example/downloads/module.json?_token=" + link,
+      {},
+      { ASSETS: { fetch: () => new Response(JSON.stringify({
+        id: "x", download: "/downloads/mod.zip",
+      })) } },
+    );
+    const body = await res.json() as { download: string };
+    const signed = new URL(body.download);
+    assert.equal(signed.origin, "https://custom.example");
+    assert.ok(signed.searchParams.get("_token"));
+  });
+
+  it("leaves an absolute URL naming the vault's other hostname unsigned", async () => {
+    // Not a bug, and the reason to write the field relative: the middleware
+    // cannot tell the vault's own second domain from anyone else's, so it
+    // refuses both. This cost a real debugging session, hence the test.
+    const link = await forgeToken("l", "dm", 600);
+    const res = await call(
+      mw,
+      "https://custom.example/downloads/module.json?_token=" + link,
+      {},
+      { ASSETS: { fetch: () => new Response(JSON.stringify({
+        id: "x", download: "https://project.pages.dev/downloads/mod.zip",
+      })) } },
+    );
+    const body = await res.json() as { download: string };
+    assert.equal(body.download, "https://project.pages.dev/downloads/mod.zip");
+  });
+
   it("will not attach our signature to someone else's download URL", async () => {
     const link = await forgeToken("l", "dm", 600);
     const res = await call(

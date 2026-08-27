@@ -59,6 +59,26 @@ export function parseDownloadBlock(content: string): DownloadSpec | null {
   };
 }
 
+/**
+ * Manifests whose `download` field names an absolute URL.
+ *
+ * A vault is often served from more than one host — a pages.dev name and a
+ * custom domain — and the middleware only signs a download URL that resolves
+ * onto the host the request arrived on. An absolute URL naming the other one
+ * is indistinguishable from a URL naming somebody else entirely, so it is
+ * left unsigned and the install fails on its second fetch, which is a
+ * miserable thing to debug from the Foundry side.
+ */
+export function absoluteManifestDownloads(manifestJson: string): string | null {
+  try {
+    const parsed = JSON.parse(manifestJson) as { download?: unknown };
+    if (typeof parsed.download !== "string") return null;
+    return /^[a-z][a-z0-9+.-]*:/i.test(parsed.download) ? parsed.download : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Vault-relative paths named by a page's ```download blocks. */
 export function downloadFilePaths(source: string): string[] {
   const paths: string[] = [];
