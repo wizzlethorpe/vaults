@@ -33,6 +33,10 @@ import matter from "gray-matter";
 import { canonicalFoundryType, loadDataJson } from "./foundry-meta.js";
 import { loadConfig } from "./config.js";
 import { buildFolders, renderBody, type LinkEntry } from "./foundry-module-render.js";
+import {
+  buildJournalEntries, journalEntryId, journalPageId, transformForModule,
+  type JournalSource, type JournalTarget,
+} from "./foundry-module-journal.js";
 import { loadSettings } from "./settings.js";
 import { scanVault } from "./scan.js";
 
@@ -296,6 +300,15 @@ export interface ModuleOptions {
   vaultId: string;
   /** Vault-relative directory the manifest and zip are written to. */
   outputDir: string;
+  /**
+   * A rendered deploy to take journal HTML from. The wiki's own output, so a
+   * page's handlers and `fm:` values are in it; re-rendering the markdown
+   * would ship a different article than the site shows. Absent, the module
+   * carries documents only.
+   */
+  renderedDir?: string;
+  /** Which variant subdirectory the rendered bodies live in. */
+  renderedRole?: string;
 }
 
 /** Just enough of a page for the module: where it is, what it is called, and
@@ -315,7 +328,13 @@ async function scanPages(vaultPath: string, defaultRole: string): Promise<Module
   const files = await scanVault(vaultPath);
   const pages: ModulePage[] = [];
   for (const f of files) {
-    if (!/\.md$/i.test(f.path) || /(^|\/)index\.md$/i.test(f.path)) continue;
+    // index.md is included. The compendium side skipped it, which was right
+    // for a folder overview that is not itself an entry — but it has no
+    // foundry.base, so the document pass drops it anyway. The journal side
+    // needs it: sync makes a page for every .md in a directory, and dropping
+    // index pages both loses the article and turns every [[index]] link in
+    // the vault into plain text.
+    if (!/\.md$/i.test(f.path)) continue;
     const parsed = matter(await readFile(f.absolute, "utf8"));
     const fm = parsed.data as Record<string, unknown>;
     const fo = fm["foundry"];
@@ -443,9 +462,17 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
   }
 
   const gated: string[] = [];
+  const journalPages: ModulePage[] = [];
   for (const page of await scanPages(opts.vaultPath, defaultRole)) {
-    if (!page.foundry) continue;
     if (!allowedRoles.has(page.role)) { gated.push(page.path); continue; }
+    // `sync: false` means the page is not for Foundry at all — no journal, no
+    // document. A module is Foundry content by definition, so it honours that
+    // the same way the sync path does.
+    if (page.foundry?.["sync"] === false) continue;
+    // `journal: false` exists for a page whose only job is to make a document.
+    // It keeps its document and contributes no article, here as there.
+    if (page.foundry?.["journal"] !== false) journalPages.push(page);
+    if (!page.foundry) continue;
     const block = page.foundry;
     const specs = (Array.isArray(block["base"]) ? block["base"] : [block["base"]])
       .filter((x): x is string => typeof x === "string" && x.length > 0);
@@ -481,8 +508,8 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
       + ` flags.vaults.roles says otherwise.`,
     );
   }
-  if (planned.length === 0) {
-    console.warn("  --module: no page produced a document this module can carry; nothing built.");
+  if (planned.length === 0 && journalPages.length === 0) {
+    console.warn("  --module: no page produced anything this module can carry; nothing built.");
     return null;
   }
 
@@ -495,6 +522,38 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     linkIndex.set(p.page.title.toLowerCase(), { uuid, name: p.page.title });
     const basename = p.page.path.split("/").pop()!.replace(/\.md$/i, "");
     if (!linkIndex.has(basename.toLowerCase())) linkIndex.set(basename.toLowerCase(), { uuid, name: basename });
+  }
+
+  // ── Journals ────────────────────────────────────────────────────────────
+  //
+  // Read from the rendered deploy rather than re-rendered from markdown, so a
+  // page's battlemap, statblock and `fm:` values are the ones the wiki shows.
+  const journalTargets = new Map<string, JournalTarget>();
+  const journalSources: JournalSource[] = [];
+  const journalPackName = `${moduleId}-journal`;
+  // Journals mirror the sync model by default: a page becomes an article, and
+  // a document made from that page embeds it, so the same vault produces the
+  // same thing whether a reader synced it or installed it.
+  //
+  // A vault whose pages exist only to describe compendium entries can opt out
+  // with `flags.vaults.journal: false`. That is a real case, not a
+  // hypothetical: WANDS's prose is already the text of each item, so carrying
+  // it a second time as an article would duplicate the whole compendium.
+  const wantsJournal = flags["vaults"]?.["journal"] !== false;
+  if (opts.renderedDir && wantsJournal) {
+    for (const page of journalPages) {
+      const html = await readRenderedBody(opts, page.path);
+      if (html === null) continue;
+      journalSources.push({ path: page.path, title: page.title, html });
+      const eId = journalEntryId(moduleId, page.path);
+      const pId = journalPageId(moduleId, page.path);
+      journalTargets.set(page.path, {
+        uuid: `Compendium.${moduleId}.${journalPackName}.JournalEntry.${eId}.JournalEntryPage.${pId}`,
+        entryId: eId, pageId: pId,
+      });
+      // A link is written against the page's URL, which has no .md on it.
+      journalTargets.set(page.path.replace(/\.md$/i, ""), journalTargets.get(page.path)!);
+    }
   }
 
   // ── Second pass: assemble ───────────────────────────────────────────────
@@ -529,7 +588,14 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     // something redistributable.
     const descPath = block["embed"] === false ? "" : DESCRIPTION_PATH[p.docType];
     if (descPath) {
-      const html = renderBody(p.page.body, linkIndex);
+      const target = journalTargets.get(p.page.path);
+      // Embed the module's own journal page, exactly as the sync path embeds
+      // the world's. That is what makes a module document and a synced
+      // document the same thing rather than two renderings of one page.
+      // Falls back to inlined HTML when the module carries no journal.
+      const html = target
+        ? `<p>@Embed[${target.uuid} inline]</p>`
+        : renderBody(p.page.body, linkIndex);
       // Set even when empty. A page whose prose lives entirely in a handler
       // fence renders to nothing, and a sheet reading an absent field is not
       // the same as one reading a blank string.
@@ -586,6 +652,22 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     byPack.set(p.decl.name, bucket);
   }
 
+  if (journalSources.length > 0) {
+    const entries = buildJournalEntries(journalSources, moduleId, String(manifest["title"] ?? moduleId), stats);
+    for (const entry of entries) {
+      for (const page of entry.pages) {
+        const text = page["text"] as Record<string, unknown>;
+        text["content"] = transformForModule(String(text["content"]), moduleId, journalTargets, assets);
+      }
+    }
+    byPack.set(journalPackName, {
+      decl: { folder: "", name: journalPackName, label: "", type: "JournalEntry" },
+      docs: entries as unknown as Array<Record<string, unknown>>,
+      entries: [],
+    });
+    documents += entries.length;
+  }
+
   return finishModule(opts, manifest, moduleId, version, cli, byPack, assets, moulinette, skipped, documents, stats);
 }
 
@@ -626,6 +708,23 @@ function assembleRollTableResults(
   doc["formula"] ??= `1d${raw.length || 1}`;
   doc["replacement"] ??= true;
   doc["displayRoll"] ??= true;
+}
+
+/**
+ * The wiki's rendered body for a page, or null when the deploy has none.
+ *
+ * A single-role build collapses its variant to the deploy root, so both
+ * layouts are tried rather than deriving which one applies.
+ */
+async function readRenderedBody(opts: ModuleOptions, pagePath: string): Promise<string | null> {
+  const rel = pagePath.replace(/\.md$/i, ".body.html");
+  const candidates = opts.renderedRole
+    ? [join(opts.renderedDir!, "_variants", opts.renderedRole, rel), join(opts.renderedDir!, rel)]
+    : [join(opts.renderedDir!, rel)];
+  for (const c of candidates) {
+    try { return await readFile(c, "utf8"); } catch { /* try the other layout */ }
+  }
+  return null;
 }
 
 /**

@@ -94,3 +94,74 @@ describe("embedded documents", () => {
     assert.equal((doc["results"] as Array<Record<string, unknown>>)[0]!["_id"], "mine000000000001");
   });
 });
+
+// --- journals -------------------------------------------------------------
+//
+// A module mirrors the sync model: one JournalEntry per vault directory, every
+// .md in it a page. Matching that is the whole point — a document embeds a
+// journal page, and if the two laid journals out differently the same vault
+// would produce two different-shaped things depending on how a reader got it.
+
+import {
+  buildJournalEntries, folderOfPath, journalEntryId, transformForModule,
+} from "../src/foundry-module-journal.js";
+
+describe("journal grouping", () => {
+  it("puts every page in a directory into one entry, as sync does", () => {
+    const entries = buildJournalEntries([
+      { path: "Roll Tables/Curses.md", title: "Curses", html: "<p>a</p>" },
+      { path: "Roll Tables/Quirks.md", title: "Quirks", html: "<p>b</p>" },
+      { path: "index.md", title: "Home", html: "<p>c</p>" },
+    ], "mod", "My Module", {});
+    const byName = Object.fromEntries(entries.map((e) => [e.name, e.pages.length]));
+    assert.deepEqual(byName, { "Roll Tables": 2, "My Module": 1 });
+  });
+
+  it("gives every page in a directory the same entry id", () => {
+    assert.equal(
+      journalEntryId("mod", "Roll Tables/Curses.md"),
+      journalEntryId("mod", "Roll Tables/Quirks.md"),
+    );
+    assert.notEqual(journalEntryId("mod", "a/x.md"), journalEntryId("mod", "b/x.md"));
+  });
+
+  it("reads a root-level page as living in no folder", () => {
+    assert.equal(folderOfPath("index.md"), "");
+    assert.equal(folderOfPath("a/b/c.md"), "a/b");
+  });
+});
+
+describe("journal HTML", () => {
+  const targets = new Map([["Roll Tables/Curses", {
+    uuid: "Compendium.m.m-journal.JournalEntry.e1.JournalEntryPage.p1", entryId: "e1", pageId: "p1",
+  }]]);
+
+  it("rewrites an internal link whatever order its attributes came in", () => {
+    // The renderer emits class before href in some cases and after in others.
+    // Anchoring on href first silently missed half the links in the vault.
+    for (const tag of [
+      '<a href="/Roll%20Tables/Curses" class="internal internal-link">Curses</a>',
+      '<a class="internal internal-link" href="/Roll%20Tables/Curses">Curses</a>',
+    ]) {
+      const out = transformForModule(tag, "m", targets, new Set());
+      assert.match(out, /@UUID\[Compendium\.m\.m-journal\.JournalEntry\.e1\.JournalEntryPage\.p1\]\{Curses\}/);
+    }
+  });
+
+  it("keeps the words when the target is not in the module", () => {
+    const out = transformForModule('<a class="internal" href="/Missing">Gone</a>', "m", targets, new Set());
+    assert.equal(out, "Gone", "a dead link is worse than plain text");
+  });
+
+  it("leaves an external link alone", () => {
+    const tag = '<a href="https://example.com">out</a>';
+    assert.equal(transformForModule(tag, "m", targets, new Set()), tag);
+  });
+
+  it("moves media onto the module and records it for bundling", () => {
+    const assets = new Set<string>();
+    const out = transformForModule('<img src="/attachments/map.webp">', "m", targets, assets);
+    assert.match(out, /src="modules\/m\/assets\/attachments\/map\.webp"/);
+    assert.deepEqual([...assets], ["attachments/map.webp"]);
+  });
+});

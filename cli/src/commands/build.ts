@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { buildFoundryModule } from "../foundry-module.js";
+import { loadConfig } from "../config.js";
 import { buildSite } from "../build.js";
 import { defaultOutputDir, requireInitialisedVault } from "../paths.js";
 
@@ -14,15 +15,23 @@ export async function build(vaultPath: string, opts: BuildOptions): Promise<void
   await requireInitialisedVault(vaultPath);
   const outputDir = opts.output ? resolve(opts.output) : defaultOutputDir(vaultPath);
 
-  // Before the site build, which lists the vault's files once at the start:
-  // the module writes a manifest and a zip *into* the vault, and a build that
-  // had already listed the files would not see them.
+  // --module renders twice, and the reason is a genuine circle rather than
+  // laziness. The module's journals must carry the *wiki's* rendered HTML —
+  // handlers, `fm:` values and all — so the module cannot be built before the
+  // render. But it writes a manifest and a zip into the vault, and the build
+  // lists the vault's files once at the start, so anything appearing later is
+  // invisible to the build that should ship it. Render, compile, render again.
   if (opts.module) {
+    console.log(`Rendering ${vaultPath} (pass 1 of 2, for the module's journals)...`);
+    await buildSite({ vaultPath, outputDir, allWarnings: false });
+
     console.log("Compiling Foundry module...");
     const built = await buildFoundryModule({
       vaultPath,
       vaultId: vaultPath,
       outputDir: "downloads",
+      renderedDir: outputDir,
+      renderedRole: await lowestRole(vaultPath),
     });
     if (built) {
       console.log(
@@ -43,4 +52,10 @@ export async function build(vaultPath: string, opts: BuildOptions): Promise<void
     .join(", ");
   console.log(`  ${summary} pages, ${result.imageCount} images, ${result.otherCount} other files`);
   console.log(`Output: ${outputDir}`);
+}
+
+/** The variant the module reads its journal HTML from: the vault's lowest role. */
+async function lowestRole(vaultPath: string): Promise<string | undefined> {
+  const cfg = await loadConfig(vaultPath, {});
+  return cfg.roles.length > 1 ? cfg.roles[0] : undefined;
 }
