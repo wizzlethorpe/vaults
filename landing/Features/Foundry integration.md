@@ -24,13 +24,13 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 | `foundry.base: <UUID>` | New `Actor` or `Item` cloned from the template (see below) |
 | `foundry.base: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
 | `foundry.base: [<spec>, …]` | A priority list, tried in order, so one page serves readers with different content installed. End it with a type so it always produces something |
-| `foundry.base: "@moulinette/<pack>/<file>"` | A document cloned from the reader's own [Moulinette](https://assets.moulinette.cloud/) library (see below) |
+| `foundry.base: "@moulinette/<pack_ref>/<filepath>"` | A document cloned from the reader's own [Moulinette](https://assets.moulinette.cloud/) library. `pack_ref` is the number in a marketplace URL, not a name (see below) |
 | `foundry.sync: false` | Skip this page entirely: no `JournalEntry`, no derived doc (see below) |
 | `foundry.embed: false` | Skip auto-embedding the page article into the doc's description field |
 | `foundry.journal: false` | Instantiate the derived doc but keep the article out of the journal sidebar. An Actor or Scene that needs no wiki entry of its own |
 | `foundry.link` | `journal` (default) or `doc`: where wikilinks to this page point. `doc` sends them at the instantiated document instead of its journal page. Implied by `journal: false` |
 | `foundry.folder` | A `/`-separated folder path the instantiated doc is filed under, nested inside the vault's own sidebar folder. Absent means the vault folder itself |
-| `foundry.data` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); `"@moulinette/PACK/FILE"` strings resolve against the reader's own Moulinette library (see below) |
+| `foundry.data` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); `"@moulinette/<pack_ref>/<filepath>"` strings resolve against the reader's own Moulinette library (see below) |
 | `foundry.data_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.data` (use for exported sheets / community-shared dumps) |
 | `foundry.id` | 16-char `[A-Za-z0-9]` Foundry id pinned for this page's `JournalEntryPage` and (if `foundry.base` is set) its instantiated doc |
 
@@ -289,7 +289,7 @@ foundry:
 
 ### Versioning, and why the asset rung ages better
 
-Creators re-export their catalogue for each new Foundry generation, and republish it as a **new pack with a new `pack_ref`** — often under the same name. So a `pack_ref` pins a Foundry version as much as it pins content, and that matters more than it sounds.
+Creators re-export their catalogue for each new Foundry generation, and republish it as a **new pack with a new `pack_ref`** — often under the same name. So a `pack_ref` pins a Foundry version as much as it pins content.
 
 A **document** is coupled to the generation it was exported for. A Foundry 13 scene imported into a Foundry 14 world keeps its walls, lights and sounds, but its map does not land where it belongs, because v14 moved a scene's background onto its Level. Foundry ships no conversion for this on the import path, so vaults does not attempt one. It reports it instead:
 
@@ -318,10 +318,6 @@ with the map referenced from `@moulinette/` inside that file. The licensing line
 >   - "@moulinette/13648/json/scene/06-junkyard-empty.json"
 >   - Scene
 > ```
-
-### What this vault demonstrates
-
-Nothing, deliberately. Every other feature on this site is demonstrated by a live page, but a Moulinette reference only resolves for a reader who owns that pack — a demo would be a broken page for almost everyone who visits. The examples above are drawn from real vaults instead.
 
 ## Per-vault dmRole setting
 
