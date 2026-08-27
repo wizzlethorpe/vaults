@@ -191,6 +191,46 @@ now gated on the same list as the blank-document form (`BLANK_DOC_TYPES` in
 foundry/scripts/foundry-base.mjs), because the real constraint is identical —
 the type needs a world collection to be created in.
 
+## Should sync import into a compendium?
+
+Today sync writes world documents. The module compiler writes compendium packs.
+Keeping those two in step is ongoing work, and the parity chase in the module
+compiler is what raised the question: if sync produced a compendium too, they
+would be one artifact delivered two ways — HTTP pull or zip install — and could
+not drift, because there would be nothing to keep in step.
+
+The better argument is not parity though. It is ownership. Sync re-applies
+`foundry.data` on every run, so a GM editing one of those fields loses the edit,
+and the documentation has to warn about it. A vault that owned a compendium
+would never touch a document the GM owns. The boundary stops being "we
+overwrite these fields and you keep the rest" and becomes "this is ours, that
+is yours".
+
+The obvious objection mostly dissolves: Foundry opens compendium journal
+entries read-only in place, so a reader browses the vault without importing —
+and an unimported page stays current, because sync updates the compendium under
+it. The living-wiki property survives.
+
+What it costs:
+
+- **An imported document stops receiving updates, silently.** That is the same
+  fact as the benefit, seen from the other side, and it needs an answer:
+  re-import, or something that notices drift and says so.
+- **Migration is the hard part.** Every synced vault has world documents at
+  deterministic ids. Moving them into a compendium changes their UUIDs, which
+  breaks inter-page `@UUID` links, macros reaching a pinned `foundry.id`, and
+  canvas tokens pointing at a synced actor. That is the class of change
+  `ID_SCHEME` exists to guard against, so it needs a real migration or a long
+  period where both exist.
+- **Some documents want to be world-level anyway** — a Scene being run, an
+  Actor with tokens placed, a Macro on the hotbar. Those get imported, which is
+  fine, but it means the model is "compendium plus imports", not "compendium".
+
+Unverified and load-bearing: that a module can create and write a world-level
+compendium at runtime. Foundry exposes it (`CompendiumCollection.createCompendium`,
+and the sidebar's Create Compendium), but there was none in the test world to
+observe, and the whole design rests on it. Test that before designing further.
+
 ### Moulinette: research
 
 Creators often distribute through both channels. The first sketch made
