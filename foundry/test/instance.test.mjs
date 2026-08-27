@@ -389,3 +389,36 @@ test("only Scenes get one at all", () => {
   assert.equal(wantsJournalNote("Actor", {}), false);
   assert.equal(wantsJournalNote("Playlist", {}), false);
 });
+
+// --- where a description goes ------------------------------------------
+//
+// Two tables, because there are two kinds of answer. An Actor or Item keeps
+// its description inside the system's schema, so the path is only knowable
+// per system. A RollTable or Playlist has a top-level `description` that core
+// Foundry defines and every system shares.
+//
+// The lookup used to go through the system table only, so a RollTable fell
+// through it on every system — including dnd5e — and a synced table's
+// description was always empty.
+
+import { descriptionPathFor } from "../scripts/instance.mjs";
+
+test("a core description is found whatever the system", () => {
+  assert.equal(descriptionPathFor("RollTable", "dnd5e"), "description");
+  assert.equal(descriptionPathFor("RollTable", "pf2e"), "description");
+  assert.equal(descriptionPathFor("Playlist", "anything"), "description");
+});
+
+test("a system description is found only for a known system", () => {
+  assert.equal(descriptionPathFor("Actor", "dnd5e"), "system.details.biography.value");
+  assert.equal(descriptionPathFor("Item", "dnd5e"), "system.description.value");
+  assert.equal(descriptionPathFor("Actor", "pf2e"), undefined, "unknown system, no guess");
+});
+
+test("types with no description anywhere get none", () => {
+  // Confirmed against a live world: these carry no description field, so
+  // inventing one would put a stray key on every synced document.
+  for (const t of ["Scene", "Macro", "JournalEntry"]) {
+    assert.equal(descriptionPathFor(t, "dnd5e"), undefined, t);
+  }
+});

@@ -16,6 +16,32 @@ import { resolveMoulinetteDocument, resolveMoulinetteRefs } from "./moulinette.m
 // by (game.system.id, document name). Missing entries still create the clone;
 // the embed step is just skipped with a warning. Add a row here to support a
 // new system.
+// Where a document's description lives, when it has one.
+//
+// Two tables because there are two kinds of answer. An Actor or Item keeps its
+// description inside the *system's* schema, so the path is only knowable per
+// system and an unknown system means no embed. A RollTable or Playlist has a
+// top-level `description` that core Foundry defines and every system shares,
+// so no system key applies and keying by one only hid the field.
+//
+// That is what this used to do: the lookup went through the system table
+// first, and a RollTable fell through it on every system including dnd5e, so a
+// synced table's description was always empty. Confirmed against a live world
+// — dnd-tashas-cauldron's tables carry HTML in exactly this field.
+//
+// Cards is believed to have one too but is not listed: there was none in the
+// world to check, and adding a field on a guess is how the other half of this
+// bug happened.
+const CORE_DESCRIPTION_FIELDS = {
+  RollTable: "description",
+  Playlist: "description",
+};
+
+/** Where this document type's description lives, or undefined if it has none. */
+export function descriptionPathFor(docName, systemId) {
+  return CORE_DESCRIPTION_FIELDS[docName] ?? DESCRIPTION_FIELDS[systemId]?.[docName];
+}
+
 const DESCRIPTION_FIELDS = {
   dnd5e: {
     Actor: "system.details.biography.value",
@@ -642,7 +668,7 @@ async function buildOverlay(vault, vaultPath, meta, docName, derived = {}) {
   // or DM-private pages where embedding would leak content into the
   // actor sheet). Default is true.
   const fm = meta?.foundry;
-  const descPath = DESCRIPTION_FIELDS[game.system.id]?.[docName];
+  const descPath = descriptionPathFor(docName, game.system.id);
   // `journal: false` leaves no page to point at, so the embed would render
   // as a broken reference on the sheet.
   const embedAuto = fm?.embed !== false && fm?.journal !== false;
