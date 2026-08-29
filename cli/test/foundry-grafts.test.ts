@@ -17,6 +17,7 @@ const opts: GraftOptions = {
   vaultId: "marlo",
   roles: ["public", "player", "dm"],
   playerRole: "player",
+  buildRole: "dm",
   packs: { JournalEntry: "marlo-journals", Actor: "marlo-actors", Item: "marlo-items" },
   version: "1.4.0",
 };
@@ -225,5 +226,50 @@ describe("a base priority list", () => {
     assert.equal(firstBase({ uuid: "x" }), null);
     const { warnings } = documentEntries([{ path: "y.md", title: "Y", role: "dm", foundry: { base: 42 } }], opts);
     assert.match(warnings[0]!, /should be a UUID or a list/);
+  });
+});
+
+describe("a bare base with a subtype", () => {
+  it("splits the schema from the kind", async () => {
+    // `Actor:npc` is a page inventing an NPC rather than grafting one: Actor
+    // is the schema graft builds into, npc is a field on the document.
+    const { documentEntries, documentTypeOf, subtypeOf } = await import("../src/foundry-grafts.js");
+    assert.equal(documentTypeOf("Actor:npc"), "Actor");
+    assert.equal(subtypeOf("Actor:npc"), "npc");
+    assert.equal(subtypeOf("Compendium.a.b.Actor.cccccccccccccccc"), null, "a source carries its own");
+
+    const { entries, warnings } = documentEntries([{
+      path: "NPCs/Mossroot.md", title: "Mossroot", role: "dm", foundry: { base: "Actor:npc" },
+    }], opts);
+    assert.deepEqual(warnings, []);
+    assert.equal(entries[0]!.type, "Actor");
+    assert.equal(entries[0]!.patch["type"], "npc");
+    assert.ok(!("source" in entries[0]!), "invented, not grafted");
+  });
+});
+
+describe("each role's file is buildable by that role", () => {
+  it("never references a variant above the reader who receives it", async () => {
+    // The file is served through the same gate as everything else, so a body
+    // it names above the reader's role is one they cannot fetch.
+    const { journalEntries } = await import("../src/foundry-grafts.js");
+    const asPublic = { ...opts, buildRole: "public", playerRole: "" };
+    const [entry] = journalEntries([page("Secrets/Rot.md", { role: "dm" })], asPublic);
+    const pages = entry!.patch["pages"] as Array<Record<string, any>>;
+    assert.match(pages[0]!.text.content, /^@vaults\/public\//);
+  });
+});
+
+describe("an unset player role", () => {
+  it("publishes nothing, rather than defaulting to the lowest role", async () => {
+    // "Empty means none of it is [player-visible]" is what the setting
+    // documents, and it is the only safe reading: a vault that has not opted
+    // in must not put content in front of the table.
+    const { visibility, journalEntries } = await import("../src/foundry-grafts.js");
+    const shut = { ...opts, playerRole: "" };
+
+    assert.deepEqual(visibility(page("A.md", { role: "public" }), shut), { variant: "dm", ownership: 0 });
+    const [entry] = journalEntries([page("A.md", { role: "public" })], shut);
+    assert.equal((entry!.patch["ownership"] as any).default, 0);
   });
 });

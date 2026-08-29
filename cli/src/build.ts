@@ -701,7 +701,8 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
         {
           vaultId: foundryModuleId,
           roles,
-          playerRole: settings.values.foundry.player_role || roles[0]!,
+          playerRole: settings.values.foundry.player_role,
+          buildRole: role,
           packs: packsFor(foundryModuleId),
           version: assetVersion,
         },

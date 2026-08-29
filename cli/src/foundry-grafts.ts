@@ -50,8 +50,18 @@ export interface GraftOptions {
   vaultId: string;
   /** Role names, least privileged first. The last is what the GM builds as. */
   roles: string[];
-  /** Roles at or below this one are visible to players. */
+  /**
+   * The highest role players may read. Empty means none of it: a vault that
+   * has not opted in publishes nothing to the table, which is the only safe
+   * reading of an unset setting.
+   */
   playerRole: string;
+  /**
+   * The role whose file this is. Bodies are never referenced above it, since
+   * the reader holding this file could not fetch them: each variant has to be
+   * buildable by whoever is served it.
+   */
+  buildRole: string;
   /** Pack name per document type, e.g. `{ JournalEntry: "marlo-journals" }`. */
   packs: Record<string, string>;
   version: string;
@@ -91,11 +101,11 @@ export const folderOf = (path: string): string => {
  */
 export function visibility(page: Page, opts: GraftOptions): { variant: string; ownership: number } {
   const rank = (role: string) => opts.roles.indexOf(role);
-  const gmRole = opts.roles[opts.roles.length - 1] ?? opts.playerRole;
-  const observable = rank(page.role) >= 0 && rank(page.role) <= rank(opts.playerRole);
+  const ceiling = rank(opts.playerRole);
+  const observable = ceiling >= 0 && rank(page.role) >= 0 && rank(page.role) <= ceiling;
   return observable
     ? { variant: opts.playerRole, ownership: OBSERVER }
-    : { variant: gmRole, ownership: NONE };
+    : { variant: opts.buildRole, ownership: NONE };
 }
 
 /** `"Characters/Nobles/Marlo.md"` to `"Characters/Nobles"`, or undefined at the root. */
@@ -198,8 +208,10 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
     }
 
     const { ownership } = visibility(page, opts);
+    const subtype = subtypeOf(base);
     const patch: Record<string, unknown> = {
       name: page.title,
+      ...(subtype ? { type: subtype } : {}),
       ...(spec.data ?? {}),
       ownership: { default: ownership },
     };
@@ -226,7 +238,21 @@ export function documentTypeOf(base: string): string | null {
     const parts = base.split(".");
     return parts.length >= 5 ? parts[parts.length - 2]! : null;
   }
-  return /^[A-Z][A-Za-z]+$/.test(base) ? base : null;
+  const [type] = base.split(":");
+  return /^[A-Z][A-Za-z]+$/.test(type ?? "") ? type! : null;
+}
+
+/**
+ * The system subtype in a bare base, if it names one.
+ *
+ * `Actor:npc` is a page inventing an NPC rather than grafting one: the
+ * document type is the schema, the subtype is what kind of it this is, and
+ * Foundry needs the second as a `type` field on the document itself.
+ */
+export function subtypeOf(base: string): string | null {
+  if (base.startsWith("Compendium.")) return null;
+  const [, subtype] = base.split(":");
+  return subtype?.trim() || null;
 }
 
 /** Everything a vault contributes, in the order graft will read it. */
