@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-tuned dnd5e overlay for Aelar. Pretend this came from another GM's export. landing/NPCs/Aelar.md references this via foundry.data_json; foundry.data layers HP / CR / token-name on top.",
+  "_comment": "Hand-tuned dnd5e overlay for Aelar. Pretend this came from another GM's export. landing/NPCs/Aelar.md references this via foundry.patch_json; foundry.patch layers HP / CR / token-name on top.",
   "system": {
     "details": {
       "biography": {
