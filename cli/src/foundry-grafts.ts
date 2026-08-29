@@ -36,15 +36,17 @@ export interface Page {
   foundry?: { base?: unknown; data?: Record<string, unknown> } | null;
 }
 
-/** The first usable UUID in a `foundry.base`, which may be a list, or null. */
-export function firstBase(base: unknown): string | null {
-  if (typeof base === "string") return base.trim() || null;
+/** Every usable UUID in a `foundry.base`, which may be a list, in order. */
+export function basesOf(base: unknown): string[] {
+  if (typeof base === "string") return base.trim() ? [base.trim()] : [];
   if (Array.isArray(base)) {
-    const first = base.find((b) => typeof b === "string" && b.trim());
-    return typeof first === "string" ? first.trim() : null;
+    return base.filter((b): b is string => typeof b === "string" && !!b.trim()).map((b) => b.trim());
   }
-  return null;
+  return [];
 }
+
+/** The first usable UUID, which decides the document type and the pack. */
+export const firstBase = (base: unknown): string | null => basesOf(base)[0] ?? null;
 
 export interface GraftOptions {
   vaultId: string;
@@ -183,19 +185,12 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
     const spec = page.foundry;
     if (!spec?.base) continue;
 
-    const base = firstBase(spec.base);
+    const bases = basesOf(spec.base);
+    const base = bases[0];
     if (!base) {
       warnings.push(`${page.path}: foundry.base should be a UUID or a list of them`);
       continue;
     }
-    // A vault may give a priority list — "the Monster Manual copy if it is
-    // installed, otherwise the SRD one". A graft entry names one source, so
-    // the rest is dropped and said so; carrying it needs graft to accept a
-    // list and try each in turn.
-    if (Array.isArray(spec.base) && spec.base.length > 1) {
-      warnings.push(`${page.path}: only the first of ${spec.base.length} bases is used; graft resolves one source`);
-    }
-
     const type = documentTypeOf(base);
     if (!type) {
       warnings.push(`${page.path}: cannot tell what kind of document "${base}" is`);
@@ -220,7 +215,12 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
       type,
       pack,
       ...(graftFolder(folderOf(page.path)) ? { folder: folderOf(page.path) } : {}),
-      ...(base.startsWith("Compendium.") ? { source: base } : {}),
+      // A list travels whole: graft tries each in order and takes the first
+      // that resolves, so a page can prefer better content without demanding
+      // the reader own it.
+      ...(base.startsWith("Compendium.")
+        ? { source: bases.length > 1 ? bases : base }
+        : {}),
       patch,
     });
   }

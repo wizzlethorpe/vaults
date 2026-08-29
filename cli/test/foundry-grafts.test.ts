@@ -205,25 +205,36 @@ describe("the module a vault ships", () => {
 });
 
 describe("a base priority list", () => {
-  it("takes the first and says the rest were dropped", async () => {
-    // A vault may say "the bestiary copy if installed, otherwise the SRD one".
-    // A graft entry names one source, so the fallback cannot travel.
-    const { documentEntries, firstBase } = await import("../src/foundry-grafts.js");
+  it("travels whole, so the fallback survives", async () => {
+    // graft tries each in order, so a page can prefer better content without
+    // demanding the reader own it.
+    const { documentEntries, basesOf } = await import("../src/foundry-grafts.js");
     const { entries, warnings } = documentEntries([{
       path: "x.md", title: "X", role: "dm",
       foundry: { base: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa", "Compendium.c.d.Actor.bbbbbbbbbbbbbbbb"] },
     }], opts);
 
-    assert.equal(entries[0]!.source, "Compendium.a.b.Actor.aaaaaaaaaaaaaaaa");
-    assert.match(warnings[0]!, /only the first of 2 bases/);
-    assert.equal(firstBase(["", "Compendium.a.b.Actor.cccccccccccccccc"]), "Compendium.a.b.Actor.cccccccccccccccc");
+    assert.deepEqual(entries[0]!.source,
+      ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa", "Compendium.c.d.Actor.bbbbbbbbbbbbbbbb"]);
+    assert.deepEqual(warnings, []);
+    assert.deepEqual(basesOf(["", "Compendium.a.b.Actor.cccccccccccccccc"]),
+      ["Compendium.a.b.Actor.cccccccccccccccc"]);
+  });
+
+  it("a single base stays a plain string", async () => {
+    const { documentEntries } = await import("../src/foundry-grafts.js");
+    const { entries } = documentEntries([{
+      path: "x.md", title: "X", role: "dm",
+      foundry: { base: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa"] },
+    }], opts);
+    assert.equal(typeof entries[0]!.source, "string");
   });
 
   it("refuses anything that is not a UUID or a list of them", async () => {
-    const { documentEntries, firstBase } = await import("../src/foundry-grafts.js");
-    assert.equal(firstBase(42), null);
-    assert.equal(firstBase([]), null);
-    assert.equal(firstBase({ uuid: "x" }), null);
+    const { documentEntries, basesOf } = await import("../src/foundry-grafts.js");
+    assert.deepEqual(basesOf(42), []);
+    assert.deepEqual(basesOf([]), []);
+    assert.deepEqual(basesOf({ uuid: "x" }), []);
     const { warnings } = documentEntries([{ path: "y.md", title: "Y", role: "dm", foundry: { base: 42 } }], opts);
     assert.match(warnings[0]!, /should be a UUID or a list/);
   });
