@@ -164,3 +164,66 @@ describe("the whole file", () => {
     assert.equal(file.entries.length, 1);
   });
 });
+
+describe("the module a vault ships", () => {
+  it("declares every pack type, used or not", async () => {
+    // Packs are read when the server starts, so a vault that later gains its
+    // first Scene would otherwise need reinstalling and a restart.
+    const { moduleManifest, PACK_SUFFIX } = await import("../src/foundry-grafts.js");
+    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com/", version: "1.4.0" });
+    const packs = m["packs"] as Array<Record<string, any>>;
+    assert.equal(packs.length, Object.keys(PACK_SUFFIX).length);
+    assert.ok(packs.every((p) => p.ownership.PLAYER === "NONE"), "never player-browsable");
+    assert.ok(packs.filter((p) => p.type === "Actor" || p.type === "Item").every((p) => p.system));
+  });
+
+  it("requires graft and the provider, so a missing one is Foundry's error", async () => {
+    const { moduleManifest } = await import("../src/foundry-grafts.js");
+    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com", version: "1.4.0" });
+    const ids = ((m["relationships"] as any).requires as Array<any>).map((r) => r.id);
+    assert.deepEqual(ids, ["graft", "wizzlethorpe-vaults"]);
+    assert.equal(m["manifest"], "https://marlo.example.com/_foundry/module.json");
+  });
+
+  it("ships a pointer, not a list", async () => {
+    const { moduleGrafts } = await import("../src/foundry-grafts.js");
+    assert.deepEqual(moduleGrafts("https://marlo.example.com/"), [{ vault: "https://marlo.example.com" }]);
+  });
+
+  it("only offers a role the pages it may see", async () => {
+    const { pagesFrom } = await import("../src/foundry-grafts.js");
+    const metas = [
+      { path: "A.md", title: "A", role: "public" },
+      { path: "B.md", title: "B", role: "dm", frontmatter: { foundry: { base: "Actor" } } },
+    ];
+    assert.deepEqual(pagesFrom(metas, new Set(["public"])).map((p) => p.path), ["A.md"]);
+    const all = pagesFrom(metas, new Set(["public", "dm"]));
+    assert.equal(all.length, 2);
+    assert.deepEqual(all[1]!.foundry, { base: "Actor" });
+  });
+});
+
+describe("a base priority list", () => {
+  it("takes the first and says the rest were dropped", async () => {
+    // A vault may say "the bestiary copy if installed, otherwise the SRD one".
+    // A graft entry names one source, so the fallback cannot travel.
+    const { documentEntries, firstBase } = await import("../src/foundry-grafts.js");
+    const { entries, warnings } = documentEntries([{
+      path: "x.md", title: "X", role: "dm",
+      foundry: { base: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa", "Compendium.c.d.Actor.bbbbbbbbbbbbbbbb"] },
+    }], opts);
+
+    assert.equal(entries[0]!.source, "Compendium.a.b.Actor.aaaaaaaaaaaaaaaa");
+    assert.match(warnings[0]!, /only the first of 2 bases/);
+    assert.equal(firstBase(["", "Compendium.a.b.Actor.cccccccccccccccc"]), "Compendium.a.b.Actor.cccccccccccccccc");
+  });
+
+  it("refuses anything that is not a UUID or a list of them", async () => {
+    const { documentEntries, firstBase } = await import("../src/foundry-grafts.js");
+    assert.equal(firstBase(42), null);
+    assert.equal(firstBase([]), null);
+    assert.equal(firstBase({ uuid: "x" }), null);
+    const { warnings } = documentEntries([{ path: "y.md", title: "Y", role: "dm", foundry: { base: 42 } }], opts);
+    assert.match(warnings[0]!, /should be a UUID or a list/);
+  });
+});

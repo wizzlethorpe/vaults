@@ -45,6 +45,7 @@ import { bundleHandlerAssets } from "./render/handlers/assets.js";
 import { runMigrations } from "./migrate/run.js";
 import { cacheDir } from "./paths.js";
 import { formatDuration, pMap, Progress } from "./util.js";
+import { buildGrafts, moduleManifest, moduleGrafts, packsFor, pagesFrom } from "./foundry-grafts.js";
 
 export interface BuildOptions {
   vaultPath: string;
@@ -607,6 +608,11 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
 
   warnFoundryDocCollisions(allPageMetas);
 
+  // A module id from the vault name: stable, lowercase, no spaces. It names
+  // the packs too, so changing it orphans what a reader already built.
+  const foundryModuleId = opts.vaultName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+    || "vault";
+
   // ── Per-role variant builds ─────────────────────────────────────────────
   const perRolePageCount: Record<string, number> = {};
   const collapseToRoot = roles.length === 1;
@@ -686,6 +692,28 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       }
     }
 
+    // The entry list graft builds from, inside the variant directory so the
+    // auth middleware gates it: a role only ever receives the pages it may
+    // read, and the GM's variant is the one that lists everything.
+    if (foundryEnabled) {
+      const grafts = buildGrafts(
+        pagesFrom(allPageMetas, visibleRoles),
+        {
+          vaultId: foundryModuleId,
+          roles,
+          playerRole: settings.values.foundry.player_role || roles[0]!,
+          packs: packsFor(foundryModuleId),
+          version: assetVersion,
+        },
+      );
+      for (const warning of grafts.warnings) console.warn(`  warning: ${warning}`);
+      await mkdir(join(variantDir, "_foundry"), { recursive: true });
+      await writeFile(
+        join(variantDir, "_foundry", "grafts.json"),
+        JSON.stringify(grafts.file, null, 2),
+      );
+    }
+
     // Write a per-variant _manifest.json so external clients (Foundry, MCP,
     // etc.) can do an incremental diff. Includes EVERY file that variant
     // serves; html, md, images (as relative paths into shared root), css.
@@ -703,6 +731,25 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       allRoleSet.has(settings.values.foundry.player_role) ? settings.values.foundry.player_role : "",
     );
     await writeFile(join(variantDir, "_manifest.json"), JSON.stringify(manifest));
+  }
+
+  // The module a reader installs, served by the vault itself: no release, no
+  // zip, no registry — the GM sends players a link to their own vault. It is
+  // generated once and then inert, so pushing content never reinstalls it.
+  if (foundryEnabled && opts.siteUrl) {
+    const dir = join(opts.outputDir, "_foundry");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "module.json"), JSON.stringify(moduleManifest({
+      moduleId: foundryModuleId,
+      title: opts.vaultName,
+      vaultUrl: opts.siteUrl,
+      version: assetVersion,
+      extra: settings.values.foundry.module as Record<string, unknown>,
+    }), null, 2));
+    await writeFile(join(dir, "grafts.json"), JSON.stringify(moduleGrafts(opts.siteUrl), null, 2));
+    // What the freshness check reads, so a reader is told there is new content
+    // without pulling the whole entry list to find out.
+    await writeFile(join(dir, "version.json"), JSON.stringify({ version: assetVersion }));
   }
 
   // ── Pages Functions ─────────────────────────────────────────────────────

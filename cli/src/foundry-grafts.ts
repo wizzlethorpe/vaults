@@ -32,8 +32,18 @@ export interface Page {
   path: string;                    // "Characters/Nobles/Marlo.md"
   title: string;
   role: string;
-  /** The `foundry:` frontmatter block, if any. */
-  foundry?: { base?: string; data?: Record<string, unknown> } | null;
+  /** The `foundry:` frontmatter block, if any. `base` may be a priority list. */
+  foundry?: { base?: unknown; data?: Record<string, unknown> } | null;
+}
+
+/** The first usable UUID in a `foundry.base`, which may be a list, or null. */
+export function firstBase(base: unknown): string | null {
+  if (typeof base === "string") return base.trim() || null;
+  if (Array.isArray(base)) {
+    const first = base.find((b) => typeof b === "string" && b.trim());
+    return typeof first === "string" ? first.trim() : null;
+  }
+  return null;
 }
 
 export interface GraftOptions {
@@ -163,9 +173,22 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
     const spec = page.foundry;
     if (!spec?.base) continue;
 
-    const type = documentTypeOf(spec.base);
+    const base = firstBase(spec.base);
+    if (!base) {
+      warnings.push(`${page.path}: foundry.base should be a UUID or a list of them`);
+      continue;
+    }
+    // A vault may give a priority list — "the Monster Manual copy if it is
+    // installed, otherwise the SRD one". A graft entry names one source, so
+    // the rest is dropped and said so; carrying it needs graft to accept a
+    // list and try each in turn.
+    if (Array.isArray(spec.base) && spec.base.length > 1) {
+      warnings.push(`${page.path}: only the first of ${spec.base.length} bases is used; graft resolves one source`);
+    }
+
+    const type = documentTypeOf(base);
     if (!type) {
-      warnings.push(`${page.path}: cannot tell what kind of document "${spec.base}" is`);
+      warnings.push(`${page.path}: cannot tell what kind of document "${base}" is`);
       continue;
     }
     const pack = opts.packs[type];
@@ -185,7 +208,7 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
       type,
       pack,
       ...(graftFolder(folderOf(page.path)) ? { folder: folderOf(page.path) } : {}),
-      ...(spec.base.startsWith("Compendium.") ? { source: spec.base } : {}),
+      ...(base.startsWith("Compendium.") ? { source: base } : {}),
       patch,
     });
   }
@@ -213,4 +236,102 @@ export function buildGrafts(pages: Page[], opts: GraftOptions): { file: GraftsFi
     file: { format: 1, version: opts.version, entries: [...journalEntries(pages, opts), ...docs.entries] },
     warnings: docs.warnings,
   };
+}
+
+// ── the module a vault ships ────────────────────────────────────────────────
+//
+// Generated once and then inert. It declares packs and dependencies and points
+// at the vault; it holds no logic, so pushing content never means reinstalling
+// it. That is the whole reason the provider lives in a shared module instead.
+
+/** One pack per document type, declared up front. */
+export const PACK_SUFFIX: Record<string, string> = {
+  JournalEntry: "journals", Actor: "actors", Item: "items", Scene: "scenes",
+  RollTable: "tables", Macro: "macros", Playlist: "playlists", Cards: "cards",
+};
+
+export function packsFor(moduleId: string): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(PACK_SUFFIX).map(([type, suffix]) => [type, `${moduleId}-${suffix}`]),
+  );
+}
+
+export interface ManifestOptions {
+  moduleId: string;
+  title: string;
+  vaultUrl: string;
+  version: string;
+  /** The game system whose Actor and Item packs this vault targets. */
+  systemId?: string;
+  /** Extra manifest keys from `foundry.module` in settings.md. */
+  extra?: Record<string, unknown>;
+}
+
+/**
+ * The `module.json` a vault serves for itself.
+ *
+ * Every pack type is declared whether the vault uses it or not: packs are read
+ * when the server starts, so a vault that later gains its first Scene would
+ * otherwise need the module reinstalled and the server restarted before it
+ * could build. Declaring them all keeps the module genuinely permanent.
+ */
+export function moduleManifest(opts: ManifestOptions): Record<string, unknown> {
+  const url = opts.vaultUrl.replace(/\/+$/, "");
+  return {
+    id: opts.moduleId,
+    title: opts.title,
+    description: `Content from ${url}, built on your machine from what you are entitled to read.`,
+    version: opts.version,
+    compatibility: { minimum: "14", verified: "14" },
+    url,
+    manifest: `${url}/_foundry/module.json`,
+    download: `${url}/_foundry/module.zip`,
+    packs: Object.entries(PACK_SUFFIX).map(([type, suffix]) => ({
+      name: `${opts.moduleId}-${suffix}`,
+      label: `${opts.title}: ${suffix[0]!.toUpperCase()}${suffix.slice(1)}`,
+      path: `packs/${opts.moduleId}-${suffix}`,
+      type,
+      // Never player-browsable. A reader sees vault content because the GM
+      // imported it, and the entry itself says whether they may.
+      ownership: { PLAYER: "NONE", ASSISTANT: "OWNER" },
+      ...(type === "Actor" || type === "Item" ? { system: opts.systemId ?? "dnd5e" } : {}),
+    })),
+    packFolders: [{
+      name: opts.title, sorting: "m",
+      packs: Object.values(PACK_SUFFIX).map((s) => `${opts.moduleId}-${s}`),
+    }],
+    relationships: {
+      requires: [
+        { id: "graft", type: "module" },
+        { id: "wizzlethorpe-vaults", type: "module" },
+      ],
+    },
+    ...(opts.extra ?? {}),
+  };
+}
+
+/** The one-line grafts.json the module ships: a pointer, not a list. */
+export function moduleGrafts(vaultUrl: string): unknown[] {
+  return [{ vault: vaultUrl.replace(/\/+$/, "") }];
+}
+
+/** Pages a role may see, in the shape the emitter wants. */
+export function pagesFrom(
+  metas: Array<{ path: string; title: string; role: string; frontmatter?: Record<string, unknown> }>,
+  visible: Set<string>,
+): Page[] {
+  const pages: Page[] = [];
+  for (const meta of metas) {
+    if (!visible.has(meta.role)) continue;
+    const fo = meta.frontmatter?.["foundry"];
+    pages.push({
+      path: meta.path,
+      title: meta.title,
+      role: meta.role,
+      foundry: fo && typeof fo === "object" && !Array.isArray(fo)
+        ? (fo as Page["foundry"])
+        : null,
+    });
+  }
+  return pages;
 }
