@@ -1,7 +1,7 @@
 // Compiling a vault into an installable Foundry module.
 //
 // The interesting decisions are all about what a module may NOT carry. The
-// sync module resolves `foundry.base` against the reader's own world; a
+// sync module resolves `foundry.source` against the reader's own world; a
 // standalone module has no world to look in, and baking a cloned compendium
 // document into something redistributable is a licensing act rather than a
 // technical shortcut. So the rule is: build what the vault owns, and be
@@ -13,7 +13,7 @@ import {
   assembleRollTableResults, keyEmbedded, resolveSelfContainedBase, stripMoulinette,
 } from "../src/foundry-module.js";
 
-describe("what a module can build from foundry.base", () => {
+describe("what a module can build from foundry.source", () => {
   it("takes a blank type as-is", () => {
     assert.deepEqual(resolveSelfContainedBase(["RollTable"]), { blank: "RollTable" });
     assert.deepEqual(resolveSelfContainedBase(["Actor:npc"]), { blank: "Actor", subtype: "npc" });

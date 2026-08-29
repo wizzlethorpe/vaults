@@ -40,7 +40,7 @@ Wizzlethorpe Vaults is a tool that turns an Obsidian vault into a self-hosted, r
 
 ## Try it in Foundry VTT
 
-The companion module syncs this vault into a Foundry world: every page becomes a JournalEntry, every wikilink rewires to a Foundry document link, and pages with `foundry.base` frontmatter clone an existing compendium document into the world (NPCs become real Actors, items become real Items).
+The companion module syncs this vault into a Foundry world: every page becomes a JournalEntry, every wikilink rewires to a Foundry document link, and pages with `foundry.source` frontmatter clone an existing compendium document into the world (NPCs become real Actors, items become real Items).
 
 > [!tip] Import this vault into Foundry
 > 1. Install the **Wizzlethorpe Vaults** module: in Foundry → *Add-on

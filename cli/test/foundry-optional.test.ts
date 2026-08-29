@@ -70,7 +70,7 @@ describe("foundry.package: none", () => {
   it("keeps foundry: frontmatter in the manifest either way", async () => {
     // The setting controls what the deploy *serves*, not what pages may say.
     // A vault can flip it back on without editing every page.
-    const page = { "NPC.md": '---\ntitle: Bob\nfoundry:\n  base: "Actor:npc"\n---\nBob.\n' };
+    const page = { "NPC.md": '---\ntitle: Bob\nfoundry:\n  source: "Actor:npc"\n---\nBob.\n' };
     const out = await build("foundry:\n  package: none\n", page);
     const m = JSON.parse(await readFile(join(out, "_manifest.json"), "utf8"));
     const row = m.files.find((f: { path: string }) => f.path === "NPC.body.html");

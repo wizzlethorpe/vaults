@@ -7,14 +7,14 @@ foundry:
   # computing the SHA1 we'd otherwise derive from the page path. Stable
   # across renames and across vault redeploys.
   id: mossfootHall0001
-  base: Scene
-  # `@vault/PATH` strings inside foundry.data are rewritten at sync time
+  source: Scene
+  # `@vault/PATH` strings inside foundry.patch are rewritten at sync time
   # to local Foundry cache URLs (worlds/<id>/vaults-cache/<vault-id>/PATH).
   # Lets the scene reference vault-shipped assets without hardcoding the
   # deploy URL. Walls trace the outer room; one ambient sound plays at
   # the centre. Lights / overlay tiles / Levels-module metadata from the
   # original export were stripped to keep the demo legible.
-  data:
+  patch:
     name: Mossfoot Great Hall
     navigation: true
     width: 3780

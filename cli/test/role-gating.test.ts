@@ -644,7 +644,7 @@ describe("role gating: passthrough files", () => {
   });
 
   // `@vault/PATH` references in frontmatter (e.g., a Scene's
-  // foundry.data.background.src) gate the asset into the variant. Ships per
+  // foundry.patch.background.src) gate the asset into the variant. Ships per
   // page-role: a dm-tier page's @vault ref reaches only the dm deploy.
   it("@vault/PATH in a public page's frontmatter ships the asset to all variants the page is visible in", async () => {
     const v = await setupVault({
@@ -654,7 +654,7 @@ describe("role gating: passthrough files", () => {
         "---",
         "title: Test Scene",
         "foundry:",
-        "  base: Scene",
+        "  source: Scene",
         "  data:",
         "    background:",
         "      src: \"@vault/attachments/scene-bg.webp\"",
@@ -680,7 +680,7 @@ describe("role gating: passthrough files", () => {
         "title: Secret Playlist",
         "role: dm",
         "foundry:",
-        "  base: Playlist",
+        "  source: Playlist",
         "  data:",
         "    sounds:",
         "      - { name: cue, path: \"@vault/Audio/secret-cue.ogg\" }",
@@ -773,7 +773,7 @@ describe("role gating: passthrough files", () => {
     } finally { await cleanup(v); }
   });
 
-  // Demos commonly nest @vault/ refs deep in foundry.data (e.g., a
+  // Demos commonly nest @vault/ refs deep in foundry.patch (e.g., a
   // Scene's tiles[0].texture.src or sounds[0].path). The frontmatter
   // walker has to recurse through arrays + nested objects, not just
   // top-level keys.
@@ -786,7 +786,7 @@ describe("role gating: passthrough files", () => {
         "---",
         "title: Nested",
         "foundry:",
-        "  base: Scene",
+        "  source: Scene",
         "  data:",
         "    tiles:",
         "      - { texture: { src: \"@vault/attachments/tile.webp\" } }",
@@ -799,9 +799,9 @@ describe("role gating: passthrough files", () => {
     try {
       await build(v);
       assert.equal(await exists(join(v.out, VARIANT("public", "attachments/tile.webp"))), true,
-        "image referenced via foundry.data.tiles[0].texture.src must ship");
+        "image referenced via foundry.patch.tiles[0].texture.src must ship");
       assert.equal(await exists(join(v.out, VARIANT("public", "Audio/sound.ogg"))), true,
-        "audio referenced via foundry.data.sounds[0].path must ship");
+        "audio referenced via foundry.patch.sounds[0].path must ship");
     } finally { await cleanup(v); }
   });
 });

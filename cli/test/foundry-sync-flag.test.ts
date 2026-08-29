@@ -88,7 +88,7 @@ describe("foundry.sync", () => {
   it("omits the key entirely when unset, so existing pages are untouched", async () => {
     const v = await setupVault({
       "Plain.md": "# Plain\n",
-      "Actor.md": "---\nfoundry:\n  base: Actor:npc\n---\n# Actor\n",
+      "Actor.md": "---\nfoundry:\n  source: Actor:npc\n---\n# Actor\n",
     });
     try {
       await build(v);
@@ -103,7 +103,7 @@ describe("foundry.sync", () => {
 
   it("coexists with base, so an instantiating page can still opt out", async () => {
     const v = await setupVault({
-      "Scene.md": "---\nfoundry:\n  base: Scene\n  sync: false\n---\n# Scene\n",
+      "Scene.md": "---\nfoundry:\n  source: Scene\n  sync: false\n---\n# Scene\n",
     });
     try {
       await build(v);
@@ -132,7 +132,7 @@ describe("foundry.sync", () => {
 describe("foundry.journal", () => {
   it("forwards journal: false onto the page's manifest meta", async () => {
     const v = await setupVault({
-      "Scene.md": "---\nfoundry:\n  base: Scene\n  journal: false\n---\n# Scene\n",
+      "Scene.md": "---\nfoundry:\n  source: Scene\n  journal: false\n---\n# Scene\n",
     });
     try {
       await build(v);
@@ -146,8 +146,8 @@ describe("foundry.journal", () => {
 
   it("is independent of sync, which is the flag that drops the doc too", async () => {
     const v = await setupVault({
-      "A.md": "---\nfoundry:\n  base: Scene\n  journal: false\n---\n# A\n",
-      "B.md": "---\nfoundry:\n  base: Scene\n  sync: false\n---\n# B\n",
+      "A.md": "---\nfoundry:\n  source: Scene\n  journal: false\n---\n# A\n",
+      "B.md": "---\nfoundry:\n  source: Scene\n  sync: false\n---\n# B\n",
     });
     try {
       await build(v);
@@ -164,7 +164,7 @@ describe("foundry.journal", () => {
 
   it("ignores a non-boolean value", async () => {
     const v = await setupVault({
-      "Bad.md": "---\nfoundry:\n  base: Scene\n  journal: \"nope\"\n---\n# Bad\n",
+      "Bad.md": "---\nfoundry:\n  source: Scene\n  journal: \"nope\"\n---\n# Bad\n",
     });
     try {
       await build(v);

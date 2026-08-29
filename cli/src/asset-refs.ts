@@ -110,7 +110,7 @@ export async function copyReferencedImages(
         }
       });
     }
-    // Image refs inside the page's foundry.data_json (Scene backgrounds, tiles).
+    // Image refs inside the page's foundry.patch_json (Scene backgrounds, tiles).
     for (const path of p.foundryAssets ?? []) {
       if (!IMAGE_EXT_RE.test(path)) continue;
       const image = imageIndex.get(path);
@@ -131,7 +131,7 @@ export async function copyReferencedImages(
 }
 
 /** Collect the `@vault/...` paths a page's foundry block references, from both
- *  `foundry.data_json` and `foundry.data`. A Scene's bulk asset refs
+ *  `foundry.patch_json` and `foundry.patch`. A Scene's bulk asset refs
  *  (backgrounds, ambient sounds, tiles) live in that JSON content, and a token's
  *  ring subject lives in the inline `data` overlay; neither appears anywhere the
  *  per-variant asset scanners look, so without this they never ship and Foundry
@@ -150,20 +150,20 @@ export async function collectDataJsonVaultRefs(
     if (path) out.push(path);
   });
 
-  const rel = block["data_json"];
+  const rel = block["patch_json"];
   if (typeof rel === "string" && rel.trim()) {
     const parsed = await loadDataJson(vaultPath, rel.trim(), pagePath);
     if (parsed !== null) collect(parsed);
   }
-  collect(block["data"]);
+  collect(block["patch"]);
   return out;
 }
 
 /**
  * Visit every string value reachable from `value` (object / array / scalar)
  * and call `fn` once per string. Used to surface `@vault/PATH` references
- * inside parsed frontmatter (e.g., a Scene's `foundry.data.background.src`
- * or a Playlist's `foundry.data.sounds[N].path`) so the per-variant asset
+ * inside parsed frontmatter (e.g., a Scene's `foundry.patch.background.src`
+ * or a Playlist's `foundry.patch.sounds[N].path`) so the per-variant asset
  * scanner can include those files alongside body-referenced ones.
  */
 export function forEachString(value: unknown, fn: (s: string) => void): void {
@@ -247,7 +247,7 @@ export async function copyReferencedPassthroughs(
         if (entry) refs.add(entry.outputPath);
       }
     });
-    // Audio/video/pdf refs inside the page's foundry.data_json (ambient sounds).
+    // Audio/video/pdf refs inside the page's foundry.patch_json (ambient sounds).
     for (const path of p.foundryAssets ?? []) {
       const entry = passthroughIndex.get(path);
       if (entry) refs.add(entry.outputPath);

@@ -1,8 +1,8 @@
 // Regression tests for staging assets referenced inside a page's
-// foundry.data_json file.
+// foundry.patch_json file.
 //
 // A Scene page carries the bulk of its asset references (backgrounds, ambient
-// sounds, tile art) inside the JSON file named by `foundry.data_json`, not in
+// sounds, tile art) inside the JSON file named by `foundry.patch_json`, not in
 // the page frontmatter. The per-variant asset scanners must consult that JSON
 // content; otherwise the assets never ship and Foundry sync 404s them. These
 // build end-to-end via buildSite() so a regression in the scan path is caught.
@@ -55,12 +55,12 @@ async function exists(path: string): Promise<boolean> {
 }
 
 const scenePage = (dataJson: string, role?: string) =>
-  `---\n${role ? `role: ${role}\n` : ""}foundry:\n  base: Scene\n  data_json: ${dataJson}\n---\n# Scene\n`;
+  `---\n${role ? `role: ${role}\n` : ""}foundry:\n  source: Scene\n  patch_json: ${dataJson}\n---\n# Scene\n`;
 
 const sceneJson = (audioRef: string) =>
   JSON.stringify({ name: "Scene", sounds: [{ path: audioRef }] });
 
-describe("foundry.data_json asset staging", () => {
+describe("foundry.patch_json asset staging", () => {
   it("stages an @vault asset referenced inside the data_json file", async () => {
     const v = await setupVault({
       ".vaultrc.json": JSON.stringify({ roles: ["public"], rolePasswords: {} }),
@@ -130,15 +130,15 @@ describe("foundry.data_json asset staging", () => {
   });
 });
 
-describe("foundry.data vault refs", () => {
+describe("foundry.patch vault refs", () => {
   it("stages an asset referenced only from the inline data overlay", async () => {
-    // A token ring subject lives in `foundry.data`, not in a data_json file.
+    // A token ring subject lives in `foundry.patch`, not in a data_json file.
     // Nothing else in the page mentions it, so if this scan misses it the
     // image never ships and Foundry 404s the token.
     const page = [
       "---",
       "foundry:",
-      "  base: Actor:npc",
+      "  source: Actor:npc",
       "  data:",
       "    prototypeToken:",
       "      ring:",

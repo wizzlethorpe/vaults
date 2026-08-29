@@ -36,7 +36,7 @@ async function build(files: Record<string, string>): Promise<string[]> {
 }
 
 const page = (title: string, extra = "") =>
-  `---\ntitle: ${title}\nfoundry:\n  base: Actor:npc\n${extra}---\nBody.\n`;
+  `---\ntitle: ${title}\nfoundry:\n  source: Actor:npc\n${extra}---\nBody.\n`;
 
 describe("duplicate Foundry documents", () => {
   it("catches two titles colliding in one directory", async () => {
@@ -69,8 +69,8 @@ describe("duplicate Foundry documents", () => {
 
   it("allows the same name for different document types", async () => {
     assert.deepEqual(await build({
-      "Things/Sword.md": "---\ntitle: Sword\nfoundry:\n  base: Actor:npc\n---\nA.\n",
-      "Things/Sword Item.md": "---\ntitle: Sword\nfoundry:\n  base: Item:weapon\n---\nB.\n",
+      "Things/Sword.md": "---\ntitle: Sword\nfoundry:\n  source: Actor:npc\n---\nA.\n",
+      "Things/Sword Item.md": "---\ntitle: Sword\nfoundry:\n  source: Item:weapon\n---\nB.\n",
     }), []);
   });
 
@@ -80,8 +80,8 @@ describe("duplicate Foundry documents", () => {
     // which is the point, since map packs ship their content as compendium
     // Scenes — so two of them really would land in one folder under one name.
     const warnings = await build({
-      "Scenes/A.md": '---\ntitle: Great Hall\nfoundry:\n  base: "Compendium.x.y.Scene.aaaaaaaaaaaaaaaa"\n---\nA.\n',
-      "Scenes/B.md": '---\ntitle: Great Hall\nfoundry:\n  base: "Compendium.x.y.Scene.bbbbbbbbbbbbbbbb"\n---\nB.\n',
+      "Scenes/A.md": '---\ntitle: Great Hall\nfoundry:\n  source: "Compendium.x.y.Scene.aaaaaaaaaaaaaaaa"\n---\nA.\n',
+      "Scenes/B.md": '---\ntitle: Great Hall\nfoundry:\n  source: "Compendium.x.y.Scene.bbbbbbbbbbbbbbbb"\n---\nB.\n',
     });
     assert.equal(warnings.length, 1);
     assert.match(warnings[0]!, /Scene named 'Great Hall'/);
@@ -91,8 +91,8 @@ describe("duplicate Foundry documents", () => {
     // Foundry may resolve a Combat UUID, but vaults has no world collection
     // for it, so no document is created and a collision is not a thing.
     assert.deepEqual(await build({
-      "Things/A.md": '---\ntitle: Skirmish\nfoundry:\n  base: "Compendium.x.y.Combat.aaaaaaaaaaaaaaaa"\n---\nA.\n',
-      "Things/B.md": '---\ntitle: Skirmish\nfoundry:\n  base: "Compendium.x.y.Combat.bbbbbbbbbbbbbbbb"\n---\nB.\n',
+      "Things/A.md": '---\ntitle: Skirmish\nfoundry:\n  source: "Compendium.x.y.Combat.aaaaaaaaaaaaaaaa"\n---\nA.\n',
+      "Things/B.md": '---\ntitle: Skirmish\nfoundry:\n  source: "Compendium.x.y.Combat.bbbbbbbbbbbbbbbb"\n---\nB.\n',
     }), []);
   });
 

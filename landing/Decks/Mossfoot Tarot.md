@@ -1,8 +1,8 @@
 ---
 title: Mossfoot Tarot
 foundry:
-  base: Cards
-  data:
+  source: Cards
+  patch:
     name: Mossfoot Tarot
     type: deck
     description: A six-card fortune deck the innkeeper's grandmother used to read futures over a cup of pine tea.
@@ -44,12 +44,12 @@ of warning the old innkeeper's grandmother thought was worth giving.
 
 | Card | Meaning |
 |---|---|
-| `fm: foundry.data.cards.0.name` | `fm: foundry.data.cards.0.description` |
-| `fm: foundry.data.cards.1.name` | `fm: foundry.data.cards.1.description` |
-| `fm: foundry.data.cards.2.name` | `fm: foundry.data.cards.2.description` |
-| `fm: foundry.data.cards.3.name` | `fm: foundry.data.cards.3.description` |
-| `fm: foundry.data.cards.4.name` | `fm: foundry.data.cards.4.description` |
-| `fm: foundry.data.cards.5.name` | `fm: foundry.data.cards.5.description` |
+| `fm: foundry.patch.cards.0.name` | `fm: foundry.patch.cards.0.description` |
+| `fm: foundry.patch.cards.1.name` | `fm: foundry.patch.cards.1.description` |
+| `fm: foundry.patch.cards.2.name` | `fm: foundry.patch.cards.2.description` |
+| `fm: foundry.patch.cards.3.name` | `fm: foundry.patch.cards.3.description` |
+| `fm: foundry.patch.cards.4.name` | `fm: foundry.patch.cards.4.description` |
+| `fm: foundry.patch.cards.5.name` | `fm: foundry.patch.cards.5.description` |
 
 On Foundry sync this becomes a real `Cards` document of type `deck` with six
 `base` cards. No images are wired up, so the cards show Foundry's default

@@ -2,8 +2,8 @@
 title: Potion of Healing (Mossfoot Brew)
 image: healing-potion.webp
 foundry:
-  base: Compendium.dnd5e.items.Item.ytlsBjYsZ7OBSEBs
-  data:
+  source: Compendium.dnd5e.items.Item.ytlsBjYsZ7OBSEBs
+  patch:
     system:
       description:
         chat: "A bittersweet, mossy aftertaste. Brewed by the Mossfoot family."

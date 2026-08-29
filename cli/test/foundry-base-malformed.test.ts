@@ -1,4 +1,4 @@
-// Regression tests for `foundry.base` validation.
+// Regression tests for `foundry.source` validation.
 //
 // `base` is one spec or a priority list. An unusable value is dropped from the
 // manifest meta with a warning rather than failing the build, mirroring how
@@ -63,15 +63,15 @@ async function metaFor(v: Vault, bodyPath: string): Promise<ManifestFile["meta"]
   return row.meta;
 }
 
-describe("foundry.base validation", () => {
+describe("foundry.source validation", () => {
   it("rejects a base entry that is not a string, and names the page", async () => {
     const v = await setupVault({
-      "Guard.md": "---\nfoundry:\n  base:\n  - 42\n  - \"Actor:npc\"\n---\nGuard.\n",
+      "Guard.md": "---\nfoundry:\n  source:\n  - 42\n  - \"Actor:npc\"\n---\nGuard.\n",
     });
     try {
       const warnings = await build(v);
-      const hit = warnings.find((w) => w.includes("foundry.base"));
-      assert.ok(hit, `expected a foundry.base warning, got: ${JSON.stringify(warnings)}`);
+      const hit = warnings.find((w) => w.includes("foundry.source"));
+      assert.ok(hit, `expected a foundry.source warning, got: ${JSON.stringify(warnings)}`);
       assert.match(hit, /Guard\.md/);
       const meta = await metaFor(v, "Guard.body.html");
       assert.equal(meta?.foundry?.base, undefined);
@@ -82,7 +82,7 @@ describe("foundry.base validation", () => {
 
   it("rejects a list whose entries name different document types", async () => {
     const v = await setupVault({
-      "Guard.md": '---\nfoundry:\n  base:\n  - "Compendium.a.items.Item.aaaaaaaaaaaaaaaa"\n  - "Actor:npc"\n  embed: true\n---\nGuard.\n',
+      "Guard.md": '---\nfoundry:\n  source:\n  - "Compendium.a.items.Item.aaaaaaaaaaaaaaaa"\n  - "Actor:npc"\n  embed: true\n---\nGuard.\n',
     });
     try {
       const warnings = await build(v);
@@ -101,7 +101,7 @@ describe("foundry.base validation", () => {
 
   it("still renders the page to the wiki when its base was rejected", async () => {
     const v = await setupVault({
-      "Guard.md": '---\nfoundry:\n  base:\n  - "Compendium.a.items.Item.aaaaaaaaaaaaaaaa"\n  - "Actor:npc"\n---\nGuard prose.\n',
+      "Guard.md": '---\nfoundry:\n  source:\n  - "Compendium.a.items.Item.aaaaaaaaaaaaaaaa"\n  - "Actor:npc"\n---\nGuard prose.\n',
     });
     try {
       await build(v);
@@ -114,11 +114,11 @@ describe("foundry.base validation", () => {
 
   it("says nothing when base is a well-formed string", async () => {
     const v = await setupVault({
-      "Guard.md": '---\nfoundry:\n  base: "Actor:npc"\n---\nGuard.\n',
+      "Guard.md": '---\nfoundry:\n  source: "Actor:npc"\n---\nGuard.\n',
     });
     try {
       const warnings = await build(v);
-      assert.equal(warnings.filter((w) => w.includes("foundry.base")).length, 0);
+      assert.equal(warnings.filter((w) => w.includes("foundry.source")).length, 0);
       const meta = await metaFor(v, "Guard.body.html");
       assert.equal(meta?.foundry?.base, "Actor:npc");
     } finally {
@@ -128,11 +128,11 @@ describe("foundry.base validation", () => {
 
   it("forwards a valid priority list to the manifest as a list", async () => {
     const v = await setupVault({
-      "Guard.md": '---\nfoundry:\n  base:\n  - "Compendium.dnd-monster-manual.actors.Actor.mmGuard000000000"\n  - "Compendium.dnd5e.actors24.Actor.mmGuard000000000"\n  - "Actor:npc"\n---\nGuard.\n',
+      "Guard.md": '---\nfoundry:\n  source:\n  - "Compendium.dnd-monster-manual.actors.Actor.mmGuard000000000"\n  - "Compendium.dnd5e.actors24.Actor.mmGuard000000000"\n  - "Actor:npc"\n---\nGuard.\n',
     });
     try {
       const warnings = await build(v);
-      assert.equal(warnings.filter((w) => w.includes("foundry.base")).length, 0);
+      assert.equal(warnings.filter((w) => w.includes("foundry.source")).length, 0);
       const meta = await metaFor(v, "Guard.body.html");
       assert.deepEqual(meta?.foundry?.base, [
         "Compendium.dnd-monster-manual.actors.Actor.mmGuard000000000",
@@ -146,7 +146,7 @@ describe("foundry.base validation", () => {
 
   it("warns when a list ends on a UUID, since it can still resolve to nothing", async () => {
     const v = await setupVault({
-      "Guard.md": '---\nfoundry:\n  base:\n  - "Compendium.a.actors.Actor.aaaaaaaaaaaaaaaa"\n  - "Compendium.b.actors.Actor.bbbbbbbbbbbbbbbb"\n---\nGuard.\n',
+      "Guard.md": '---\nfoundry:\n  source:\n  - "Compendium.a.actors.Actor.aaaaaaaaaaaaaaaa"\n  - "Compendium.b.actors.Actor.bbbbbbbbbbbbbbbb"\n---\nGuard.\n',
     });
     try {
       const warnings = await build(v);
@@ -165,7 +165,7 @@ describe("foundry.base validation", () => {
     });
     try {
       const warnings = await build(v);
-      assert.equal(warnings.filter((w) => w.includes("foundry.base")).length, 0);
+      assert.equal(warnings.filter((w) => w.includes("foundry.source")).length, 0);
     } finally {
       await rm(v.dir, { recursive: true, force: true });
     }

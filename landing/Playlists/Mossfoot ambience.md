@@ -1,8 +1,8 @@
 ---
 title: Mossfoot ambience
 foundry:
-  base: Playlist
-  data:
+  source: Playlist
+  patch:
     name: Mossfoot ambience
     description: Tavern background loop for sessions set at the Mossfoot Inn.
     mode: 0     # 0 = sequential, 1 = shuffle, 2 = simultaneous
@@ -35,8 +35,8 @@ and survives moving the vault between deploys.
 
 | Field | Value |
 |---|---|
-| Mode | `fm: foundry.data.mode` (0 = sequential) |
-| Track | `fm: foundry.data.sounds.0.name` |
-| Path | `fm: foundry.data.sounds.0.path` |
-| Volume | `fm: foundry.data.sounds.0.volume` |
-| Repeat | `fm: foundry.data.sounds.0.repeat` |
+| Mode | `fm: foundry.patch.mode` (0 = sequential) |
+| Track | `fm: foundry.patch.sounds.0.name` |
+| Path | `fm: foundry.patch.sounds.0.path` |
+| Volume | `fm: foundry.patch.sounds.0.volume` |
+| Repeat | `fm: foundry.patch.sounds.0.repeat` |

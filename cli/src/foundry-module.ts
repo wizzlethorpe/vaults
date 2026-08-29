@@ -1,6 +1,6 @@
 // Compile a vault into an installable Foundry VTT module.
 //
-// The Foundry *sync* module resolves a page's `foundry.base` against whatever
+// The Foundry *sync* module resolves a page's `foundry.source` against whatever
 // the reader has installed, at sync time, in their world. A standalone module
 // has no world to look in and no reader to ask, so it can only contain what
 // this build can construct on its own: a blank document of a known type with
@@ -13,7 +13,7 @@
 // entire premise of that feature. So the rule is: build what the vault owns,
 // and say clearly what was left out.
 //
-// A `foundry.base` priority list already encodes the answer. `[Compendium.x,
+// A `foundry.source` priority list already encodes the answer. `[Compendium.x,
 // Scene]` means "use x if you have it, otherwise a blank Scene", and a
 // standalone module *is* the otherwise case — so each list resolves to its
 // last self-contained rung.
@@ -227,7 +227,7 @@ export interface ModuleResult {
   zipPath: string;
 }
 
-/** Parse one `foundry.base` spec. Mirrors the module's own reading of it. */
+/** Parse one `foundry.source` spec. Mirrors the module's own reading of it. */
 function parseBase(spec: unknown): { blank: string; subtype?: string } | null {
   if (typeof spec !== "string" || !spec) return null;
   if (spec.startsWith("@moulinette/")) return null;
@@ -240,7 +240,7 @@ function parseBase(spec: unknown): { blank: string; subtype?: string } | null {
   return blank ? { blank, ...(subtype ? { subtype } : {}) } : null;
 }
 
-/** The last rung of a `foundry.base` a module can build on its own, or null. */
+/** The last rung of a `foundry.source` a module can build on its own, or null. */
 export function resolveSelfContainedBase(specs: string[]): { blank: string; subtype?: string } | null {
   const parsed = specs.map(parseBase).filter((p): p is { blank: string; subtype?: string } => p !== null);
   return parsed.length > 0 ? parsed[parsed.length - 1]! : null;
@@ -430,7 +430,7 @@ async function scanPages(
   for (const f of files) {
     // index.md is included. The compendium side skipped it, which was right
     // for a folder overview that is not itself an entry — but it has no
-    // foundry.base, so the document pass drops it anyway. The journal side
+    // foundry.source, so the document pass drops it anyway. The journal side
     // needs it: sync makes a page for every .md in a directory, and dropping
     // index pages both loses the article and turns every [[index]] link in
     // the vault into plain text.
@@ -613,7 +613,7 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
     if (page.foundry?.["journal"] !== false) journalPages.push(page);
     if (!page.foundry) continue;
     const block = page.foundry;
-    const specs = (Array.isArray(block["base"]) ? block["base"] : [block["base"]])
+    const specs = (Array.isArray(block["source"]) ? block["source"] : [block["source"]])
       .filter((x): x is string => typeof x === "string" && x.length > 0);
     if (specs.length === 0) continue;
 
@@ -730,11 +730,11 @@ export async function buildFoundryModule(opts: ModuleOptions): Promise<ModuleRes
       name: p.page.title,
       ...(p.subtype ? { type: p.subtype } : {}),
     };
-    const dataJson = typeof block["data_json"] === "string"
-      ? await loadDataJson(opts.vaultPath, block["data_json"], p.page.path)
+    const dataJson = typeof block["patch_json"] === "string"
+      ? await loadDataJson(opts.vaultPath, block["patch_json"], p.page.path)
       : null;
     if (dataJson) deepMerge(doc, dataJson as Record<string, unknown>);
-    const inline = block["data"];
+    const inline = block["patch"];
     if (inline && typeof inline === "object" && !Array.isArray(inline)) {
       deepMerge(doc, inline as Record<string, unknown>);
     }

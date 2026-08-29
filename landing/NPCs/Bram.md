@@ -4,8 +4,8 @@ role-class: Commoner
 location: Mossfoot Inn
 cr: 0
 foundry:
-  base: Compendium.dnd5e.monsters.Actor.SqZRuJ8lt2KGJBbq
-  data:
+  source: Compendium.dnd5e.monsters.Actor.SqZRuJ8lt2KGJBbq
+  patch:
     system:
       details:
         type:

@@ -1,8 +1,8 @@
 ---
 title: Toggle ambient noise
 foundry:
-  base: Macro
-  data:
+  source: Macro
+  patch:
     name: Toggle ambient noise
     type: script
     scope: global
@@ -24,5 +24,5 @@ reference in the scene's `sounds[]`, so playback works offline.
 
 > [!quote] Macro body
 > ```fm javascript
-> foundry.data.command
+> foundry.patch.command
 > ```

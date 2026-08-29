@@ -361,7 +361,7 @@ function matchesType(v: unknown, t: SettingType): boolean {
       && typeof (item as Record<string, unknown>)["match"] === "string"
       // A plain object: `typeof` also admits null and arrays, which would pass
       // validation here and then supply nothing (or index keys) downstream.
-      && isPlainObject((item as Record<string, unknown>)["data"]));
+      && isPlainObject((item as Record<string, unknown>)["patch"]));
   }
   return typeof v === t;
 }

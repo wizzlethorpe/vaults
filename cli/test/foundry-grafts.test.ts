@@ -103,14 +103,14 @@ describe("ids", () => {
   });
 });
 
-describe("documents from foundry.base", () => {
+describe("documents from foundry.source", () => {
   it("become a graft of what they are based on", () => {
     // This is the whole of what instance.mjs did at runtime.
     const { entries } = documentEntries([
       page("Characters/Marlo.md", {
         role: "dm",
-        foundry: { base: "Compendium.some-bestiary.actors.Actor.mmBandit000000",
-                   data: { system: { attributes: { hp: { value: 45 } } } } },
+        foundry: { source: "Compendium.some-bestiary.actors.Actor.mmBandit000000",
+                   patch: { system: { attributes: { hp: { value: 45 } } } } },
       }),
     ], opts);
 
@@ -123,7 +123,7 @@ describe("documents from foundry.base", () => {
 
   it("a page inventing its own document has no source", () => {
     const { entries } = documentEntries([
-      page("Items/Sword.md", { foundry: { base: "Item", data: { type: "weapon" } } }),
+      page("Items/Sword.md", { foundry: { source: "Item", patch: { type: "weapon" } } }),
     ], opts);
     assert.ok(!("source" in entries[0]!), "absent means the patch is the document");
     assert.equal(entries[0]!.type, "Item");
@@ -131,8 +131,8 @@ describe("documents from foundry.base", () => {
 
   it("names what it could not place rather than dropping it", () => {
     const { entries, warnings } = documentEntries([
-      page("x.md", { foundry: { base: "Compendium.a.b.Scene.cccccccccccccccc" } }),
-      page("y.md", { foundry: { base: "nonsense" } }),
+      page("x.md", { foundry: { source: "Compendium.a.b.Scene.cccccccccccccccc" } }),
+      page("y.md", { foundry: { source: "nonsense" } }),
     ], opts);
     assert.deepEqual(entries, []);
     assert.match(warnings[0]!, /no pack declared for Scene/);
@@ -195,12 +195,12 @@ describe("the module a vault ships", () => {
     const { pagesFrom } = await import("../src/foundry-grafts.js");
     const metas = [
       { path: "A.md", title: "A", role: "public" },
-      { path: "B.md", title: "B", role: "dm", frontmatter: { foundry: { base: "Actor" } } },
+      { path: "B.md", title: "B", role: "dm", frontmatter: { foundry: { source: "Actor" } } },
     ];
     assert.deepEqual(pagesFrom(metas, new Set(["public"])).map((p) => p.path), ["A.md"]);
     const all = pagesFrom(metas, new Set(["public", "dm"]));
     assert.equal(all.length, 2);
-    assert.deepEqual(all[1]!.foundry, { base: "Actor" });
+    assert.deepEqual(all[1]!.foundry, { source: "Actor" });
   });
 });
 
@@ -211,7 +211,7 @@ describe("a base priority list", () => {
     const { documentEntries, basesOf } = await import("../src/foundry-grafts.js");
     const { entries, warnings } = documentEntries([{
       path: "x.md", title: "X", role: "dm",
-      foundry: { base: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa", "Compendium.c.d.Actor.bbbbbbbbbbbbbbbb"] },
+      foundry: { source: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa", "Compendium.c.d.Actor.bbbbbbbbbbbbbbbb"] },
     }], opts);
 
     assert.deepEqual(entries[0]!.source,
@@ -225,7 +225,7 @@ describe("a base priority list", () => {
     const { documentEntries } = await import("../src/foundry-grafts.js");
     const { entries } = documentEntries([{
       path: "x.md", title: "X", role: "dm",
-      foundry: { base: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa"] },
+      foundry: { source: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa"] },
     }], opts);
     assert.equal(typeof entries[0]!.source, "string");
   });
@@ -235,7 +235,7 @@ describe("a base priority list", () => {
     assert.deepEqual(basesOf(42), []);
     assert.deepEqual(basesOf([]), []);
     assert.deepEqual(basesOf({ uuid: "x" }), []);
-    const { warnings } = documentEntries([{ path: "y.md", title: "Y", role: "dm", foundry: { base: 42 } }], opts);
+    const { warnings } = documentEntries([{ path: "y.md", title: "Y", role: "dm", foundry: { source: 42 } }], opts);
     assert.match(warnings[0]!, /should be a UUID or a list/);
   });
 });
@@ -250,7 +250,7 @@ describe("a bare base with a subtype", () => {
     assert.equal(subtypeOf("Compendium.a.b.Actor.cccccccccccccccc"), null, "a source carries its own");
 
     const { entries, warnings } = documentEntries([{
-      path: "NPCs/Mossroot.md", title: "Mossroot", role: "dm", foundry: { base: "Actor:npc" },
+      path: "NPCs/Mossroot.md", title: "Mossroot", role: "dm", foundry: { source: "Actor:npc" },
     }], opts);
     assert.deepEqual(warnings, []);
     assert.equal(entries[0]!.type, "Actor");

@@ -22,22 +22,22 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 | `image:` (or auto-discovered cover) | Image cached under `worlds/<id>/vaults-cache/<vault-id>/...` |
 | `[[Other Page]]` wikilinks | Rewritten to `@UUID[Compendium.world.<vault>-journal.JournalEntry.<id>…]{label}` enrichers |
 | Audio / PDFs / other files | Downloaded alongside images |
-| `foundry.base: <UUID>` | New `Actor` or `Item` cloned from the template (see below) |
-| `foundry.base: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
-| `foundry.base: [<spec>, …]` | A priority list, tried in order, so one page serves readers with different content installed. End it with a type so it always produces something |
-| `foundry.base: "@moulinette/<pack_ref>/<filepath>"` | A document cloned from the reader's own [Moulinette](https://assets.moulinette.cloud/) library. `pack_ref` is the number in a marketplace URL, not a name (see below) |
+| `foundry.source: <UUID>` | New `Actor` or `Item` cloned from the template (see below) |
+| `foundry.source: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
+| `foundry.source: [<spec>, …]` | A priority list, tried in order, so one page serves readers with different content installed. End it with a type so it always produces something |
+| `foundry.source: "@moulinette/<pack_ref>/<filepath>"` | A document cloned from the reader's own [Moulinette](https://assets.moulinette.cloud/) library. `pack_ref` is the number in a marketplace URL, not a name (see below) |
 | `foundry.sync: false` | Skip this page entirely: no `JournalEntry`, no derived doc (see below) |
 | `foundry.embed: false` | Skip auto-embedding the page article into the doc's description field |
 | `foundry.journal: false` | Instantiate the derived doc but keep the article out of the journal sidebar. An Actor or Scene that needs no wiki entry of its own |
 | `foundry.link` | `journal` (default) or `doc`: where wikilinks to this page point. `doc` sends them at the instantiated document instead of its journal page. Implied by `journal: false` |
 | `foundry.folder` | A `/`-separated folder path the instantiated doc is filed under inside its pack. Absent means the page's own vault directory |
-| `foundry.data` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); `"@moulinette/<pack_ref>/<filepath>"` strings resolve against the reader's own Moulinette library (see below) |
-| `foundry.data_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.data` (use for exported sheets / community-shared dumps) |
-| `foundry.id` | 16-char `[A-Za-z0-9]` Foundry id pinned for this page's `JournalEntryPage` and (if `foundry.base` is set) its instantiated doc |
+| `foundry.patch` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); `"@moulinette/<pack_ref>/<filepath>"` strings resolve against the reader's own Moulinette library (see below) |
+| `foundry.patch_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.patch` (use for exported sheets / community-shared dumps) |
+| `foundry.id` | 16-char `[A-Za-z0-9]` Foundry id pinned for this page's `JournalEntryPage` and (if `foundry.source` is set) its instantiated doc |
 
-## Actor / Item cloning via `foundry.base`
+## Actor / Item cloning via `foundry.source`
 
-Set `foundry.base` to any document UUID, usually a compendium document
+Set `foundry.source` to any document UUID, usually a compendium document
 like an SRD monster or magic item:
 
 ```yaml
@@ -45,8 +45,8 @@ like an SRD monster or magic item:
 title: Aelar Galanodel
 image: aelar-portrait.webp
 foundry:
-  base: Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa
-  data:
+  source: Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa
+  patch:
     system:
       attributes:
         hp: { value: 22, max: 30 }
@@ -57,31 +57,31 @@ foundry:
 
 On sync, the Foundry module:
 
-1. Calls `fromUuid(foundry.base)` to load the template.
+1. Calls `fromUuid(foundry.source)` to load the template.
 2. Clones it into the vault's pack for that document type, under a
    **deterministic id** derived from `(vault.id, page.path)`, so re-syncs
    update the same doc rather than creating duplicates.
 3. Layers on the page-driven defaults: `name` ← page title, `img` ← cover
    image, description ← `@Embed[…]` of the page's JournalEntryPage.
-4. Deep-merges `foundry.data` on top, so HP/CR/etc. land exactly where
+4. Deep-merges `foundry.patch` on top, so HP/CR/etc. land exactly where
    they are supposed to.
 
-The result is an Actor (or Item) whose description embeds the wiki article. Edit the actor's HP in Foundry, the next sync preserves it (we only overwrite the canonical fields + your `foundry.data` overrides).
+The result is an Actor (or Item) whose description embeds the wiki article. Edit the actor's HP in Foundry, the next sync preserves it (we only overwrite the canonical fields + your `foundry.patch` overrides).
 
 > [!warning] WARNING
-> Anything defined in the `foundry.data` block will be overwritten on *every* sync. Think before using this feature for things like player character sheets that change frequently.
+> Anything defined in the `foundry.patch` block will be overwritten on *every* sync. Think before using this feature for things like player character sheets that change frequently.
 
 ### Blank documents
 
 When no template exists in any compendium (pure homebrew, bespoke maps,
-custom roll tables), use the type-form of `foundry.base`:
+custom roll tables), use the type-form of `foundry.source`:
 
 ```yaml
 ---
 title: Joywraith
 foundry:
-  base: Actor:npc
-  data:
+  source: Actor:npc
+  patch:
     system:
       attributes:
         hp: { value: 67, max: 67 }
@@ -91,18 +91,18 @@ foundry:
 ---
 ```
 
-`foundry.base: Scene` makes a blank scene, `foundry.base: RollTable` a
-blank table, `foundry.base: Item:weapon` a blank weapon, and so on. The
-same deterministic-id and `foundry.data` overlay rules apply: the doc
+`foundry.source: Scene` makes a blank scene, `foundry.source: RollTable` a
+blank table, `foundry.source: Item:weapon` a blank weapon, and so on. The
+same deterministic-id and `foundry.patch` overlay rules apply: the doc
 lives at a known id, sync re-applies your overrides, and a deleted page
 deletes the doc. Supported types: Actor, Item, Scene, JournalEntry,
 RollTable, Macro, Cards, Playlist. Subtypes are system-specific (dnd5e
 Actor: npc, character, vehicle, group; dnd5e Item: weapon, equipment,
-consumable, …). The bare-type form (`foundry.base: Actor`) skips subtype
+consumable, …). The bare-type form (`foundry.source: Actor`) skips subtype
 and lets the active system pick its default, which keeps the syntax
 portable across systems.
 
-[[Mossroot]] is a worked example: blank `Actor:npc`, full `foundry.data`
+[[Mossroot]] is a worked example: blank `Actor:npc`, full `foundry.patch`
 block, statblock pulling AC/HP/CR/speed via `fm:` from that same block, so one frontmatter source drives both the wiki render and the synced Foundry actor sheet.
 
 In this vault:
@@ -110,7 +110,7 @@ In this vault:
 - [[Bram]] clones SRD Commoner
 - [[Healing Potion]] clones SRD Potion of Healing
 - [[Witchwood encounters]] is a blank `RollTable` whose results live in
-  `foundry.data.results[]` and re-render in the page body via `fm:`
+  `foundry.patch.results[]` and re-render in the page body via `fm:`
 - [[Mossfoot Tarot]] is a blank `Cards` deck (six `base` cards, no images)
 - [[Mossfoot ambience]] is a blank `Playlist` whose sound `path` uses
   the `@vault/...` prefix (rewritten to a local cache URL on sync, so
@@ -144,8 +144,8 @@ description block.
 
 When you've got a hand-tuned Actor / Item / Scene from elsewhere (a
 community share, an export from a previous campaign, a custom-built
-sheet), point `foundry.data_json` at a JSON file in the vault and
-the module deep-merges it onto the new document *before* `foundry.data`
+sheet), point `foundry.patch_json` at a JSON file in the vault and
+the module deep-merges it onto the new document *before* `foundry.patch`
 applies. Lets you reuse the bulk of an existing sheet and still patch
 specific fields per page:
 
@@ -153,9 +153,9 @@ specific fields per page:
 ---
 title: Strahd von Zarovich
 foundry:
-  base: Actor:npc
-  data_json: ./sheets/strahd-export.json   # vault-relative path
-  data:
+  source: Actor:npc
+  patch_json: ./sheets/strahd-export.json   # vault-relative path
+  patch:
     system:
       attributes:
         hp: { value: 144, max: 200 }       # patches strahd-export.json
@@ -169,14 +169,14 @@ manifest entry — change the JSON, re-sync triggers an update.
 [[Aelar]] is the live demo: he points at `sheets/aelar-export.json` for
 biography, languages, skills, and pocket change, then layers the wound
 penalty (HP 22/30), a CR bump, and the "(wounded)" token name from his
-page's `foundry.data` block on top.
+page's `foundry.patch` block on top.
 
 ---
 
 ### Pinning an explicit Foundry id with `foundry.id`
 
 By default the module derives each page's `JournalEntryPage` id (and, if
-`foundry.base` is set, the instantiated doc's id) from a SHA1 of
+`foundry.source` is set, the instantiated doc's id) from a SHA1 of
 `vaultId + path`. That's stable but opaque, which is awkward when you
 want to reference the page or doc from somewhere outside the vault: a
 hotbar macro, a scene flag, another module's data, a hardcoded
@@ -190,8 +190,8 @@ that id instead:
 title: Mossfoot Great Hall
 foundry:
   id: mossfootHall0001
-  base: Scene
-  data:
+  source: Scene
+  patch:
     name: Mossfoot Great Hall
 ---
 ```
@@ -225,7 +225,7 @@ old id too. Neither is auto-deleted. Drop them by hand if you need to.
 
 ## Moulinette: assets and scenes from the reader's own library
 
-A vault can point at content it does not ship. Reference a map, a track, or a whole scene from [Moulinette](https://assets.moulinette.cloud/), and on sync it resolves against **the reader's own Moulinette library** — so the licensing question stays between them and the creator, exactly as it does when `foundry.base` names a compendium UUID. Nothing is redistributed, and a reader who is not subscribed simply gets less.
+A vault can point at content it does not ship. Reference a map, a track, or a whole scene from [Moulinette](https://assets.moulinette.cloud/), and on sync it resolves against **the reader's own Moulinette library** — so the licensing question stays between them and the creator, exactly as it does when `foundry.source` names a compendium UUID. Nothing is redistributed, and a reader who is not subscribed simply gets less.
 
 Requires the [Moulinette](https://foundryvtt.com/packages/moulinette) module, installed and signed in.
 
@@ -253,12 +253,12 @@ That pack is `13648`. The two segments after it are the creator and product name
 
 ### Assets: maps, images and audio
 
-An asset reference goes wherever a path goes, in `foundry.data` or a `data_json` file, alongside `@vault/`:
+An asset reference goes wherever a path goes, in `foundry.patch` or a `data_json` file, alongside `@vault/`:
 
 ```yaml
 foundry:
-  base: Scene
-  data:
+  source: Scene
+  patch:
     width: 4200
     height: 2800
     levels:
@@ -274,21 +274,21 @@ foundry:
 
 ### Documents: whole scenes, actors and items
 
-A `@moulinette/` reference can also be a rung on `foundry.base`, where it names a *document* to clone rather than a file to point at — a creator's own scene, with their walls, lighting and ambience:
+A `@moulinette/` reference can also be a rung on `foundry.source`, where it names a *document* to clone rather than a file to point at — a creator's own scene, with their walls, lighting and ambience:
 
 ```yaml
 foundry:
-  base:
+  source:
     - "@moulinette/13648/json/scene/06-junkyard-empty.json"   # if the reader owns it
     - Scene                                                    # if not
-  data:
+  patch:
     navName: Junkyard
 ```
 
-`foundry.base` accepts a **priority list**, tried in order, so one page can serve readers with different content installed. A Moulinette rung names no document type of its own — only the reader's library knows whether an asset is a Scene or an Actor, and the CLI has to answer that question at build time with no library to ask — so **a list containing one must also contain a rung that names the type**. That entry is doing double duty: it tells the build what the page creates, and it is what a reader without the pack falls back to.
+`foundry.source` accepts a **priority list**, tried in order, so one page can serve readers with different content installed. A Moulinette rung names no document type of its own — only the reader's library knows whether an asset is a Scene or an Actor, and the CLI has to answer that question at build time with no library to ask — so **a list containing one must also contain a rung that names the type**. That entry is doing double duty: it tells the build what the page creates, and it is what a reader without the pack falls back to.
 
 > [!warning] The base is only read when the document is first created
-> A page whose document already exists takes the update path, which applies `foundry.data` and `data_json` but never re-clones. To adopt a changed `base`, delete the document from the pack and **Force Sync**.
+> A page whose document already exists takes the update path, which applies `foundry.patch` and `data_json` but never re-clones. To adopt a changed `base`, delete the document from the pack and **Force Sync**.
 
 ### Versioning, and why the asset rung ages better
 
@@ -306,8 +306,8 @@ That asymmetry makes composing a scene yourself the more durable pattern, and of
 
 ```yaml
 foundry:
-  base: Scene
-  data_json: Scenes/tavern.json     # your dimensions, grid, walls, lights, levels
+  source: Scene
+  patch_json: Scenes/tavern.json     # your dimensions, grid, walls, lights, levels
 ```
 
 with the map referenced from `@moulinette/` inside that file. The licensing line falls where it should — you cannot redistribute a creator's art, but wall geometry and lighting are *your* work and ship freely in the vault. The vault carries the structure it owns; the reader's library supplies the licensed pixels. See [[Battlemaps]] for the same pattern applied to layered maps.
@@ -424,7 +424,7 @@ Force-sync after changing `foundry.player_role` to re-wrap previously-imported p
 > [!warning] WARNING
 > There is a known Foundry bug where secrets do not work on documents owned by a non-GM user. This isn't typically an issue with imported Journal Entries since they default to GM ownership (players get read access via the OBSERVER role), but it can cause problems if you change ownership or (more likey), a page is Embedded into an Actor/Item sheet that is owned by a non-GM. Be careful about this!
 
-For pages that *shouldn't* leak their article into the actor sheet, DM-private notes, or stats-only pages where the embed adds nothing, set `foundry.embed: false`. The clone / blank doc still gets created with the right name, image, and `foundry.data` overlay. Only the description field is left at whatever the template (or blank) had.
+For pages that *shouldn't* leak their article into the actor sheet, DM-private notes, or stats-only pages where the embed adds nothing, set `foundry.embed: false`. The clone / blank doc still gets created with the right name, image, and `foundry.patch` overlay. Only the description field is left at whatever the template (or blank) had.
 
 ---
 
@@ -444,7 +444,7 @@ foundry:
 
 The page still renders on the wiki like any other. It simply never reaches
 Foundry: no `JournalEntry`, no `JournalEntryPage`, no derived document even if
-the page also declares a `foundry.base`. Wikilinks pointing at it from other
+the page also declares a `foundry.source`. Wikilinks pointing at it from other
 pages fall back to plain text rather than dangling `@UUID[…]` enrichers.
 
 > [!warning] Not the same as `embed: false`

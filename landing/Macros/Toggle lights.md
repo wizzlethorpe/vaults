@@ -1,8 +1,8 @@
 ---
 title: Toggle lights
 foundry:
-  base: Macro
-  data:
+  source: Macro
+  patch:
     name: Toggle lights
     type: script
     scope: global
@@ -21,7 +21,7 @@ scene is the active canvas.
 
 > [!quote] Macro body
 > ```fm javascript
-> foundry.data.command
+> foundry.patch.command
 > ```
 
 This is the simplest form of the lighting macro. The original Great

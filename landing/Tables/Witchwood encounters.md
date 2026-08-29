@@ -1,11 +1,11 @@
 ---
 title: Witchwood Wandering Encounters
 foundry:
-  base: RollTable
+  source: RollTable
   # Defining the table once in frontmatter gives Foundry a real RollTable
   # the GM can roll on, and the page body re-uses the same data via `fm:`
   # so the wiki rendering can't drift from the Foundry doc.
-  data:
+  patch:
     name: Witchwood Wandering Encounters
     formula: 1d6
     description: What you meet at the Witchwood's edge after dark.
@@ -22,28 +22,28 @@ A `1d6` encounter table for the dark hours along the Witchwood border.
 The table data lives once in this page's `foundry:` block, so Foundry
 gets a real, rollable `RollTable` and the prose below stays in sync via
 the [[Features/Handlers#Built-in fm|fm: handler]] dot-pathing into
-`foundry.data.results[N].name`.
+`foundry.patch.results[N].name`.
 
-Roll `dice: 1d6`. `fm: foundry.data.description`
+Roll `dice: 1d6`. `fm: foundry.patch.description`
 
 | Roll | Encounter |
 |---|---|
-| 1 | `fm: foundry.data.results.0.name` |
-| 2 | `fm: foundry.data.results.1.name` |
-| 3 | `fm: foundry.data.results.2.name` |
-| 4 | `fm: foundry.data.results.3.name` |
-| 5 | `fm: foundry.data.results.4.name` |
-| 6 | `fm: foundry.data.results.5.name` |
+| 1 | `fm: foundry.patch.results.0.name` |
+| 2 | `fm: foundry.patch.results.1.name` |
+| 3 | `fm: foundry.patch.results.2.name` |
+| 4 | `fm: foundry.patch.results.3.name` |
+| 5 | `fm: foundry.patch.results.4.name` |
+| 6 | `fm: foundry.patch.results.5.name` |
 
 ## How this page works
 
-The `foundry.base: RollTable` line tells the Foundry module to spawn a
-blank `RollTable` document keyed to this page; `foundry.data` is
+The `foundry.source: RollTable` line tells the Foundry module to spawn a
+blank `RollTable` document keyed to this page; `foundry.patch` is
 deep-merged onto it, so the GM ends up with a real rollable table whose
 formula is `1d6` and whose results are the six entries above.
 
 The body table reuses the same data: each row is just an **fm:**
-lookup into `foundry.data.results.N.name`. The **fm:** handler walks
+lookup into `foundry.patch.results.N.name`. The **fm:** handler walks
 dot-paths and treats numeric segments as array indices, so editing the
 frontmatter updates both the Foundry RollTable on next sync and the
 prose rendering on next build, with no hand-syncing.

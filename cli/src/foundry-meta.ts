@@ -13,7 +13,7 @@ import type { PageMeta } from "./render/types.js";
 import type { BodyMeta } from "./manifest.js";
 
 /**
- * Whether a `foundry.base` will actually produce a document.
+ * Whether a `foundry.source` will actually produce a document.
  *
  * Both forms do, for every type vaults can instantiate. This used to be
  * narrower — the module cloned from a UUID only for Actor and Item, so a lone
@@ -35,7 +35,7 @@ export function warnFoundryDocCollisions(pages: PageMeta[]): void {
   for (const p of pages) {
     const fo = p.frontmatter?.["foundry"];
     if (!fo || typeof fo !== "object" || Array.isArray(fo)) continue;
-    const base = (fo as Record<string, unknown>)["base"];
+    const base = (fo as Record<string, unknown>)["source"];
     const specs = (Array.isArray(base) ? base : [base])
       .filter((x): x is string => typeof x === "string" && x.length > 0);
     if (specs.length === 0) continue;
@@ -64,7 +64,7 @@ export function warnFoundryDocCollisions(pages: PageMeta[]): void {
 }
 
 /**
- * The document type a `foundry.base` spec names, read off the string without
+ * The document type a `foundry.source` spec names, read off the string without
  * resolving anything. Every UUID form puts the type second-to-last
  * (`Actor.<id>`, `Compendium.<pkg>.<pack>.Actor.<id>`), and a blank-doc spec
  * (`Actor:npc`) carries it outright. `links.mjs` derives it the same way, so
@@ -99,7 +99,7 @@ export function foundryBaseDocName(spec: string): string | null {
  * supported, but Foundry's `@UUID[...]` enricher does a case-sensitive
  * lookup. Returning "actor" made the CLI treat it as a different type from
  * "Actor" — so a list mixing the two failed the same-type check and had its
- * whole foundry.base dropped. Kept in step with
+ * whole foundry.source dropped. Kept in step with
  * foundry/scripts/foundry-base.mjs by cli/test/foundry-base-conformance.test.ts.
  */
 export function canonicalFoundryType(raw: string | undefined): string | null {
@@ -113,7 +113,7 @@ export const FOUNDRY_BLANK_DOC_TYPES = [
 ];
 
 /**
- * Validate `foundry.base` and normalize it for the manifest: a single string
+ * Validate `foundry.source` and normalize it for the manifest: a single string
  * stays a string (so an older Foundry module keeps working), a list of two or
  * more stays a list. Returns null when the value can't be used, having said
  * why — the build continues, and the page syncs as a journal with no document.
@@ -129,9 +129,9 @@ function normalizeFoundryBase(base: unknown, pagePath: string): string | string[
   for (const entry of raw) {
     if (typeof entry !== "string" || entry.trim().length === 0) {
       console.warn(
-        `  ${pagePath}: foundry.base entries must be non-empty strings (a UUID like `
+        `  ${pagePath}: foundry.source entries must be non-empty strings (a UUID like `
         + `"Compendium.<pkg>.<pack>.Actor.<id>", or a type like "Actor:npc"); `
-        + `got ${entry === null ? "null" : typeof entry}. Ignoring foundry.base — this page `
+        + `got ${entry === null ? "null" : typeof entry}. Ignoring foundry.source — this page `
         + `will sync as a journal but create no document.`,
       );
       return null;
@@ -139,7 +139,7 @@ function normalizeFoundryBase(base: unknown, pagePath: string): string | string[
     specs.push(entry.trim());
   }
   if (specs.length === 0) {
-    console.warn(`  ${pagePath}: foundry.base is an empty list; ignoring.`);
+    console.warn(`  ${pagePath}: foundry.source is an empty list; ignoring.`);
     return null;
   }
 
@@ -151,24 +151,24 @@ function normalizeFoundryBase(base: unknown, pagePath: string): string | string[
     if (spec.startsWith("@moulinette/")) continue;
     const docName = foundryBaseDocName(spec);
     if (!docName) {
-      console.warn(`  ${pagePath}: foundry.base entry "${spec}" names no document type; ignoring foundry.base.`);
+      console.warn(`  ${pagePath}: foundry.source entry "${spec}" names no document type; ignoring foundry.source.`);
       return null;
     }
     if (!types.has(docName)) types.set(docName, spec);
   }
   if (types.size === 0) {
     console.warn(
-      `  ${pagePath}: foundry.base names only Moulinette references, which carry no document `
+      `  ${pagePath}: foundry.source names only Moulinette references, which carry no document `
       + `type. Add an entry naming the type (e.g. "Scene") — it is also what the page falls `
-      + `back to for a reader without that pack. Ignoring foundry.base.`,
+      + `back to for a reader without that pack. Ignoring foundry.source.`,
     );
     return null;
   }
   if (types.size > 1) {
     const detail = [...types].map(([t, spec]) => `${t} (from "${spec}")`).join(", ");
     console.warn(
-      `  ${pagePath}: every foundry.base entry must name the same document type, got ${detail}. `
-      + `Ignoring foundry.base — this page will sync as a journal but create no document.`,
+      `  ${pagePath}: every foundry.source entry must name the same document type, got ${detail}. `
+      + `Ignoring foundry.source — this page will sync as a journal but create no document.`,
     );
     return null;
   }
@@ -178,7 +178,7 @@ function normalizeFoundryBase(base: unknown, pagePath: string): string | string[
   const last = specs[specs.length - 1]!;
   if (specs.length > 1 && (last.includes(".") || last.startsWith("@moulinette/"))) {
     console.warn(
-      `  ${pagePath}: foundry.base list ends with "${last}", so it can still resolve to nothing. `
+      `  ${pagePath}: foundry.source list ends with "${last}", so it can still resolve to nothing. `
       + `End with a blank-document entry (e.g. "${[...types.keys()][0]}:npc" or "${[...types.keys()][0]}") `
       + `to guarantee a document.`,
     );
@@ -203,7 +203,7 @@ export async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<B
     // same as foundry.id below. Silence here is worse than it looks: the
     // module never receives the key, so it can't report the page either, and
     // the page syncs as a journal with no Actor/Item and no explanation.
-    const base = (fo as Record<string, unknown>)["base"];
+    const base = (fo as Record<string, unknown>)["source"];
     if (base !== undefined && base !== null) {
       const normalized = normalizeFoundryBase(base, p.path);
       if (normalized !== null) block.base = normalized;
@@ -226,7 +226,7 @@ export async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<B
     // `journal: false`, where there is no journal page to link to.
     const link = (fo as Record<string, unknown>)["link"];
     if (link === "doc" || link === "journal") block.link = link;
-    const data = (fo as Record<string, unknown>)["data"];
+    const data = (fo as Record<string, unknown>)["patch"];
     if (data && typeof data === "object" && !Array.isArray(data)) block.data = data;
     // foundry.folder: a "/"-separated folder path the instantiated doc is
     // filed under, nested inside the vault's own sidebar folder. Absent
@@ -235,7 +235,7 @@ export async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<B
     if (typeof folder === "string" && folder.trim().length > 0) block.folder = folder.trim();
     // foundry.id: an explicit Foundry document id for this page. When set,
     // overrides the SHA1-derived id used for both the JournalEntryPage and
-    // (if foundry.base is present) the instantiated derived doc. Lets users
+    // (if foundry.source is present) the instantiated derived doc. Lets users
     // hardcode UUIDs that other Foundry-side code (macros, scene flags,
     // module integrations) needs to reference. Foundry ids are 16 chars from
     // [A-Za-z0-9]; a malformed value is dropped with a warning rather than
@@ -248,16 +248,16 @@ export async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<B
         console.warn(`  ${p.path}: foundry.id "${trimmed}" is not a valid Foundry id (16 chars [A-Za-z0-9]); ignoring`);
       }
     }
-    // foundry.data_json: vault-relative path to a JSON file. Read + parse
+    // foundry.patch_json: vault-relative path to a JSON file. Read + parse
     // at build time and inline into the meta as `data_json`. The Foundry
-    // module deep-merges it onto the base doc BEFORE foundry.data, so a
+    // module deep-merges it onto the base doc BEFORE foundry.patch, so a
     // user can layer hand-tuned overrides on top of an exported sheet.
     // Folding the parsed object into meta means the body-row hash already
     // changes when the JSON content does — no separate change-detection.
-    const dataJsonPath = (fo as Record<string, unknown>)["data_json"];
+    const dataJsonPath = (fo as Record<string, unknown>)["patch_json"];
     if (typeof dataJsonPath === "string" && dataJsonPath.trim().length > 0) {
       const parsed = await loadDataJson(vaultPath, dataJsonPath.trim(), p.path);
-      if (parsed !== null) block.data_json = parsed;
+      if (parsed !== null) block.patch_json = parsed;
     }
     if (Object.keys(block).length > 0) out.foundry = block;
   }
@@ -267,7 +267,7 @@ export async function collectBodyMeta(p: PageMeta, vaultPath: string): Promise<B
   return out;
 }
 
-/** Read + parse a vault-relative JSON file referenced by `foundry.data_json`.
+/** Read + parse a vault-relative JSON file referenced by `foundry.patch_json`.
  *  Warns on missing / unparseable file and returns null so the page renders
  *  without the overlay rather than failing the build. */
 export async function loadDataJson(
@@ -282,9 +282,9 @@ export async function loadDataJson(
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
-      console.warn(`  ${pagePath}: foundry.data_json "${relPath}" not found, skipping`);
+      console.warn(`  ${pagePath}: foundry.patch_json "${relPath}" not found, skipping`);
     } else {
-      console.warn(`  ${pagePath}: foundry.data_json "${relPath}" failed to parse: ${(err as Error).message}`);
+      console.warn(`  ${pagePath}: foundry.patch_json "${relPath}" failed to parse: ${(err as Error).message}`);
     }
     return null;
   }
@@ -308,7 +308,7 @@ export interface JournalPageSpec {
  * Read `foundry.journal` as an overlay onto the JournalEntryPage.
  *
  * `false` still means "make no page". An object is a patch over the page that
- * would have been built anyway, the same idiom `foundry.data` uses for the
+ * would have been built anyway, the same idiom `foundry.patch` uses for the
  * instantiated document.
  *
  * The CLI's copy of foundry/scripts/foundry-base.mjs's function, for the

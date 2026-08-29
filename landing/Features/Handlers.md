@@ -54,13 +54,13 @@ Missing keys render a visible warning marker so typos surface instead of silentl
 
 Date frontmatter values (YAML auto-parses ISO 8601 to JS `Date`) format as YYYY-MM-DD. Arrays join with `, `. Objects emit the warning marker, but you can dot-path into them: `` `fm: stats.hp` `` walks nested keys, with any missing segment along the path triggering the warning.
 
-Numeric segments index into arrays, so `` `fm: foundry.data.results.0.name` `` pulls the first row's `name` field. [[Witchwood encounters]] uses this to render a `RollTable` defined entirely in `foundry.data` as a markdown table in the page body, with no duplicated content between the Foundry doc and the wiki.
+Numeric segments index into arrays, so `` `fm: foundry.patch.results.0.name` `` pulls the first row's `name` field. [[Witchwood encounters]] uses this to render a `RollTable` defined entirely in `foundry.patch` as a markdown table in the page body, with no duplicated content between the Foundry doc and the wiki.
 
 For values that should appear inside a `<pre><code>` (a script body, a long string), there's a fenced-code form keyed on `fm`. The body is the dot-path. Any text after the lang on the fence is the language hint for the rendered code element:
 
 ````
 ```fm javascript
-foundry.data.command
+foundry.patch.command
 ```
 ````
 

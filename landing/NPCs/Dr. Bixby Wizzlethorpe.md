@@ -5,8 +5,8 @@ role-class: Archmage
 location: Mossfoot Inn (sabbatical)
 cr: 12
 foundry:
-  base: Compendium.dnd5e.monsters.Actor.B7lBOr1AahNZs4a6
-  data:
+  source: Compendium.dnd5e.monsters.Actor.B7lBOr1AahNZs4a6
+  patch:
     system:
       attributes:
         hp: { value: 99, max: 99 }

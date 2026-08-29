@@ -1,8 +1,8 @@
 ---
 title: Toggle feast
 foundry:
-  base: Macro
-  data:
+  source: Macro
+  patch:
     name: Toggle feast
     type: script
     scope: global
@@ -21,7 +21,7 @@ appear; click again → they're cleared.
 
 > [!quote] Macro body
 > ```fm javascript
-> foundry.data.command
+> foundry.patch.command
 > ```
 
 Reaching the placeable by `_id` rather than by name (`scene.tiles.find(t => t.name === "Dinner")`)

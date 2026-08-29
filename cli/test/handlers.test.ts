@@ -231,13 +231,13 @@ describe("built-in fm code-block handler", () => {
       "Page.md": [
         "---",
         "foundry:",
-        "  data:",
+        "  patch:",
         "    command: |",
         "      const x = 1; const y = 2;",
         "---",
         "",
         "```fm javascript",
-        "foundry.data.command",
+        "foundry.patch.command",
         "```",
       ].join("\n"),
     });

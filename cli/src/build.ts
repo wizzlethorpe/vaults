@@ -445,7 +445,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     );
   }
 
-  // Stage assets referenced inside each page's foundry.data_json (Scene
+  // Stage assets referenced inside each page's foundry.patch_json (Scene
   // backgrounds / ambient sounds / tile art live in that JSON, not the page
   // frontmatter, so the asset scanners below consult p.foundryAssets).
   await Promise.all(allPageMetas.map(async (p) => {
@@ -858,7 +858,7 @@ interface VariantArgs {
   gated: boolean;
   variantDir: string;
   vaultName: string;
-  /** Vault root, used to resolve `foundry.data_json` paths declared in page frontmatter. */
+  /** Vault root, used to resolve `foundry.patch_json` paths declared in page frontmatter. */
   vaultPath: string;
   allPageMetas: PageMeta[];
   sources: Map<string, string>;

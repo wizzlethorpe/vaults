@@ -25,8 +25,8 @@ export interface BodyMeta {
    */
   title?: string;
   /**
-   * Foundry-instantiation block. `foundry.base` names a template
-   * (compendium UUID or `Type[:subtype]`); `foundry.data` is the
+   * Foundry-instantiation block. `foundry.source` names a template
+   * (compendium UUID or `Type[:subtype]`); `foundry.patch` is the
    * deep-merge overlay applied to the resulting doc; `foundry.sync`
    * (default true) controls whether the page reaches Foundry at all;
    * `foundry.journal` (default true) controls whether it also gets a
@@ -188,7 +188,7 @@ async function walkAndIndex(
     const body = await readFile(abs);
     const info = await stat(abs);
     const meta = bodyMeta.get(path);
-    // Fold meta JSON into the hash so meta-only edits (e.g. a foundry.base
+    // Fold meta JSON into the hash so meta-only edits (e.g. a foundry.source
     // tweak with no body change) still bump the row hash and trigger sync.
     const hasher = createHash("md5").update(body);
     if (meta) hasher.update("\x00meta:" + stableStringify(meta));

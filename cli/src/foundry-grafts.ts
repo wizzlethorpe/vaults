@@ -17,7 +17,8 @@ export interface GraftEntry {
   type: string;
   pack: string;
   folder?: string;
-  source?: string;
+  /** A UUID, or several to try in order. */
+  source?: string | string[];
   patch: Record<string, unknown>;
 }
 
@@ -32,11 +33,11 @@ export interface Page {
   path: string;                    // "Characters/Nobles/Marlo.md"
   title: string;
   role: string;
-  /** The `foundry:` frontmatter block, if any. `base` may be a priority list. */
-  foundry?: { base?: unknown; data?: Record<string, unknown> } | null;
+  /** The `foundry:` frontmatter block, if any. `source` may be a priority list. */
+  foundry?: { source?: unknown; patch?: Record<string, unknown> } | null;
 }
 
-/** Every usable UUID in a `foundry.base`, which may be a list, in order. */
+/** Every usable UUID in a `foundry.source`, which may be a list, in order. */
 export function basesOf(base: unknown): string[] {
   if (typeof base === "string") return base.trim() ? [base.trim()] : [];
   if (Array.isArray(base)) {
@@ -170,12 +171,12 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 }
 
 /**
- * A page's `foundry.base` becomes a graft of that document.
+ * A page's `foundry.source` becomes a graft of that document.
  *
  * This is the whole of what `instance.mjs` did at runtime — clone a compendium
  * document, apply the page's overrides, keep a deterministic id — expressed as
  * the thing graft already builds. A base that names a UUID is a source; a page
- * with only `foundry.data` carries its own content and has none.
+ * with only `foundry.patch` carries its own content and has none.
  */
 export function documentEntries(pages: Page[], opts: GraftOptions): { entries: GraftEntry[]; warnings: string[] } {
   const entries: GraftEntry[] = [];
@@ -183,12 +184,12 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
 
   for (const page of pages) {
     const spec = page.foundry;
-    if (!spec?.base) continue;
+    if (!spec?.source) continue;
 
-    const bases = basesOf(spec.base);
+    const bases = basesOf(spec.source);
     const base = bases[0];
     if (!base) {
-      warnings.push(`${page.path}: foundry.base should be a UUID or a list of them`);
+      warnings.push(`${page.path}: foundry.source should be a UUID or a list of them`);
       continue;
     }
     const type = documentTypeOf(base);
@@ -207,7 +208,7 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
     const patch: Record<string, unknown> = {
       name: page.title,
       ...(subtype ? { type: subtype } : {}),
-      ...(spec.data ?? {}),
+      ...(spec.patch ?? {}),
       ownership: { default: ownership },
     };
     entries.push({
@@ -228,7 +229,7 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
 }
 
 /**
- * The document type a `foundry.base` names.
+ * The document type a `foundry.source` names.
  *
  * A compendium UUID carries it (`Compendium.<mod>.<pack>.<Type>.<id>`); a bare
  * type name is a page inventing its own content.

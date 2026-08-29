@@ -43,8 +43,8 @@ describe("default_frontmatter", () => {
   it("merges into a foundry block the page already started", () => {
     // A page naming its own base must still pick up the folder's journal rule,
     // or an author would have to restate the default on every such page.
-    const out = apply("Compendium/Spells/Accio.md", { foundry: { base: "Item:spell" } });
-    assert.deepEqual(out["foundry"], { base: "Item:spell", journal: false });
+    const out = apply("Compendium/Spells/Accio.md", { foundry: { source: "Item:spell" } });
+    assert.deepEqual(out["foundry"], { source: "Item:spell", journal: false });
   });
 
   it("does not reach past a key the page answered with a scalar", () => {
