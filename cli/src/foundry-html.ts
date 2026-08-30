@@ -181,24 +181,22 @@ function elementEnd(html: string, start: number, tagName: string): number {
   return -1;
 }
 
-export function wrapSecrets(html: string, secretRoles: ReadonlySet<string>): string {
-  if (secretRoles.size === 0) return html;
-  const open = /<div class="callout[^"]*" data-callout="([^"]+)"/g;
-  let out = "";
-  let at = 0;
-  let m: RegExpExecArray | null;
-  while ((m = open.exec(html)) !== null) {
-    if (m.index < at) continue;   // inside a section already emitted
-    if (!secretRoles.has(m[1]!.toLowerCase())) continue;
-    const end = elementEnd(html, m.index, "div");
-    if (end < 0) break;
-    const id = createHash("sha1").update(html.slice(m.index, end)).digest("hex").slice(0, 16);
-    out += html.slice(at, m.index)
-      + `<section class="secret" id="secret-${id}">` + html.slice(m.index, end) + "</section>";
-    at = end;
-    open.lastIndex = end;
-  }
-  return out + html.slice(at);
+/**
+ * A player-visible document's body: the GM's full rendering inside one secret
+ * section, then the player variant's rendering in the open.
+ *
+ * Foundry strips secret sections for anyone below owner, so a player sees
+ * exactly what the public site would have shown them — the actual player
+ * render, not an element-by-element redaction of the GM's. That is what makes
+ * this general: a base listing DM-only pages, a transcluded DM note, a link
+ * that only resolves for the GM, all differ between the two renders and none
+ * needs to be found and marked. The module's CSS hides the player copy when
+ * the secret survives, so the GM reads one page, not two.
+ */
+export function dualVariantBody(gmHtml: string, playerHtml: string): string {
+  const id = createHash("sha1").update(gmHtml).digest("hex").slice(0, 16);
+  return `<section class="secret vaults-gm" id="secret-${id}">${gmHtml}</section>`
+    + `<div class="vaults-player-view">${playerHtml}</div>`;
 }
 
 /**
@@ -228,9 +226,6 @@ export function stripWebOnly(html: string): string {
   return out + html.slice(at);
 }
 
-export function toFoundryHtml(
-  html: string, index: LinkIndex, variant: string,
-  secretRoles: ReadonlySet<string> = new Set(),
-): string {
-  return rewriteAssets(rewriteLinks(wrapSecrets(stripWebOnly(html), secretRoles), index), variant);
+export function toFoundryHtml(html: string, index: LinkIndex, variant: string): string {
+  return rewriteAssets(rewriteLinks(stripWebOnly(html), index), variant);
 }

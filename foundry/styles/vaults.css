@@ -405,3 +405,16 @@ section.journal-page-content pre > code,
   white-space: inherit;
   display: block;
 }
+
+/* Dual-variant journal bodies. The GM render travels as one secret section
+ * with the player render beside it; Foundry strips the secret below owner.
+ * For the GM both survive, so hide the player copy — and drop Foundry's
+ * secret chrome, which would paint the whole page as one purple block. */
+.journal-page-content section.secret.vaults-gm {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+section.secret.vaults-gm ~ .vaults-player-view {
+  display: none;
+}

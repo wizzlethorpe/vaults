@@ -43,8 +43,8 @@ import { bundleHandlerAssets } from "./render/handlers/assets.js";
 import { runMigrations } from "./migrate/run.js";
 import { cacheDir } from "./paths.js";
 import { formatDuration, pMap, Progress } from "./util.js";
-import { buildGrafts, moduleManifest, moduleGrafts, packsFor, pagesFrom, secretRoles } from "./foundry-grafts.js";
-import { toFoundryHtml } from "./foundry-html.js";
+import { buildGrafts, contentHash, moduleManifest, moduleGrafts, packsFor, pagesFrom } from "./foundry-grafts.js";
+import { toFoundryHtml, dualVariantBody } from "./foundry-html.js";
 import { zip } from "./zip.js";
 import { moduleVersion } from "./foundry-version.js";
 import { loadDataJson } from "./foundry-meta.js";
@@ -732,6 +732,36 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
         },
       );
       for (const warning of grafts.warnings) console.warn(`  warning: ${warning}`);
+
+      // A second body per page, with links resolved to UUIDs and media pointed
+      // at markers the provider fills in. Foundry gets this one; the wiki keeps
+      // the plain `.body.html`, since the same HTML cannot serve both.
+      // A player-visible page's body carries both renders: the GM's inside a
+      // secret section, the player's in the open (see dualVariantBody). Roles
+      // build lowest first, so the player variant's body is already on disk.
+      const playerRole = settings.values.foundry.player_role;
+      const ceiling = roles.indexOf(playerRole);
+      const playerDir = collapseToRoot
+        ? opts.outputDir
+        : join(opts.outputDir, "_variants", playerRole);
+      const bodyHashes = new Map<string, string>();
+      await pMap(graftPages, concurrency, async (page) => {
+        const base = page.path.replace(/\.md$/i, "");
+        const body = await readFile(join(variantDir, `${base}.body.html`), "utf8");
+        const gm = toFoundryHtml(body, grafts.links, role);
+        const observable = ceiling >= 0 && roles.indexOf(page.role) <= ceiling;
+        const dual = observable && roles.indexOf(role) > ceiling;
+        const out = dual
+          ? dualVariantBody(gm, toFoundryHtml(
+            await readFile(join(playerDir, `${base}.body.html`), "utf8"),
+            grafts.links, playerRole))
+          : gm;
+        await writeFile(join(variantDir, `${base}.foundry.html`), out);
+        bodyHashes.set(page.path, createHash("md5").update(out).digest("hex"));
+      });
+
+      grafts.file.contentHash = contentHash(grafts.file.entries, grafts.file.assets ?? {}, bodyHashes);
+
       await mkdir(join(variantDir, "_foundry"), { recursive: true });
       await writeFile(
         join(variantDir, "_foundry", "grafts.json"),
@@ -743,19 +773,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
         join(variantDir, "_foundry", "version.json"),
         JSON.stringify({ content: grafts.file.contentHash }),
       );
-
-      // A second body per page, with links resolved to UUIDs and media pointed
-      // at markers the provider fills in. Foundry gets this one; the wiki keeps
-      // the plain `.body.html`, since the same HTML cannot serve both.
-      const secrets = secretRoles(roles, settings.values.foundry.player_role);
-      await pMap(graftPages, concurrency, async (page) => {
-        const base = page.path.replace(/\.md$/i, "");
-        const body = await readFile(join(variantDir, `${base}.body.html`), "utf8");
-        await writeFile(
-          join(variantDir, `${base}.foundry.html`),
-          toFoundryHtml(body, grafts.links, role, secrets),
-        );
-      });
     }
 
   }

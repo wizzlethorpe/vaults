@@ -53,6 +53,8 @@ Optional keys, all default on/off as noted:
 - `embed: false` — the page's prose stays out of the document's description.
 - `folder: Some/Path` — files the document there instead of where the page lives.
 
+A player-visible page's journal body carries two renders: the GM's full page inside a Foundry secret section (stripped for anyone below owner), and the player variant's render in the open. Players see exactly what the public site would show them — DM callouts, base rows for DM-only pages, and every other difference included — and the GM reads their own full page.
+
 A wikilink always opens the page (its journal page, or its document when `journal: false`). To link a page's *document* while its journal page exists — a statblock, a scene, a macro — use the inline handler: `` `fvtt-link: Toggle Feast` `` (with `` |label `` for custom text). On the wiki it is an ordinary page link.
 
 Any HTML element with the `vaults-web-only` class is stripped from journal bodies — for blocks that belong on the wiki but not in Foundry, like the battlemap viewer on a scene page. Handlers set it on their wrapper; a page can use it on raw HTML of its own.

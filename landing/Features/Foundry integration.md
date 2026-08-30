@@ -358,6 +358,10 @@ Set it to the full version you **exported from**, not the one you run, and quote
 
 A bare generation like `'14'` is worse than leaving it unset: it sorts before every release in that generation, so Foundry runs migrations written for versions your data is already past. `migrateLevels` is one of them, and it replaces a Scene's levels outright.
 
+## What players see inside a shared page
+
+A player-visible page's journal body carries both renders: the GM's full page inside a Foundry secret section, and the player variant's render in the open. Foundry strips the secret for anyone below owner, so players see exactly what the public wiki shows them — not a redacted copy of the GM's page but the actual player rendering, which also covers differences no callout marks: a base row for a DM-only page, a link only the GM's render resolves. The GM's copy is hidden from players by Foundry, not absent from the document data; treat it as obfuscation, and keep real secrets on `role: dm` pages.
+
 ## Linking to the document instead of the page
 
 A wikilink always opens the page: its journal page, or its document when the page sets `journal: false`. When a page has both and you want the document — send the reader to the Actor's statblock, not their biography — use the inline handler:

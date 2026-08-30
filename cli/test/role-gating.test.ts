@@ -736,3 +736,36 @@ describe("role gating: wikilinks across tiers", () => {
     } finally { await cleanup(v); }
   });
 });
+
+describe("role gating: dual-variant Foundry bodies", () => {
+  // The GM's render of a player-visible page can differ beyond its callouts —
+  // a base row for a DM-only page, a link that only resolves for the GM. So
+  // the Foundry body carries both renders: the GM's inside a secret section
+  // Foundry strips below owner, the player's in the open.
+  const SETTINGS = "---\nimage_quality: 0\nfoundry:\n  player_role: public\n  core_version: '14.359'\n---\n";
+
+  it("gives a player-visible page both renders, and a DM-only page just one", async () => {
+    const v = await setupVault({
+      "settings.md": SETTINGS,
+      ".vaultrc.json": VAULTRC_3,
+      "Town.md": "---\nrole: public\n---\nThe town.\n\n> [!dm]\n> The mayor is a mimic.\n",
+      "Secrets.md": "---\nrole: dm\n---\nAll of it.\n",
+    });
+    try {
+      await build(v);
+      const dm = await readFile(join(v.out, VARIANT("dm", "Town.foundry.html")), "utf8");
+      assert.match(dm, /<section class="secret vaults-gm" id="secret-[0-9a-f]{16}">/);
+      assert.match(dm, /mimic/, "the GM half keeps the callout");
+      const open = dm.indexOf('<div class="vaults-player-view">');
+      assert.ok(open > 0, "the player render rides along");
+      assert.doesNotMatch(dm.slice(open), /mimic/, "and does not contain the secret");
+
+      const secret = await readFile(join(v.out, VARIANT("dm", "Secrets.foundry.html")), "utf8");
+      assert.doesNotMatch(secret, /vaults-gm/, "a page players never see needs no second render");
+
+      const pub = await readFile(join(v.out, VARIANT("public", "Town.foundry.html")), "utf8");
+      assert.doesNotMatch(pub, /vaults-gm/, "the player's own file is single-bodied");
+      assert.doesNotMatch(pub, /mimic/);
+    } finally { await cleanup(v); }
+  });
+});

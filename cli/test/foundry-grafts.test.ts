@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  buildGrafts, journalEntries, documentEntries, documentTypeOf, visibility,
+  buildGrafts, contentHash, journalEntries, documentEntries, documentTypeOf, visibility,
   entryId, pageId, folderOf, pagesFrom, linkIndex, type Page, type GraftOptions,
 } from "../src/foundry-grafts.js";
 
@@ -563,31 +563,35 @@ describe("map-note references", () => {
 });
 
 describe("contentHash", () => {
-  const opts2: GraftOptions = { ...opts, coreVersion: "14" };
-  const wolf = (): Page => ({
+  const entries = () => buildGrafts([{
     path: "Bestiary/Wolf.md", title: "Wolf", role: "dm",
     foundry: { source: "Actor:npc", patch: {} },
-  });
+  }], { ...opts, coreVersion: "14" }).file.entries;
+  const bodies = new Map([["Bestiary/Wolf.md", "aaaa"], ["Notes/A.md", "bbbb"]]);
 
-  it("is stable across identical builds", () => {
-    assert.equal(
-      buildGrafts([wolf()], opts2).file.contentHash,
-      buildGrafts([wolf()], opts2).file.contentHash);
+  it("is stable across identical inputs, whatever order the bodies arrive in", () => {
+    const reversed = new Map([...bodies].reverse());
+    assert.equal(contentHash(entries(), { "dm/a.webp": "1111" }, bodies),
+      contentHash(entries(), { "dm/a.webp": "1111" }, reversed));
   });
 
   it("moves when an entry changes", () => {
-    const changed: Page = { ...wolf(), foundry: { source: "Actor:npc", patch: { name: "Dire Wolf" } } };
-    assert.notEqual(
-      buildGrafts([wolf()], opts2).file.contentHash,
-      buildGrafts([changed], opts2).file.contentHash);
+    const changed = entries().map((e) => ({ ...e, patch: { ...e.patch, name: "Dire Wolf" } }));
+    assert.notEqual(contentHash(entries(), {}, bodies), contentHash(changed, {}, bodies));
   });
 
   it("moves when only an asset's bytes change", () => {
     // A regenerated portrait keeps its name; the hash map is the one thing
     // about the build that notices.
-    const a = buildGrafts([wolf()], { ...opts2, assets: { "dm/a.webp": "aaaa" } });
-    const b = buildGrafts([wolf()], { ...opts2, assets: { "dm/a.webp": "bbbb" } });
-    assert.notEqual(a.file.contentHash, b.file.contentHash);
+    assert.notEqual(contentHash(entries(), { "dm/a.webp": "aaaa" }, bodies),
+      contentHash(entries(), { "dm/a.webp": "bbbb" }, bodies));
+  });
+
+  it("moves when a page body changes and nothing else does", () => {
+    // Bodies are references from the entries' point of view. Left out, a
+    // prose edit — the common case — would never prompt a rebuild.
+    const edited = new Map(bodies).set("Notes/A.md", "cccc");
+    assert.notEqual(contentHash(entries(), {}, bodies), contentHash(entries(), {}, edited));
   });
 });
 

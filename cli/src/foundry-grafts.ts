@@ -38,12 +38,30 @@ export interface GraftsFile {
    */
   assets?: Record<string, string>;
   /**
-   * Hash of everything below, also written to the variant's version.json.
-   * What "there is newer content" means: the module compares this against the
-   * hash it recorded at its last build, without downloading this whole file.
+   * Hash of everything a build of this variant fetches — see contentHash().
+   * Also written to the variant's version.json, so the module can ask "is
+   * there newer content?" without downloading this whole file.
    */
   contentHash: string;
   entries: GraftEntry[];
+}
+
+/**
+ * The one definition of "the content changed".
+ *
+ * A build consumes three things, and each is hashed by value: the entries
+ * (patches, sidecars, ids), every page body the entries reference, and the
+ * bytes of every asset those bodies and entries reference (the assets map
+ * already carries a content hash per file). That is the provider's whole
+ * fixed point, so anything it would fetch differently moves this.
+ */
+export function contentHash(
+  entries: GraftEntry[], assets: Record<string, string>, bodies: ReadonlyMap<string, string>,
+): string {
+  const sortedBodies = [...bodies].sort(([a], [b]) => a.localeCompare(b));
+  return createHash("md5")
+    .update(JSON.stringify({ entries, assets, bodies: sortedBodies }))
+    .digest("hex").slice(0, 16);
 }
 
 /** Just enough of a page to place it. */
@@ -200,9 +218,8 @@ export const folderOf = (path: string): string => {
  * Whether players may see a page's document, and whose body it carries.
  *
  * The body is always the build role's own rendering — the reader of this file
- * cannot fetch any other — so a GM's copy of a player-visible page keeps its
- * DM callouts. Those are wrapped as secret sections (see wrapSecrets), which
- * Foundry hides from anyone below owner.
+ * cannot fetch any other. A player-visible page's body carries the player
+ * render alongside it, inside the file (see dualVariantBody).
  */
 export function visibility(page: Page, opts: GraftOptions): { variant: string; ownership: number } {
   const rank = (role: string) => opts.roles.indexOf(role);
@@ -211,12 +228,6 @@ export function visibility(page: Page, opts: GraftOptions): { variant: string; o
   return { variant: opts.buildRole, ownership: observable ? OBSERVER : NONE };
 }
 
-/** The roles whose callouts hide as secret sections: everything players may not read. */
-export function secretRoles(roles: string[], playerRole: string): Set<string> {
-  const ceiling = roles.indexOf(playerRole);
-  if (ceiling < 0) return new Set();
-  return new Set(roles.slice(ceiling + 1).map((r) => r.toLowerCase()));
-}
 
 /**
  * Resolve map-note references to journal ids, in place.
@@ -495,8 +506,8 @@ export function buildGrafts(
       format: 1,
       ...(opts.coreVersion ? { coreVersion: opts.coreVersion } : {}),
       ...(assets ? { assets } : {}),
-      contentHash: createHash("md5")
-        .update(JSON.stringify({ entries, assets: assets ?? {} })).digest("hex").slice(0, 16),
+      // Finished by the caller once the bodies exist; see contentHash().
+      contentHash: "",
       entries,
     },
     warnings: [...docs.warnings, ...shaped.warnings],

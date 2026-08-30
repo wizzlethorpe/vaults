@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  pathFromHref, uuidFor, rewriteLinks, rewriteAssets, toFoundryHtml, rewriteVaultRefs, wrapSecrets, stripWebOnly,
+  pathFromHref, uuidFor, rewriteLinks, rewriteAssets, toFoundryHtml, rewriteVaultRefs, dualVariantBody, stripWebOnly,
   type LinkIndex,
 } from "../src/foundry-html.js";
 
@@ -204,42 +204,6 @@ describe("rewriteVaultRefs", () => {
   });
 });
 
-describe("wrapSecrets", () => {
-  const DM = new Set(["dm"]);
-  const CALLOUT = '<div class="callout callout-dm" data-callout="dm">\n'
-    + '<div class="callout-title">DM</div><p>The foreman is Marcus.</p></div>';
-
-  it("wraps a DM callout in a secret section Foundry hides from players", () => {
-    const out = wrapSecrets(`<p>before</p>${CALLOUT}<p>after</p>`, DM);
-    assert.match(out, /<section class="secret" id="secret-[0-9a-f]{16}">/);
-    assert.match(out, /<\/div><\/section><p>after<\/p>$/);
-    assert.match(out, /The foreman is Marcus/);
-  });
-
-  it("takes the whole callout, nested divs included", () => {
-    const nested = '<div class="callout callout-dm" data-callout="dm"><div class="inner"><div>deep</div></div></div>';
-    const out = wrapSecrets(`${nested}<p>tail</p>`, DM);
-    assert.ok(out.endsWith('</div></section><p>tail</p>'), out.slice(-80));
-  });
-
-  it("leaves ordinary callouts alone", () => {
-    const note = '<div class="callout callout-note" data-callout="note"><p>hi</p></div>';
-    assert.equal(wrapSecrets(note, DM), note);
-  });
-
-  it("does nothing when nothing is secret", () => {
-    assert.equal(wrapSecrets(CALLOUT, new Set()), CALLOUT);
-  });
-
-  it("wraps each of several, and none of the ones between", () => {
-    const note = '<div class="callout callout-note" data-callout="note"><p>n</p></div>';
-    const out = wrapSecrets(CALLOUT + note + CALLOUT, DM);
-    assert.equal((out.match(/<section class="secret"/g) ?? []).length, 2);
-    assert.match(out, /callout-note/);
-    assert.doesNotMatch(out, /<section class="secret" id="secret-[0-9a-f]{16}"><div class="callout callout-note/);
-  });
-});
-
 describe("bases cards", () => {
   it("becomes a content-link that keeps its card markup", () => {
     const card = '<a class="bases-card" href="/Characters/Marlo">'
@@ -310,5 +274,22 @@ describe("fvtt-link doc preference", () => {
     const a = '<a class="internal internal-link fvtt-doc-link" href="/Characters/Marlo">M</a>';
     assert.equal(rewriteLinks(a, index()),
       "@UUID[Compendium.my-vault.my-vault-journals.JournalEntry.ent0.JournalEntryPage.pg0]{M}");
+  });
+});
+
+describe("dualVariantBody", () => {
+  it("carries the GM render as one secret and the player render in the open", () => {
+    const out = dualVariantBody("<p>full base, 12 rows</p>", "<p>public base, 4 rows</p>");
+    assert.match(out, /^<section class="secret vaults-gm" id="secret-[0-9a-f]{16}"><p>full base, 12 rows<\/p><\/section>/);
+    assert.match(out, /<div class="vaults-player-view"><p>public base, 4 rows<\/p><\/div>$/);
+  });
+
+  it("is what makes an unmarked difference safe", () => {
+    // A base row for a DM-only page is not wrapped in anything; it is simply
+    // absent from the player render. Foundry stripping the secret leaves the
+    // player exactly the public site's version of the page.
+    const out = dualVariantBody('<tr><td>Joywraith</td></tr><tr><td>Bandit</td></tr>', '<tr><td>Bandit</td></tr>');
+    const open = out.indexOf('<div class="vaults-player-view">');
+    assert.doesNotMatch(out.slice(open), /Joywraith/);
   });
 });
