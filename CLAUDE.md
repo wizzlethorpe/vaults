@@ -6,7 +6,7 @@
 
 ## What this is
 
-A monorepo for letting people self-host an Obsidian vault as a static wiki on Cloudflare. The user authors notes in Obsidian; the CLI renders them locally to HTML and pushes to their own Cloudflare account. Cloudflare Pages serves the static wiki. A small Pages Function (auth middleware) gates per-role variants and exposes a `/_batch` read API the Foundry module uses to pull rendered HTML for incremental sync.
+A monorepo for letting people self-host an Obsidian vault as a static wiki on Cloudflare. The user authors notes in Obsidian; the CLI renders them locally to HTML and pushes to their own Cloudflare account. Cloudflare Pages serves the static wiki. A small Pages Function (auth middleware) gates per-role variants and exposes `/_batch` read APIs the Foundry module uses to pull rendered bodies and media at build time.
 
 **Not** a hosted multi-tenant SaaS today. The architecture is designed to support a managed platform layered on top later (per-user Cloudflare projects, OAuth-issued JWTs that the existing Function trusts).
 
@@ -32,14 +32,15 @@ This was previously three submodules pinned by SHA in a parent repo. The submodu
 ## Where work happens
 
 - **`cli/`** — ~99% of active development. Build with `pnpm --filter @wizzlethorpe/vaults run build`; test with `pnpm --filter @wizzlethorpe/vaults run test`.
-- **`foundry/`** — Foundry VTT module that pulls per-page rendered HTML via `/_batch`, downloads images via `/_batch-images`, and writes the result into **compendium packs** (never directly into world documents, so a sync can always overwrite its own output). Folder-as-JournalEntry model: every directory becomes one entry, every `.md` file becomes an embedded JournalEntryPage.
+- **`foundry/`** — Foundry VTT module (id `vaults`): a [graft](https://github.com/wizzlethorpe/graft) provider. The CLI compiles a vault into a `grafts.json` entry list at build time (`cli/src/foundry-grafts.ts`); this module fetches that list from the deploy, resolves its `@vaults/<variant>/<path>` references (bodies inline, media into a per-vault world cache, cached by content hash), and hands the entries to graft to build. It also prompts to rebuild when the deploy's `version.json` content hash moves. Folder-as-JournalEntry model: every directory becomes one entry, every `.md` file an embedded JournalEntryPage, and folders without an `index.md` get the wiki's synthesized index page.
 
-  The vault's `foundry.package` setting picks the container, and `target.mjs` is the one interface both shapes are written through:
-  - `compendium` — one pack per document type, browsable. Links are `@UUID[Compendium.world.<vault>-<type>.…]`, because nothing is imported as a unit and the pack copy is the copy.
-  - `adventure` — a single Adventure document. Links are **world** UUIDs (`@UUID[JournalEntry.<eid>.JournalEntryPage.<pid>]`), because Foundry's Adventure import creates with `keepId` and updates what already carries the id, so they resolve to the copies the GM imported.
-  - `none` — no integration; the deploy drops the importer bundle and `/_batch`.
+  The vault's `foundry.package` setting picks the delivery:
+  - `compendium` — one pack per document type, browsable. Links are `@UUID[Compendium.<vault>.<vault>-<type>.…]`: nothing is imported as a unit, so the pack copy is the copy.
+  - `adventure` — a single Adventure document. Links are **world** UUIDs, because Foundry's Adventure import creates with keepId and updates what already carries the id, so they resolve to the copies the GM imported. The Adventure pack must declare a `system` or Foundry empties its actors, items and their folders on every read.
+  - `none` — no integration; the deploy ships no grafts.json and no `/_batch`.
 
-  Using one shape's links with the other is the bug this arrangement exists to prevent: an imported page linking to a second copy of the thing beside it.
+  Using one shape's links with the other is the bug this arrangement exists to prevent: an imported page linking to a second copy of the thing beside it. A player-visible page's journal body carries both renders — the GM's inside a `<section class="secret">` (which Foundry wraps in a `<secret-block>` element at render), the player variant's in the open.
+
 - **`landing/`** — itself a Vault, deployed at vaults.wizzlethorpe.com. Doubles as the project's landing page AND a working demo of every CLI feature.
 
 When the user gives you a task, default to assuming it's about `cli/` unless the prompt obviously points at the Foundry module or landing demo.
@@ -61,13 +62,16 @@ user's Cloudflare account (one Pages project per user)
 └── Pages assets:
     ├── _variants/<role>/  rendered HTML + body fragments per access tier
     │   ├── <page>.html        full layout (browsed on the wiki)
-    │   ├── <page>.body.html   article only (consumed by Foundry sync)
+    │   ├── <page>.body.html       article only (hover previews, transclusion)
+    │   ├── <page>.foundry.html    article with Foundry UUID links + @vaults refs
     │   ├── <page>.preview.json    hover-preview JSON
     │   ├── <image>.webp           images referenced from this variant
-    │   ├── _manifest.json         per-file md5s for incremental sync
+    │   ├── _foundry/grafts.json   entry list + per-asset content hashes
+    │   ├── _foundry/version.json  content hash, read by the rebuild prompt
     │   └── _search-index.json
     ├── styles.css, user.css   shared at root (no role gate)
     ├── _handlers.js, _handlers.css   bundled built-in + user handler assets
+    ├── _foundry/module.json, module.zip   the installable vault module (ungated)
     ├── katex/                 KaTeX css + fonts (only when a page has math)
     ├── login.html             multi-role builds only
     └── functions/
@@ -134,27 +138,20 @@ error message never points at the comment.
 
 ### Testing a change to `foundry/scripts/`
 
-**The installed module does not run the sync code.** It is a host: UI, settings,
-notifications, and `importer-loader.mjs`. The sync/instantiate logic is bundled
-*by the CLI* (`scripts/bundle-importer.mjs`, at CLI build time) into
-`dist/foundry-importer.bundle.js`, shipped to the deploy as `_foundry/importer.js`,
-then fetched, hash-verified and evaluated as a blob at sync time.
+The module runs as-is in Foundry's browser context; there is no bundle step.
+Ship it to the hosted server with `./dev-install.sh --remote` (or into a local
+Data dir; see the script header), then reload the browser — Foundry re-reads
+module *code* on reload. Two things need more than a reload:
 
-So a change to `sync.mjs` / `instance.mjs` / `links.mjs` / `media.mjs` reaches a
-running world only after:
+- `module.json` changes (packs, styles, esmodules) need a **server restart**;
+  manifests are read at server start.
+- Stylesheets are cache-busted by module *version*, which dev-install does not
+  bump, so a CSS-only change may need a hard refresh (Ctrl+Shift+R).
 
-```bash
-pnpm --filter @wizzlethorpe/vaults run build   # re-bundles foundry/scripts
-vaults push <vault>                            # ships the new _foundry/importer.js
-```
-
-`./dev-install.sh --remote` alone changes only host code and will not alter sync
-behavior. Verify what is actually live by fetching `<deploy>/_foundry/importer.js`
-and diffing against `cli/dist/foundry-importer.bundle.js`; do not infer it from
-what `dev-install.sh` uploaded.
-
-A changed bundle changes its SHA-256, so the GM gets a trust prompt on the next
-sync (`trustedImporterHash`). Expect one per iteration.
+A change to what the CLI emits (`grafts.json`, `.foundry.html` bodies) reaches
+Foundry through a vault rebuild + `vaults push`, then the in-world rebuild
+prompt (or graft's Build button — the prompt only fires when the content hash
+moved).
 
 ## Self-check before reporting done
 

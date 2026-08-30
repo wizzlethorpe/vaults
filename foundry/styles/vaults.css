@@ -90,8 +90,6 @@
 /* Filter toolbar isn't wired in the static journal; hide so it doesn't
    mislead readers into thinking the input does something. */
 .bases-toolbar { display: none; }
-/* Stray tab strips from older imports (we now flatten on import, but
-   this guards anything that landed before the flatten transform shipped). */
 .bases-tab-strip { display: none; }
 
 /* Cards layout */
@@ -205,15 +203,9 @@
 }
 
 /* ── Built-in handler output ──────────────────────────────────────── */
-/* Vendored from cli/src/render/handlers/builtin/*.ts and styles.ts so
-   pages synced from a vault render their statblocks, dice buttons, and
-   fm-value markers correctly inside Foundry journal sheets. NOT scoped
-   under .journal-entry-page (unlike the rules above) because @Embed[…]
-   inlines a page's content into other documents — Actor descriptions,
-   for example — without that ancestor class, and we want statblocks on
-   embedded actor sheets too. The class names are unique to handler
-   output and don't collide with Foundry's UI chrome.
-   Custom user handler CSS is not synced; that's a future feature. */
+/* Vendored from cli/src/render/handlers/builtin/*.ts. Deliberately NOT
+   scoped under .journal-entry-page: @Embed[…] inlines page content into
+   other documents without that ancestor class. */
 
 /* dice: handler — clickable button, with a code fallback for invalid
    formulas. Uses Foundry CSS vars with sensible fallbacks. */
@@ -238,20 +230,10 @@ code.dice-roll-invalid {
   text-decoration: line-through;
 }
 
-/* Inline rolls inside a statblock. The CLI renders dice as
-   `<button class="dice-roll">`; the Foundry-side rewriter replaces those
-   with `[[/r FORMULA]]` so Foundry's text enricher turns them into a
-   real clickable `<a class="inline-roll">…<i class="fa-dice-d20">…</a>`
-   with built-in tooltip + chat-message behaviour. The defaults inherit
-   --content-link-* from the parent Foundry theme, which under dark
-   themes resolves to a near-white colour — invisible against the
-   statblock's fixed parchment background. Pin the colours to the
-   statblock's own primary palette so they stay readable. */
-/* Inline-roll text + chip styling. Repeated `.statblock` keeps
-   specificity above dnd5e's
-   `:is(.dnd5e2, .dnd5e2-journal) a:is(.content-link, .inline-roll) > i`
-   (0,2,2) so we don't lose the colour fight at module-vs-system source
-   order. */
+/* Links and inline rolls inside a statblock inherit --content-link-*
+   from the Foundry theme, near-white under dark themes and invisible on
+   the statblock's fixed parchment; pin them to the statblock palette.
+   Repeated `.statblock` keeps specificity above dnd5e's (0,2,2) rule. */
 .statblock.statblock a.inline-roll,
 .statblock.statblock a.content-link {
   color: var(--statblock-primary-color);
