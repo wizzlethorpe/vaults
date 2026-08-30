@@ -448,13 +448,7 @@ export function subtypeOf(base: string): string | null {
   return subtype?.trim() || null;
 }
 
-/** Everything a vault contributes, in the order graft will read it. */
-/**
- * Where a link to each page should land.
- *
- * Built from the same ids the entries carry, in the same pass, because a link
- * index derived separately is one that can disagree with what was written.
- */
+/** Where a link to each page should land, from the same ids the entries carry. */
 export function linkIndex(pages: Page[], opts: GraftOptions): LinkIndex {
   const targets = new Map<string, LinkTarget>();
   for (const page of pages) {
@@ -484,23 +478,10 @@ export function linkIndex(pages: Page[], opts: GraftOptions): LinkIndex {
 }
 
 /**
- * Stamp `_stats.coreVersion`, which Foundry requires and will not supply.
- *
- * A document without it fails strict validation outright ("coreVersion: may not
- * be undefined"), so Foundry's import errors and graft falls back to
- * constructing the document loosely. What comes out is not the document: a
- * Scene loses every level it had and arrives with one blank default, and
- * nothing on the way through says so.
- *
- * The value is what the data *is*, not what the reader is running. Foundry
- * migrates anything older than the running version, which is the correct thing
- * to do and is why claiming to be current would be the wrong fix — it would
- * skip a migration that genuinely old data needs. A sidecar exported with its
- * own `_stats` keeps it; this only fills the gap.
- *
- * An entry with a source is left alone for the same reason: the document is
- * mostly the compendium's, and the reader's copy of that already records the
- * generation it was written for.
+ * Stamp `_stats.coreVersion`: Foundry's import refuses a document without one
+ * and graft then builds a degraded copy (a Scene loses its levels, silently).
+ * A sidecar's own value survives; sourced entries are left alone, since the
+ * reader's compendium copy records its own generation.
  */
 function stampCoreVersion(entries: GraftEntry[], coreVersion: string): GraftEntry[] {
   if (!coreVersion) return entries;

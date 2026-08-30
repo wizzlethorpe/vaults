@@ -1221,21 +1221,6 @@ async function copyKatexAssets(destDir: string): Promise<void> {
   }
 }
 
-/**
- * Build the per-body manifest meta from a page's frontmatter + resolved
- * cover image. `role` always lands so the Foundry side can apply the
- * dmRole permission gate; the foundry / image fields are conditional.
- *
- * Frontmatter shape forwarded to clients:
- *   foundry:
- *     base: <UUID> | <Type>[:<subtype>]   # required for instantiation
- *     sync: false                           # default true; skip Foundry entirely
- *     journal: false                        # default true; doc only, no journal page
- *     link: doc                             # default journal; link to the doc instead
- *     embed: false                          # default true
- *     data: { … deep-merged into the doc }
- */
-
 /** Coerce settings.theme to the layout's narrowed union, defaulting to
  *  "auto" for any unrecognised value rather than failing the build. */
 function themeOf(s: string): "auto" | "light" | "dark" {
@@ -1608,13 +1593,6 @@ function kindLabel(kind: string): string {
     default: return kind;
   }
 }
-
-/**
- * Per-page extension on .body.html manifest entries, consumed by the Foundry
- * sync. Always carries the page's role (so the Foundry side can map roles to
- * JournalEntry ownership against a per-vault dmRole setting); other fields
- * are present only when the corresponding frontmatter is set.
- */
 
 /**
  * Strip an HTML body to plain text. Used to feed the search index from

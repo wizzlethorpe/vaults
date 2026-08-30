@@ -1,11 +1,5 @@
-// Where Foundry calls in.
-//
-// This module used to be a sync engine: it fetched a manifest, diffed it,
-// pulled page bodies, rewrote links, downloaded images and wrote compendium
-// packs, and it held all of that itself. None of that lives here now. The CLI
-// compiles a vault into a graft entry list at build time and graft builds it,
-// so what is left is one provider that knows how to read a deployed vault, and
-// the credential it needs to do so.
+// Where Foundry calls in: one graft provider for deployed vaults, the
+// credential it needs, and the freshness prompt.
 
 import { vaultsProvider } from "./provider.mjs";
 import { registerTokenSetting, forgetToken, tokenFor } from "./token.mjs";

@@ -1,19 +1,6 @@
-// Migration: the foundry block's keys say what they are.
-//
-//   foundry.base       →  foundry.source
-//   foundry.data       →  foundry.patch
-//   foundry.data_json  →  foundry.patch_json
-//
-// `base` and `data` described where the values came from rather than what
-// they do. A graft entry is a source plus a patch against it, and the
-// frontmatter now uses those words, so a page and the entry it compiles into
-// are read in the same vocabulary.
-//
-// This rewrites lines rather than round-tripping the YAML. A `foundry:` block
-// is hand-written and commented — the reason a displayName is 30 lives right
-// above it — and re-emitting the parsed tree would drop every one of those
-// comments. So the change is exactly three key names, at one indent level,
-// inside one block, and every other byte of the file is left alone.
+// Migration: foundry.base → source, foundry.data → patch, data_json →
+// patch_json. Line-based rather than a YAML round trip, which would drop
+// every hand-written comment in the block.
 
 import { readFile, writeFile } from "node:fs/promises";
 import type { Migration } from "./types.js";

@@ -9,9 +9,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  buildGrafts, contentHash, journalEntries, documentEntries, documentTypeOf, observable,
+  buildGrafts, contentHash, journalEntries, documentEntries, documentTypeOf, observable, basesOf, moduleGrafts, moduleManifest, subtypeOf,
   entryId, pageId, instanceId, folderOf, pagesFrom, linkIndex, withFolderIndexes, type Page, type GraftOptions,
 } from "../src/foundry-grafts.js";
+import { DOC_TYPES } from "../src/foundry-types.js";
 
 const opts: GraftOptions = {
   vaultId: "marlo",
@@ -168,19 +169,17 @@ describe("the module a vault ships", () => {
   it("declares every pack type, used or not", async () => {
     // Packs are read when the server starts, so a vault that later gains its
     // first Scene would otherwise need reinstalling and a restart.
-    const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com/" });
     const packs = m["packs"] as Array<Record<string, any>>;
     // Every type a compendium can hold. Adventure is not one of them: it is
     // the other way of delivering the same vault, not a pack alongside these.
-    assert.ok(packs.length > 5, `${packs.length} packs`);
-    assert.ok(!packs.some((p) => p.type === "Adventure"));
+    assert.deepEqual(packs.map((p) => p.type).sort(),
+      Object.keys(DOC_TYPES).filter((t) => t !== "Adventure").sort());
     assert.ok(packs.every((p) => p.ownership.PLAYER === "NONE"), "never player-browsable");
     assert.ok(packs.filter((p) => p.type === "Actor" || p.type === "Item").every((p) => p.system));
   });
 
   it("requires graft and the provider, so a missing one is Foundry's error", async () => {
-    const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com" });
     const ids = ((m["relationships"] as any).requires as Array<any>).map((r) => r.id);
     // The provider module's id is "vaults". Naming it anything else gives a
@@ -193,20 +192,17 @@ describe("the module a vault ships", () => {
   it("tells graft where its entries are", async () => {
     // graft reads `flags.graft.entries` to find anything at all. Without it the
     // module is a manifest and a set of empty packs.
-    const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://x.example.com" });
     assert.deepEqual((m["flags"] as any).graft.entries, ["grafts.json"]);
   });
 
   it("ships a pointer, not a list", async () => {
-    const { moduleGrafts } = await import("../src/foundry-grafts.js");
     assert.deepEqual(
       moduleGrafts("https://marlo.example.com/", true),
       [{ vault: "https://marlo.example.com", gated: true }]);
   });
 
   it("only offers a role the pages it may see", async () => {
-    const { pagesFrom } = await import("../src/foundry-grafts.js");
     const metas = [
       { path: "A.md", title: "A", role: "public" },
       { path: "B.md", title: "B", role: "dm", frontmatter: { foundry: { source: "Actor" } } },
@@ -222,7 +218,6 @@ describe("a base priority list", () => {
   it("travels whole, so the fallback survives", async () => {
     // graft tries each in order, so a page can prefer better content without
     // demanding the reader own it.
-    const { documentEntries, basesOf } = await import("../src/foundry-grafts.js");
     const { entries, warnings } = documentEntries([{
       path: "x.md", title: "X", role: "dm",
       foundry: { source: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa", "Compendium.c.d.Actor.bbbbbbbbbbbbbbbb"] },
@@ -236,7 +231,6 @@ describe("a base priority list", () => {
   });
 
   it("a single base stays a plain string", async () => {
-    const { documentEntries } = await import("../src/foundry-grafts.js");
     const { entries } = documentEntries([{
       path: "x.md", title: "X", role: "dm",
       foundry: { source: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa"] },
@@ -245,7 +239,6 @@ describe("a base priority list", () => {
   });
 
   it("refuses anything that is not a UUID or a list of them", async () => {
-    const { documentEntries, basesOf } = await import("../src/foundry-grafts.js");
     assert.deepEqual(basesOf(42), []);
     assert.deepEqual(basesOf([]), []);
     assert.deepEqual(basesOf({ uuid: "x" }), []);
@@ -258,7 +251,6 @@ describe("a bare base with a subtype", () => {
   it("splits the schema from the kind", async () => {
     // `Actor:npc` is a page inventing an NPC rather than grafting one: Actor
     // is the schema graft builds into, npc is a field on the document.
-    const { documentEntries, documentTypeOf, subtypeOf } = await import("../src/foundry-grafts.js");
     assert.equal(documentTypeOf("Actor:npc"), "Actor");
     assert.equal(subtypeOf("Actor:npc"), "npc");
     assert.equal(subtypeOf("Compendium.a.b.Actor.cccccccccccccccc"), null, "a source carries its own");
@@ -277,7 +269,6 @@ describe("each role's file is buildable by that role", () => {
   it("never references a variant above the reader who receives it", async () => {
     // The file is served through the same gate as everything else, so a body
     // it names above the reader's role is one they cannot fetch.
-    const { journalEntries } = await import("../src/foundry-grafts.js");
     const asPublic = { ...opts, buildRole: "public", playerRole: "" };
     const [entry] = journalEntries([page("Secrets/Rot.md", { role: "dm" })], asPublic);
     const pages = entry!.patch["pages"] as Array<Record<string, any>>;
@@ -762,7 +753,6 @@ describe("what packs a module declares", () => {
   it("declares exactly one for an Adventure", async () => {
     // Everything the vault holds goes inside it, so a new document type adds
     // nothing to declare, and empty packs beside it are just noise.
-    const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({
       moduleId: "v", title: "V", vaultUrl: "https://x", packaging: "adventure",
     });
@@ -774,7 +764,6 @@ describe("what packs a module declares", () => {
     // Adventure.fromSource empties actors, items and their folders out of any
     // adventure read from a pack with no system. The data survives on disk
     // and every read of it arrives incomplete, with nothing saying so.
-    const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({
       moduleId: "v", title: "V", vaultUrl: "https://x",
       packaging: "adventure", systemId: "dnd5e",
@@ -783,7 +772,6 @@ describe("what packs a module declares", () => {
   });
 
   it("files only the packs it declared", async () => {
-    const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({
       moduleId: "v", title: "V", vaultUrl: "https://x", packaging: "adventure",
     });
@@ -791,7 +779,6 @@ describe("what packs a module declares", () => {
   });
 
   it("keeps the Adventure pack out of a compendium module", async () => {
-    const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({ moduleId: "v", title: "V", vaultUrl: "https://x" });
     assert.ok(!(m["packs"] as Array<any>).some((p) => p.type === "Adventure"));
   });

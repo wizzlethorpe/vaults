@@ -182,16 +182,11 @@ function elementEnd(html: string, start: number, tagName: string): number {
 }
 
 /**
- * A player-visible document's body: the GM's full rendering inside one secret
- * section, then the player variant's rendering in the open.
- *
- * Foundry strips secret sections for anyone below owner, so a player sees
- * exactly what the public site would have shown them — the actual player
- * render, not an element-by-element redaction of the GM's. That is what makes
- * this general: a base listing DM-only pages, a transcluded DM note, a link
- * that only resolves for the GM, all differ between the two renders and none
- * needs to be found and marked. The module's CSS hides the player copy when
- * the secret survives, so the GM reads one page, not two.
+ * A player-visible document's body: the GM's full rendering inside one
+ * secret section (stripped by Foundry below owner), then the player
+ * variant's in the open. The player gets the actual player render, so no
+ * difference between the two — base rows, transclusions, links — needs to
+ * be found and marked. The module's CSS hides the player copy for the GM.
  */
 export function dualVariantBody(gmHtml: string, playerHtml: string): string {
   const id = createHash("sha1").update(gmHtml).digest("hex").slice(0, 16);
@@ -200,13 +195,9 @@ export function dualVariantBody(gmHtml: string, playerHtml: string): string {
 }
 
 /**
- * Drop everything marked web-only.
- *
- * Some rendered blocks make no sense inside a Foundry journal — the battlemap
- * viewer, when the Scene it previews is one click away — and some never work
- * there at all. Any element carrying the `vaults-web-only` class is removed
- * from the Foundry body; the wiki keeps it. Handlers set it on their wrapper,
- * and a page can put it on raw HTML of its own.
+ * Drop every element carrying the `vaults-web-only` class from the Foundry
+ * body; the wiki keeps it. Handlers set it on their wrapper, and a page can
+ * put it on raw HTML of its own.
  */
 export function stripWebOnly(html: string): string {
   // The class matched as a whole token: \b treats a hyphen as a boundary, so

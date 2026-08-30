@@ -1,18 +1,6 @@
-// Migration: a pinned document id moves inside the patch.
-//
-//   foundry:                     foundry:
-//     source: Scene         →      source: Scene
-//     id: marloHomeScene00         patch:
-//                                    _id: marloHomeScene00
-//
-// `_id` is a field of the document, so it belongs in the document rather than
-// in a sibling key describing it from outside. The graft emitter reads the
-// patch and nothing else, which is why `foundry.id` had quietly stopped doing
-// anything at all.
-//
-// Line-based for the same reason as the key rename beside it: a `foundry:`
-// block is hand-written and commented, and re-emitting the parsed tree would
-// drop every comment in it.
+// Migration: foundry.id → foundry.patch._id, where the emitter reads it.
+// Line-based rather than a YAML round trip, which would drop every
+// hand-written comment in the block.
 
 import { readFile, writeFile } from "node:fs/promises";
 import type { Migration } from "./types.js";

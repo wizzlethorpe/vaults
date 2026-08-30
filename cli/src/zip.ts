@@ -2,8 +2,7 @@
 // stored uncompressed. The `zip` binary is absent on Windows and many CI
 // images, which is why this exists.
 
-// Added in Node 22.2.0, which is why package.json asks for it rather than
-// bare 22: on 22.0 this throws after the whole render has already run.
+// Added in Node 22.2.0, which is why package.json asks for it exactly.
 import { crc32 } from "node:zlib";
 
 export interface ZipEntry { name: string; data: Buffer }

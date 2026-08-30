@@ -13,11 +13,8 @@ export const CACHE_DIR = "vaults-cache";
 // clearing the cache directory clears the record with it.
 const RECORD = "placed.json";
 
-// One request returns base64 bodies, and enough large maps in one batch will
-// inflate past the worker's memory limit — a failure that arrives as a CORS
-// error rather than a 500, so it is worth not provoking. The old sync could
-// budget by bytes because it had a manifest with sizes; a reference does not
-// carry one, so the cap is a conservative count instead.
+// Enough large maps in one base64 batch inflates past the worker's memory
+// limit, a failure that arrives as a CORS error rather than a 500.
 const BATCH_SIZE = 10;
 
 const MIME = {

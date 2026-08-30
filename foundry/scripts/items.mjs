@@ -1,17 +1,7 @@
-// Items an entry names rather than carries.
-//
-// A page can stock a statblock or a merchant from compendium items instead of
-// inlining them:
-//
-//   items:
-//     - uuid: "Compendium.dnd5e.items.Item.rQ6sO7HDWzqMhSI3"
-//       system: { price: { value: 50, denomination: gp }, quantity: 2 }
-//
-// `uuid` alone does not mark one of these: an advancement's
-// `configuration.items[].uuid` is a *grant*, naming an item a character may
-// later gain, and resolving those would rewrite the class rather than the
-// character. `_id` is the discriminator — a reference carries the id the
-// vault assigned; a grant has none.
+// Items an entry names by uuid rather than carries, resolved from the
+// reader's compendiums. `uuid` alone is not the marker: an advancement's
+// `configuration.items[].uuid` is a grant, not a reference. `_id` is the
+// discriminator — a reference carries the id the vault assigned.
 
 /** Deep-merge `patch` over `target`, in place. Arrays replace. */
 function merge(target, patch) {

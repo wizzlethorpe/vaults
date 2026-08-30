@@ -1,8 +1,6 @@
-// The one table of Foundry document types the build knows.
-//
-// Three things used to each keep their own list — the packs a module
-// declares, the Adventure schema's content fields, and the types a bare
-// `foundry.source` may name — and they had already drifted apart.
+// The one table of Foundry document types the build knows: the packs a
+// module declares, the Adventure schema's content fields, and the types a
+// bare `foundry.source` may name all derive from it.
 
 interface DocTypeInfo {
   /** Pack name suffix: `<moduleId>-<suffix>`. */

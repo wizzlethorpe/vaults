@@ -8,10 +8,8 @@
 
 const PREFIX = "@vaults/";
 
-// A reference is rarely a whole value. Most live inside a page body, as the
-// src of an <img> or the href of a link, so matching only values that *are* a
-// reference leaves every image in every page pointing at nothing. The
-// terminators are the characters that can end one in HTML or in JSON.
+// Matched inside strings, not only as whole values: most references live in
+// a body as an <img> src or an href.
 const REF_RE = /@vaults\/([^/"'\s<>]+)\/([^"'\s<>]+)/g;
 
 /** A body is inlined as text; anything else is a file to download. */
@@ -34,13 +32,9 @@ export function parseRef(value) {
 }
 
 /**
- * A reference's path as the vault stores it.
- *
- * Inside a body the path arrives percent-encoded, because it was written as a
- * URL: `Bixby%20Wizzlethorpe.webp`. The vault serves a file whose name has a
- * space in it, so asking for the encoded form is asking for a file that does
- * not exist — and `/_batch` answers a missing file by omitting it, not by
- * failing, so the whole thing would go quietly missing.
+ * A reference's path as the vault stores it: bodies carry it percent-encoded,
+ * the vault serves the decoded name, and `/_batch` omits a miss rather than
+ * failing, so the encoded form would go quietly missing.
  */
 function decodePath(path) {
   try { return decodeURIComponent(path); } catch { return path; }

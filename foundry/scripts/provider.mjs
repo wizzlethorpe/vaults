@@ -1,13 +1,7 @@
-// The graft provider for a deployed vault.
-//
-// A vault ships Foundry a module that contains no code: a manifest, a set of
-// empty packs, and one line naming the vault it came from. That line is what
-// reaches this file. Everything else — which documents exist, what they say,
-// what art they use — is fetched from the vault at build time, so pushing new
-// content never means reinstalling anything.
-//
-// The provider's whole job is to turn that one line into entries graft can
-// build, and to resolve the references those entries carry.
+// The graft provider for a deployed vault: turn the module's one-line
+// marker into entries graft can build, and resolve the references they
+// carry. Everything else is fetched from the vault at build time, so
+// pushing content never means reinstalling anything.
 
 import { fetchSourceBatch, url as vaultUrl } from "./api.mjs";
 import { collectRefs, byVariant, substituteRefs, isBody } from "./refs.mjs";
@@ -48,10 +42,8 @@ function vaultKey(vaultUrl) {
 }
 
 async function fetchEntries(vault) {
-  // Through url(), which carries the bearer. Fetched bare, this returns the
-  // entry list for whoever is not signed in — a real list, of real entries,
-  // just the public one. Nothing errors: the GM simply gets their players'
-  // half of the vault and no indication the rest exists.
+  // Through url(), which carries the bearer: fetched bare, this quietly
+  // returns the public entry list with nothing marking the rest as missing.
   const res = await fetch(vaultUrl(vault, "/_foundry/grafts.json"));
   if (!res.ok) throw new Error(`GET /_foundry/grafts.json → ${res.status}`);
   const data = await res.json();

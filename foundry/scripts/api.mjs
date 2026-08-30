@@ -18,8 +18,6 @@ export function url(vault, path) {
   return u.toString();
 }
 
-
-
 const BATCH_SIZE = 100;
 const BATCH_CONCURRENCY = 4;
 // Per-file concurrency for the public-vault direct-GET fallback. Higher than
@@ -28,21 +26,10 @@ const BATCH_CONCURRENCY = 4;
 const DIRECT_CONCURRENCY = 8;
 
 /**
- * Bulk-fetch source paths. For protected vaults this hits /_batch (one POST
- * per chunk); for public vaults it falls back to direct GETs of each file
- * (single-role builds don't deploy /_batch). Returns the same Map shape
- * either way so callers don't care which path ran.
- */
-/**
- * The /_batch URL for one role's rendering.
- *
- * Exported so this is testable, because it was wrong in a way nothing caught:
- * built by appending `?role=…` to url(), which has already put the bearer in
- * the query. The second "?" folded the role into the *token's* value, so the
- * token failed to verify and the request quietly dropped to the lowest role,
- * while `role` was never a parameter at all. Every page above that tier came
- * back missing, with no 403 and no error — the guard never saw a role to
- * reject, and a missing file is not an error to the batch endpoint.
+ * The /_batch URL for one role's rendering. `role` must be a real search
+ * param: appended as a string it becomes part of the bearer's value, the
+ * token fails to verify, and every page above the lowest tier comes back
+ * "missing" with no error at all. The tests pin the repair.
  */
 export function batchEndpoint(vault, role) {
   const endpoint = new URL(url(vault, "/_batch"));
