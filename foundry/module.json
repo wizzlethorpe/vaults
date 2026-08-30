@@ -10,6 +10,9 @@
   "esmodules": [
     "scripts/main.mjs"
   ],
+  "styles": [
+    "styles/vaults.css"
+  ],
   "languages": [
     {
       "lang": "en",

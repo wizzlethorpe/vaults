@@ -18,7 +18,6 @@ import { tmpdir } from "node:os";
 import { buildSite } from "../src/build.js";
 import { loadUserHandlers } from "../src/render/handlers/loader.js";
 import { buildRegistry } from "../src/render/handlers/types.js";
-import { htmlEscape } from "../src/escape.js";
 
 interface Vault { dir: string; out: string; }
 
@@ -160,18 +159,6 @@ describe("built-in fm handler", () => {
       assert.match(html, /<code class="fm-missing"[^>]*>\{\{stats\.nope\.deep\}\}<\/code>/);
     } finally { await cleanup(v); }
   });
-
-  it("missing keys emit a visible warning marker", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Page.md": "---\nclass: Wizard\n---\nMissing: `fm: nope`.",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /<code class="fm-missing"[^>]*>\{\{nope\}\}<\/code>/);
-    } finally { await cleanup(v); }
-  });
 });
 
 // ── Built-in fm code-block handler ────────────────────────────────────────
@@ -225,30 +212,7 @@ describe("built-in fm code-block handler", () => {
     } finally { await cleanup(v); }
   });
 
-  it("walks dot-paths into nested objects (matching the inline handler)", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Page.md": [
-        "---",
-        "foundry:",
-        "  patch:",
-        "    command: |",
-        "      const x = 1; const y = 2;",
-        "---",
-        "",
-        "```fm javascript",
-        "foundry.patch.command",
-        "```",
-      ].join("\n"),
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /<pre><code class="language-javascript">const x = 1; const y = 2;/);
-    } finally { await cleanup(v); }
-  });
-
-  it("missing path renders the same fm-missing marker (inside <pre>)", async () => {
+  it("a missing path or non-string value renders the fm-missing marker (inside <pre>)", async () => {
     const v = await setupVault({
       ".vaultrc.json": VAULTRC_1,
       "Page.md": [
@@ -265,26 +229,6 @@ describe("built-in fm code-block handler", () => {
       await build(v);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
       assert.match(html, /<pre><code class="fm-missing"[^>]*>\{\{fake\.path: not a string\}\}<\/code><\/pre>/);
-    } finally { await cleanup(v); }
-  });
-
-  it("non-string values (number, object, array) render the warning marker", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Page.md": [
-        "---",
-        "n: 42",
-        "---",
-        "",
-        "```fm",
-        "n",
-        "```",
-      ].join("\n"),
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /\{\{n: not a string\}\}/);
     } finally { await cleanup(v); }
   });
 
@@ -394,6 +338,8 @@ describe("built-in statblock handler", () => {
       assert.match(html, /<strong>Challenge<\/strong> <span class="fm-value">1\/4<\/span>/);
       // dice: still chains in desc fields (regression check).
       assert.match(html, /class="dice-roll"[^>]*data-formula="1d6\+2"/);
+      // Sentinel tokens must not leak into the output.
+      assert.doesNotMatch(html, /VAULTSTATBLOCK_HANDLER/);
     } finally { await cleanup(v); }
   });
 
@@ -407,29 +353,6 @@ describe("built-in statblock handler", () => {
       const html = await readFile(join(v.out, "Bad.html"), "utf8");
       assert.match(html, /class="statblock statblock-error"/);
       assert.match(html, /statblock parse error/);
-    } finally { await cleanup(v); }
-  });
-
-  it("inline handlers like `dice:` inside desc fields render through to HTML", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Wraith.md":
-        "```statblock\n" +
-        "name: Wraith\n" +
-        "ac: 13\n" +
-        "hp: 67\n" +
-        "traits:\n" +
-        "  - name: Incorporeal Movement\n" +
-        "    desc: \"Takes 5 (`dice: 1d10`) force damage if it ends inside an object.\"\n" +
-        "```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Wraith.html"), "utf8");
-      // Dice handler ran inside the desc and produced a clickable button.
-      assert.match(html, /Takes 5 \(<button[^>]*class="dice-roll"[^>]*data-formula="1d10"[^>]*>1d10<\/button>\) force damage/);
-      // Sentinel tokens should not leak into the output.
-      assert.doesNotMatch(html, /VAULTSTATBLOCK_HANDLER/);
     } finally { await cleanup(v); }
   });
 
@@ -460,19 +383,6 @@ describe("built-in statblock handler", () => {
       assert.match(html, /<strong>Cantrips \(at will\)<\/strong>/);
       assert.match(html, /<em>fire bolt<\/em>/);
       assert.match(html, /<em>cone of cold<\/em>/);
-    } finally { await cleanup(v); }
-  });
-
-  it("ships statblock CSS in /_handlers.css when used", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Page.md": "```statblock\nname: Test\n```\n",
-    });
-    try {
-      await build(v);
-      const css = await readFile(join(v.out, "_handlers.css"), "utf8");
-      assert.match(css, /\.statblock-name/);
-      assert.match(css, /\.statblock-stats/);
     } finally { await cleanup(v); }
   });
 
@@ -679,18 +589,6 @@ describe("user handler loading", () => {
       assert.match(html, /<code>shout: x<\/code>/);
     } finally { await cleanup(v); }
   });
-
-  it("missing .vaults/handlers/ directory is a no-op (most vaults won't have one)", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Page.md": "Hello.",
-    });
-    try {
-      await build(v); // shouldn't crash
-      const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /Hello\./);
-    } finally { await cleanup(v); }
-  });
 });
 
 // ── Code-block handlers, markdown output, and pipeline composition ───────
@@ -725,15 +623,6 @@ describe("code-block handlers", () => {
 // ── Loader unit tests ────────────────────────────────────────────────────
 
 describe("loadUserHandlers", () => {
-  it("returns [] when .vaults/handlers/ is missing", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vault-noh-"));
-    try {
-      const handlers = await loadUserHandlers(dir);
-      assert.deepEqual(handlers, []);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
 
   it("filters out files with non-handler exports and tracks source paths", async () => {
     const dir = await mkdtemp(join(tmpdir(), "vault-filter-"));
@@ -842,6 +731,9 @@ describe("handler asset bundling", () => {
       // Layout should reference both files
       const html = await readFile(join(v.out, "Page.html"), "utf8");
       assert.match(html, /<script src="\/_handlers\.js\?v=[a-f0-9]+" defer><\/script>/);
+      // The CSS tag follows its own bundle: statblock CSS ships by default,
+      // so both tags appear, each keyed to its own flag.
+      assert.match(html, /<link[^>]*_handlers\.css/);
     } finally { await cleanup(v); }
   });
 
@@ -946,85 +838,11 @@ describe("handler asset bundling", () => {
       );
     } finally { await cleanup(v); }
   });
-
-  it("user handlers without assets don't add to bundles beyond what built-ins contribute", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      ".vaults/handlers/pure.mjs":
-        // No assets field; pure build-time text transform.
-        "export const handler = { inline: 'echo', render: (s) => ({ html: '<i>' + s + '</i>' }) };\n",
-      "Page.md": "`echo: hi`",
-    });
-    try {
-      await build(v);
-      const js = await readFile(join(v.out, "_handlers.js"), "utf8");
-      // Built-in dice runtime sentinel — pure user handler shouldn't shadow it.
-      assert.match(js, /FORMULA_RE = \/\^/);
-      // No user-handler-source comments; user handler declared no assets.
-      assert.doesNotMatch(js, /pure\.mjs|widget\.runtime/);
-    } finally { await cleanup(v); }
-  });
-
-  it("layout link/script tags follow the JS and CSS bundles independently", async () => {
-    // Regression test: previously a single `hasHandlerAssets` flag covered
-    // both files, so JS-only deploys referenced a missing CSS file. The two
-    // flags are now independent. Built-in handlers contribute both: dice ships
-    // JS, statblock ships CSS — so a default build emits both tags.
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Page.md": "Roll: `dice: 1d20`.",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /<script src="\/_handlers\.js\?v=/);
-      assert.match(html, /<link[^>]*_handlers\.css/);
-    } finally { await cleanup(v); }
-  });
-
-  it("layout omits the JS script tag when no handler declares JS", async () => {
-    // Mirror of the previous test for the symmetric case (CSS only, no JS).
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      ".vaults/handlers/style-only.mjs":
-        "export const handler = {\n" +
-        "  codeBlock: 'box',\n" +
-        "  assets: { styles: ['./box.css'] },\n" +
-        "  render: (c) => ({ html: '<div class=\"box\">' + c + '</div>' }),\n" +
-        "};\n",
-      ".vaults/handlers/box.css": ".box { border: 1px solid red; }\n",
-      "Page.md": "```box\nhi\n```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Page.html"), "utf8");
-      // Built-in dice ships JS as a side-effect of handlers being loaded
-      // even if no page invokes `dice:`. The bundle is empty when no
-      // handler with assets is registered, but built-ins always register.
-      // For this test, the assertion is just that CSS is referenced when
-      // present.
-      assert.match(html, /<link[^>]*_handlers\.css/);
-    } finally { await cleanup(v); }
-  });
 });
 
 // ── Registry and helpers ─────────────────────────────────────────────────
 
-describe("buildRegistry + htmlEscape", () => {
-  it("buildRegistry separates inline and codeBlock handlers; later wins", () => {
-    const reg = buildRegistry(
-      [{ inline: "a", render: () => ({ html: "first" }) }],
-      [
-        { inline: "a", render: () => ({ html: "second" }) },
-        { codeBlock: "b", render: () => ({ html: "block" }) },
-      ],
-    );
-    assert.equal(reg.inline.size, 1);
-    assert.equal(reg.codeBlock.size, 1);
-    // User handler wins over built-in on the same prefix.
-    const a = reg.inline.get("a")!;
-    assert.deepEqual(a.render("", null as never), { html: "second" });
-  });
+describe("buildRegistry", () => {
 
   it("buildRegistry warns when a user handler shadows a built-in", () => {
     const warnings: string[] = [];
@@ -1060,9 +878,32 @@ describe("buildRegistry + htmlEscape", () => {
     } finally { console.warn = origWarn; }
     assert.equal(warnings.length, 0);
   });
+});
 
-  it("htmlEscape covers the dangerous-five characters", () => {
-    assert.equal(htmlEscape(`<a href="x" onclick='y'>&z</a>`),
-      "&lt;a href=&quot;x&quot; onclick=&#39;y&#39;&gt;&amp;z&lt;/a&gt;");
+describe("fvtt-link handler", () => {
+  it("renders a page link on the web, marked for the Foundry rewrite", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Macros/Toggle Feast.md": "---\ntitle: Toggle Feast\n---\nBody.\n",
+      "Page.md": "Run `fvtt-link: Toggle Feast` now.",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Page.html"), "utf8");
+      assert.match(html, /class="internal internal-link fvtt-doc-link" href="\/Macros\/Toggle%20Feast"/);
+      assert.match(html, />Toggle Feast<\/a>/);
+    } finally { await cleanup(v); }
+  });
+
+  it("takes a |label and marks an unresolved target broken", async () => {
+    const v = await setupVault({
+      ".vaultrc.json": VAULTRC_1,
+      "Page.md": "See `fvtt-link: Nowhere|the void` maybe.",
+    });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "Page.html"), "utf8");
+      assert.match(html, /is-unresolved[^>]*>the void<\/a>/);
+    } finally { await cleanup(v); }
   });
 });

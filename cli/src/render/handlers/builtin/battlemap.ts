@@ -137,7 +137,9 @@ export const battlemapHandler: CodeBlockHandler = {
     const overlay = grid ? `<div class="vaults-bm-grid-overlay" aria-hidden="true"></div>` : "";
 
     const html =
-      `<div class="vaults-battlemap"${grid ? ` data-grid="${grid}"` : ""}`
+      // web-only: inside a Foundry journal the Scene itself is one click away,
+      // and the viewer's runtime never loads there.
+      `<div class="vaults-battlemap vaults-web-only"${grid ? ` data-grid="${grid}"` : ""}`
       + `${grid && offX ? ` data-grid-ox="${offX}"` : ""}`
       + `${grid && offY ? ` data-grid-oy="${offY}"` : ""}`
       + `${mapName ? ` data-name="${htmlEscape(mapName)}"` : ""}>`

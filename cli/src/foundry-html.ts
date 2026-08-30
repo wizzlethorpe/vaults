@@ -7,16 +7,20 @@
 // guessing upward hands a player a file their role was built to withhold.
 // A `.foundry.html` suffix marks a body to inline; anything else is a file.
 
+import { createHash } from "node:crypto";
+
 import { htmlAttr } from "./escape.js";
 
 /**
- * Where a page ended up. Most pages become a journal page and a link lands on
- * the prose, even when the page also instantiates an Actor or a Scene. A page
- * with `journal: false` has only its document, so a link carries that instead.
+ * Where a page ended up: its journal page, its document, or both. A wikilink
+ * lands on the journal page when there is one; a `fvtt-link:` prefers the
+ * document; either falls back to whichever home exists.
  */
-export type LinkTarget =
-  | { entry: string; page: string; doc?: never }
-  | { entry?: never; page?: never; doc: { type: string; pack: string; id: string } };
+export interface LinkTarget {
+  entry?: string;
+  page?: string;
+  doc?: { type: string; pack: string; id: string };
+}
 
 export interface LinkIndex {
   /** Vault path (`"Characters/Marlo.md"`) to where it went. */
@@ -53,20 +57,21 @@ export function pathFromHref(href: string): string | null {
 }
 
 /** The UUID a link to `path` should carry, or null if nothing points there. */
-export function uuidFor(path: string, index: LinkIndex): string | null {
+export function uuidFor(path: string, index: LinkIndex, prefer: "journal" | "doc" = "journal"): string | null {
   const target = index.targets.get(path);
   if (!target) return null;
 
-  if (target.doc) {
-    const { type, pack, id } = target.doc;
-    return index.packaging === "adventure"
-      ? `${type}.${id}`
-      : `Compendium.${index.moduleId}.${pack}.${type}.${id}`;
-  }
-  const { entry, page } = target;
-  return index.packaging === "adventure"
-    ? `JournalEntry.${entry}.JournalEntryPage.${page}`
-    : `Compendium.${index.moduleId}.${index.journalPack}.JournalEntry.${entry}.JournalEntryPage.${page}`;
+  const docUuid = target.doc
+    ? (index.packaging === "adventure"
+      ? `${target.doc.type}.${target.doc.id}`
+      : `Compendium.${index.moduleId}.${target.doc.pack}.${target.doc.type}.${target.doc.id}`)
+    : null;
+  const pageUuid = target.entry && target.page
+    ? (index.packaging === "adventure"
+      ? `JournalEntry.${target.entry}.JournalEntryPage.${target.page}`
+      : `Compendium.${index.moduleId}.${index.journalPack}.JournalEntry.${target.entry}.JournalEntryPage.${target.page}`)
+    : null;
+  return prefer === "doc" ? (docUuid ?? pageUuid) : (pageUuid ?? docUuid);
 }
 
 const stripTags = (s: string) => s.replace(TAG_RE, "").trim();
@@ -85,7 +90,8 @@ const escapeBraces = (s: string) => s.replace(/\{/g, "&lbrace;").replace(/\}/g, 
 export function rewriteLinks(html: string, index: LinkIndex): string {
   return html.replace(ANCHOR_RE, (whole, attrs: string, inner: string) => {
     const cls = CLASS_RE.exec(attrs)?.[1] ?? "";
-    if (!/\binternal-link\b/.test(cls)) return whole;
+    const card = /\bbases-card\b/.test(cls);
+    if (!card && !/\binternal-link\b/.test(cls)) return whole;
     if (/\bis-unresolved\b/.test(cls)) return whole;
 
     const href = HREF_RE.exec(attrs)?.[1];
@@ -93,9 +99,15 @@ export function rewriteLinks(html: string, index: LinkIndex): string {
     const path = pathFromHref(href);
     if (!path) return whole;
 
-    const uuid = uuidFor(path, index);
+    const uuid = uuidFor(path, index, /\bfvtt-doc-link\b/.test(cls) ? "doc" : "journal");
     if (!uuid) return whole;
 
+    // A card's layout lives in its markup, which an @UUID enricher would
+    // flatten to a text link. A content-link anchor keeps the markup and
+    // Foundry's click handler opens the document all the same.
+    if (card) {
+      return `<a class="${htmlAttr(cls)} content-link" draggable="true" data-link="" data-uuid="${htmlAttr(uuid)}">${inner}</a>`;
+    }
     const label = escapeBraces(stripTags(inner));
     return label ? `@UUID[${uuid}]{${label}}` : `@UUID[${uuid}]`;
   });
@@ -148,6 +160,77 @@ export function rewriteVaultRefs<T>(value: T, variant: string): T {
 }
 
 /** Everything a body needs before it can be a journal page. */
-export function toFoundryHtml(html: string, index: LinkIndex, variant: string): string {
-  return rewriteAssets(rewriteLinks(html, index), variant);
+/**
+ * Wrap role-gated callouts in Foundry's own secret sections.
+ *
+ * A player-visible document carries the GM's body, so DM callouts reach the
+ * table inside it — hidden by Foundry from anyone below owner, which is what
+ * `<section class="secret">` means to a journal. Hidden, not absent: the text
+ * is in the document's data, the same trade the old sync made.
+ */
+/** Where the element opening at `start` closes, balancing same-name tags. */
+function elementEnd(html: string, start: number, tagName: string): number {
+  const tag = new RegExp(`</?${tagName}\\b`, "g");
+  tag.lastIndex = start;
+  let depth = 0;
+  let t: RegExpExecArray | null;
+  while ((t = tag.exec(html)) !== null) {
+    depth += t[0].startsWith("</") ? -1 : 1;
+    if (depth === 0) return html.indexOf(">", t.index) + 1;
+  }
+  return -1;
+}
+
+export function wrapSecrets(html: string, secretRoles: ReadonlySet<string>): string {
+  if (secretRoles.size === 0) return html;
+  const open = /<div class="callout[^"]*" data-callout="([^"]+)"/g;
+  let out = "";
+  let at = 0;
+  let m: RegExpExecArray | null;
+  while ((m = open.exec(html)) !== null) {
+    if (m.index < at) continue;   // inside a section already emitted
+    if (!secretRoles.has(m[1]!.toLowerCase())) continue;
+    const end = elementEnd(html, m.index, "div");
+    if (end < 0) break;
+    const id = createHash("sha1").update(html.slice(m.index, end)).digest("hex").slice(0, 16);
+    out += html.slice(at, m.index)
+      + `<section class="secret" id="secret-${id}">` + html.slice(m.index, end) + "</section>";
+    at = end;
+    open.lastIndex = end;
+  }
+  return out + html.slice(at);
+}
+
+/**
+ * Drop everything marked web-only.
+ *
+ * Some rendered blocks make no sense inside a Foundry journal — the battlemap
+ * viewer, when the Scene it previews is one click away — and some never work
+ * there at all. Any element carrying the `vaults-web-only` class is removed
+ * from the Foundry body; the wiki keeps it. Handlers set it on their wrapper,
+ * and a page can put it on raw HTML of its own.
+ */
+export function stripWebOnly(html: string): string {
+  // The class matched as a whole token: \b treats a hyphen as a boundary, so
+  // it alone would also match "vaults-web-only-not".
+  const open = /<([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*\bclass="(?:[^"]* )?vaults-web-only(?: [^"]*)?"[^>]*>/g;
+  let out = "";
+  let at = 0;
+  let m: RegExpExecArray | null;
+  while ((m = open.exec(html)) !== null) {
+    if (m.index < at) continue;   // nested inside something already dropped
+    const end = elementEnd(html, m.index, m[1]!);
+    if (end < 0) break;
+    out += html.slice(at, m.index);
+    at = end;
+    open.lastIndex = end;
+  }
+  return out + html.slice(at);
+}
+
+export function toFoundryHtml(
+  html: string, index: LinkIndex, variant: string,
+  secretRoles: ReadonlySet<string> = new Set(),
+): string {
+  return rewriteAssets(rewriteLinks(wrapSecrets(stripWebOnly(html), secretRoles), index), variant);
 }

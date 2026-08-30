@@ -43,7 +43,7 @@ import { bundleHandlerAssets } from "./render/handlers/assets.js";
 import { runMigrations } from "./migrate/run.js";
 import { cacheDir } from "./paths.js";
 import { formatDuration, pMap, Progress } from "./util.js";
-import { buildGrafts, moduleManifest, moduleGrafts, packsFor, pagesFrom } from "./foundry-grafts.js";
+import { buildGrafts, moduleManifest, moduleGrafts, packsFor, pagesFrom, secretRoles } from "./foundry-grafts.js";
 import { toFoundryHtml } from "./foundry-html.js";
 import { zip } from "./zip.js";
 import { moduleVersion } from "./foundry-version.js";
@@ -747,12 +747,13 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       // A second body per page, with links resolved to UUIDs and media pointed
       // at markers the provider fills in. Foundry gets this one; the wiki keeps
       // the plain `.body.html`, since the same HTML cannot serve both.
+      const secrets = secretRoles(roles, settings.values.foundry.player_role);
       await pMap(graftPages, concurrency, async (page) => {
         const base = page.path.replace(/\.md$/i, "");
         const body = await readFile(join(variantDir, `${base}.body.html`), "utf8");
         await writeFile(
           join(variantDir, `${base}.foundry.html`),
-          toFoundryHtml(body, grafts.links, role),
+          toFoundryHtml(body, grafts.links, role, secrets),
         );
       });
     }

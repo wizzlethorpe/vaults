@@ -32,3 +32,22 @@ Hooks.once("ready", async () => {
   }
   await promptForUpdates();
 });
+
+// Thumbnails for scenes that arrive by import. Foundry only generates one
+// when a scene is created through its own UI, so imported scenes sit blank in
+// the sidebar. Gated to adventures from graft-flagged modules, so this never
+// touches somebody else's import.
+Hooks.on("importAdventure", async (adventure, _options, created, updated) => {
+  const moduleId = adventure?.pack?.split(".")[0];
+  if (!game.modules.get(moduleId)?.flags?.graft?.entries) return;
+  const scenes = [...(created?.Scene ?? []), ...(updated?.Scene ?? [])];
+  for (const scene of scenes) {
+    if (scene.thumb) continue;
+    try {
+      const { thumb } = await scene.createThumbnail();
+      await scene.update({ thumb }, { render: false });
+    } catch (err) {
+      console.warn(`Vaults | could not make a thumbnail for ${scene.name}:`, err);
+    }
+  }
+});

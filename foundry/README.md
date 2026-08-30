@@ -53,6 +53,10 @@ Optional keys, all default on/off as noted:
 - `embed: false` — the page's prose stays out of the document's description.
 - `folder: Some/Path` — files the document there instead of where the page lives.
 
+A wikilink always opens the page (its journal page, or its document when `journal: false`). To link a page's *document* while its journal page exists — a statblock, a scene, a macro — use the inline handler: `` `fvtt-link: Toggle Feast` `` (with `` |label `` for custom text). On the wiki it is an ordinary page link.
+
+Any HTML element with the `vaults-web-only` class is stripped from journal bodies — for blocks that belong on the wiki but not in Foundry, like the battlemap viewer on a scene page. Handlers set it on their wrapper; a page can use it on raw HTML of its own.
+
 ## License
 
 MIT

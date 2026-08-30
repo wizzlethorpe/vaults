@@ -358,6 +358,21 @@ Set it to the full version you **exported from**, not the one you run, and quote
 
 A bare generation like `'14'` is worse than leaving it unset: it sorts before every release in that generation, so Foundry runs migrations written for versions your data is already past. `migrateLevels` is one of them, and it replaces a Scene's levels outright.
 
+## Linking to the document instead of the page
+
+A wikilink always opens the page: its journal page, or its document when the page sets `journal: false`. When a page has both and you want the document — send the reader to the Actor's statblock, not their biography — use the inline handler:
+
+```markdown
+Run `fvtt-link: Toggle Feast` before the banquet.
+See `fvtt-link: Bixby Wizzlethorpe|his statblock`.
+```
+
+On the wiki this renders as an ordinary link to the page. In Foundry it resolves to the document the page instantiates, falling back to the journal page for a page that makes none.
+
+## Keeping a block out of Foundry
+
+Any HTML element carrying the `vaults-web-only` class is stripped from the journal body Foundry receives; the wiki keeps it. The built-in battlemap viewer marks itself, since inside Foundry the Scene it previews is one click away. Use it on your own raw HTML for anything that only makes sense in a browser.
+
 ## `foundry.player_role`: what your players can read
 
 Set it in `settings.md` to the **highest role your Foundry players are allowed to read**. Pages at that role or below import as `OBSERVER` ownership (player-visible); everything above stays GM-only. Leave it empty, the default, and none of the vault is player-visible.

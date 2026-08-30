@@ -197,24 +197,56 @@ export const folderOf = (path: string): string => {
 };
 
 /**
- * Which rendered variant a page's body comes from, and whether players may see
- * the result.
+ * Whether players may see a page's document, and whose body it carries.
  *
- * These are one decision, not two. A player-observable document must carry the
- * body a *player* would have been served, or a `[!dm]` block reaches the table:
- * the GM's token can fetch any variant, so choosing the wrong one leaks
- * silently. Anything above the player ceiling takes the GM's own variant and
- * stays hidden.
+ * The body is always the build role's own rendering — the reader of this file
+ * cannot fetch any other — so a GM's copy of a player-visible page keeps its
+ * DM callouts. Those are wrapped as secret sections (see wrapSecrets), which
+ * Foundry hides from anyone below owner.
  */
 export function visibility(page: Page, opts: GraftOptions): { variant: string; ownership: number } {
   const rank = (role: string) => opts.roles.indexOf(role);
   const ceiling = rank(opts.playerRole);
   const observable = ceiling >= 0 && rank(page.role) >= 0 && rank(page.role) <= ceiling;
-  // Clamped to the build role: this file's reader cannot fetch above their own
-  // tier, so a lower variant's entries reference the lower rendering even for
-  // pages a player could see.
-  const variant = observable && rank(opts.buildRole) > ceiling ? opts.playerRole : opts.buildRole;
-  return { variant, ownership: observable ? OBSERVER : NONE };
+  return { variant: opts.buildRole, ownership: observable ? OBSERVER : NONE };
+}
+
+/** The roles whose callouts hide as secret sections: everything players may not read. */
+export function secretRoles(roles: string[], playerRole: string): Set<string> {
+  const ceiling = roles.indexOf(playerRole);
+  if (ceiling < 0) return new Set();
+  return new Set(roles.slice(ceiling + 1).map((r) => r.toLowerCase()));
+}
+
+/**
+ * Resolve map-note references to journal ids, in place.
+ *
+ * A note names its target by page path — `"entryId": "@vault/Places/Arlanton"`
+ * — because document ids are this build's to assign, and the ids an export
+ * carries point at whatever world it came from. Both ids fill from the one
+ * path; a stated pageId is replaced.
+ */
+export function resolveNoteRefs(
+  patch: Record<string, unknown> | undefined, opts: GraftOptions,
+  known?: Set<string>, warnings?: string[], path?: string,
+): void {
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) { for (const v of value) walk(v); return; }
+    if (!value || typeof value !== "object") return;
+    const node = value as Record<string, unknown>;
+    const ref = node["entryId"];
+    if (typeof ref === "string" && ref.startsWith("@vault/")) {
+      const target = ref.slice("@vault/".length).replace(/^\/+/, "");
+      const page = /\.md$/i.test(target) ? target : `${target}.md`;
+      if (known && !known.has(page)) {
+        warnings?.push(`${path}: a map note points at "${target}", which is not a page in this build`);
+      }
+      node["entryId"] = entryId(opts.vaultId, folderOf(page));
+      node["pageId"] = pageId(opts.vaultId, page);
+    }
+    for (const v of Object.values(node)) walk(v);
+  };
+  if (patch) walk(patch);
 }
 
 /** `"Characters/Nobles/Marlo.md"` to `"Characters/Nobles"`, or undefined at the root. */
@@ -245,7 +277,10 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 
   const entries: GraftEntry[] = [];
   for (const [folder, group] of [...byFolder].sort(([a], [b]) => a.localeCompare(b))) {
-    const sorted = [...group].sort((a, b) => a.path.localeCompare(b.path));
+    // The folder's index page reads first; the rest alphabetically.
+    const isIndex = (p: Page) => /(^|\/)index\.md$/i.test(p.path);
+    const sorted = [...group].sort((a, b) =>
+      Number(isIndex(b)) - Number(isIndex(a)) || a.path.localeCompare(b.path));
     const journalPages = sorted.map((page, i) => {
       const { variant, ownership } = visibility(page, opts);
       return {
@@ -288,6 +323,7 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 export function documentEntries(pages: Page[], opts: GraftOptions): { entries: GraftEntry[]; warnings: string[] } {
   const entries: GraftEntry[] = [];
   const warnings: string[] = [];
+  const paths = new Set(pages.map((p) => p.path));
 
   for (const page of pages) {
     const spec = page.foundry;
@@ -310,10 +346,10 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
       continue;
     }
 
-    // The same variant the page's body is read from: a document a player may
-    // see must reference the assets that player's deploy actually contains.
     const { variant, ownership } = visibility(page, opts);
     const subtype = subtypeOf(base);
+    resolveNoteRefs(spec.patch, opts, paths, warnings, page.path);
+    resolveNoteRefs(page.sidecar, opts, paths, warnings, page.path);
     const patch: Record<string, unknown> = rewriteVaultRefs({
       name: page.title,
       ...(subtype ? { type: subtype } : {}),
@@ -380,26 +416,21 @@ export function linkIndex(pages: Page[], opts: GraftOptions): LinkIndex {
   const targets = new Map<string, LinkTarget>();
   for (const page of pages) {
     if (page.foundry?.sync === false) continue;
-    // A page with no journal page still has a document; a link to it lands
-    // there instead of on a journal page that does not exist.
-    if (page.foundry?.journal === false) {
-      const base = firstBase(page.foundry.source);
-      const type = base ? documentTypeOf(base) : null;
-      const pack = type ? opts.packs[type] : undefined;
-      if (type && pack) {
-        targets.set(page.path, {
-          doc: {
-            type, pack,
-            id: pinnedIdOf(page.foundry.patch) ?? instanceId(opts.vaultId, page.path),
-          },
-        });
-      }
-      continue;
+    const target: LinkTarget = {};
+    const base = firstBase(page.foundry?.source);
+    const type = base ? documentTypeOf(base) : null;
+    const pack = type ? opts.packs[type] : undefined;
+    if (type && pack) {
+      target.doc = {
+        type, pack,
+        id: pinnedIdOf(page.foundry?.patch) ?? instanceId(opts.vaultId, page.path),
+      };
     }
-    targets.set(page.path, {
-      entry: entryId(opts.vaultId, folderOf(page.path)),
-      page: pageId(opts.vaultId, page.path),
-    });
+    if (page.foundry?.journal !== false) {
+      target.entry = entryId(opts.vaultId, folderOf(page.path));
+      target.page = pageId(opts.vaultId, page.path);
+    }
+    if (target.doc || target.page) targets.set(page.path, target);
   }
   return {
     targets,

@@ -12,7 +12,8 @@ import { fmCodeHandler } from "./fm-code.js";
 import { foundryManifestHandler } from "./foundry-manifest.js";
 import { galleryHandler } from "./gallery.js";
 import { statblockHandler } from "./statblock.js";
+import { fvttLinkHandler } from "./fvtt-link.js";
 
 export const BUILTIN_HANDLERS: Handler[] = [
-  diceHandler, fmHandler, fmCodeHandler, statblockHandler, battlemapHandler, galleryHandler, downloadHandler, foundryManifestHandler,
+  diceHandler, fmHandler, fmCodeHandler, statblockHandler, battlemapHandler, galleryHandler, downloadHandler, foundryManifestHandler, fvttLinkHandler,
 ];

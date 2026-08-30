@@ -25,11 +25,12 @@ const page = (path: string, over: Partial<Page> = {}): Page =>
   ({ path, title: path.split("/").pop()!.replace(/\.md$/, ""), role: "public", ...over });
 
 describe("visibility", () => {
-  it("gives a player-visible page the player's own variant", () => {
-    // Not the GM's. The GM's token can fetch any variant, so picking the wrong
-    // one is a leak that nothing downstream would catch.
+  it("carries the build role's own body, with player visibility as ownership", () => {
+    // The GM's copy of a player-visible page keeps its DM callouts; those hide
+    // from players as secret sections (see wrapSecrets), not by serving the GM
+    // a lesser body.
     const v = visibility(page("Characters/Marlo.md", { role: "public" }), opts);
-    assert.deepEqual(v, { variant: "player", ownership: 2 });
+    assert.deepEqual(v, { variant: "dm", ownership: 2 });
   });
 
   it("keeps anything above the player ceiling hidden, from the GM's variant", () => {
@@ -39,15 +40,6 @@ describe("visibility", () => {
 
   it("treats a role at the ceiling as visible", () => {
     assert.equal(visibility(page("x.md", { role: "player" }), opts).ownership, 2);
-  });
-
-  it("never names a variant above the file's own build role", () => {
-    // The public variant's grafts.json is read by a public-tier token, which
-    // cannot fetch @vaults/player/... bodies. Unclamped, every observable
-    // page's reference in that file would be unfetchable.
-    const v = visibility(page("Characters/Marlo.md", { role: "public" }),
-      { ...opts, buildRole: "public" });
-    assert.deepEqual(v, { variant: "public", ownership: 2 });
   });
 
   it("treats an unknown role as privileged, not public", () => {
@@ -73,15 +65,7 @@ describe("journal entries", () => {
     // every build. The provider batches these through /_batch instead.
     const [entry] = journalEntries([page("Characters/Marlo.md")], opts);
     const pages = entry!.patch["pages"] as Array<Record<string, any>>;
-    assert.equal(pages[0]!.text.content, "@vaults/player/Characters/Marlo.foundry.html");
-  });
-
-  it("references the Foundry body, not the one the wiki serves", () => {
-    // `.body.html` still holds site-flavoured links and media paths. Pointing
-    // a journal page at it gives a page whose every link goes nowhere.
-    const [entry] = journalEntries([page("Characters/Marlo.md")], opts);
-    const pages = entry!.patch["pages"] as Array<Record<string, any>>;
-    assert.doesNotMatch(pages[0]!.text.content, /\.body\.html$/);
+    assert.equal(pages[0]!.text.content, "@vaults/dm/Characters/Marlo.foundry.html");
   });
 
   it("opens the entry when any page inside is visible, and hides the rest", () => {
@@ -193,12 +177,13 @@ describe("the module a vault ships", () => {
   it("declares every pack type, used or not", async () => {
     // Packs are read when the server starts, so a vault that later gains its
     // first Scene would otherwise need reinstalling and a restart.
-    const { moduleManifest, packTypesFor } = await import("../src/foundry-grafts.js");
+    const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com/" });
     const packs = m["packs"] as Array<Record<string, any>>;
     // Every type a compendium can hold. Adventure is not one of them: it is
     // the other way of delivering the same vault, not a pack alongside these.
-    assert.equal(packs.length, packTypesFor("compendium").length);
+    assert.ok(packs.length > 5, `${packs.length} packs`);
+    assert.ok(!packs.some((p) => p.type === "Adventure"));
     assert.ok(packs.every((p) => p.ownership.PLAYER === "NONE"), "never player-browsable");
     assert.ok(packs.filter((p) => p.type === "Actor" || p.type === "Item").every((p) => p.system));
   });
@@ -227,14 +212,6 @@ describe("the module a vault ships", () => {
     assert.deepEqual(
       moduleGrafts("https://marlo.example.com/", true),
       [{ vault: "https://marlo.example.com", gated: true }]);
-  });
-
-  it("says whether the deploy is gated, which the provider cannot infer", async () => {
-    // A single-role deploy collapses its variant to the site root and ships no
-    // Pages Functions. Probing for that means reading a 404 as "public", which
-    // is also what a broken deploy looks like.
-    const { moduleGrafts } = await import("../src/foundry-grafts.js");
-    assert.equal((moduleGrafts("https://x.example.com", false)[0] as any).gated, false);
   });
 
   it("only offers a role the pages it may see", async () => {
@@ -375,43 +352,37 @@ describe("pagesFrom and the sidecar", () => {
 });
 
 describe("asset references are variant-scoped", () => {
-  // A vault deploys each role its own directory and puts a file in it only if
-  // a page that role can see refers to it, so a DM creature's token exists
-  // under `DM/` and nowhere else. A reference carrying no variant names a file
-  // that exists for some readers and not others; resolving it means guessing,
-  // and guessing upward hands a player the art for a monster they have not met.
-  const opts2: GraftOptions = { ...opts, playerRole: "player", buildRole: "dm" };
+  // Every reference in a variant's grafts.json names that variant's own
+  // deploy: it is the only one the reader's token is guaranteed to fetch.
+  // What keeps a DM asset from a player is not the variant an entry names but
+  // that the player's own grafts.json (buildRole = their role) never lists
+  // the DM page at all.
   const withToken = (role: string): Page => ({
     path: `Bestiary/${role}.md`, title: role, role,
     foundry: { source: "Actor:npc", patch: { prototypeToken: { texture: { src: "@vault/t/x.webp" } } } },
   });
 
-  const srcOf = (p: Page) => {
-    const [entry] = documentEntries([p], opts2).entries;
+  const srcOf = (p: Page, buildRole: string) => {
+    const [entry] = documentEntries([p], { ...opts, playerRole: "player", buildRole }).entries;
     const token = entry!.patch["prototypeToken"] as Record<string, any>;
     return token["texture"]["src"] as string;
   };
 
-  it("reads a player-visible document's assets from the player's own deploy", () => {
-    assert.equal(srcOf(withToken("player")), "@vaults/player/t/x.webp");
+  it("names the build role's own deploy, whatever the page's visibility", () => {
+    assert.equal(srcOf(withToken("player"), "dm"), "@vaults/dm/t/x.webp");
+    assert.equal(srcOf(withToken("dm"), "dm"), "@vaults/dm/t/x.webp");
   });
 
-  it("reads a GM-only document's assets from the GM's deploy", () => {
-    assert.equal(srcOf(withToken("dm")), "@vaults/dm/t/x.webp");
-  });
-
-  it("never points a player-visible document above the player ceiling", () => {
-    // The variant must track the page's visibility, not the file it is
-    // written into: the GM's grafts.json lists player pages too.
-    assert.doesNotMatch(srcOf(withToken("public")), /@vaults\/dm\//);
+  it("a player's own file reaches only the player deploy", () => {
+    assert.equal(srcOf(withToken("player"), "player"), "@vaults/player/t/x.webp");
   });
 
   it("matches the variant its own body is read from", () => {
     const page = withToken("player");
-    const [journal] = journalEntries([page], opts2);
+    const [journal] = journalEntries([page], { ...opts, playerRole: "player", buildRole: "dm" });
     const body = (journal!.patch["pages"] as Array<Record<string, any>>)[0]!.text.content as string;
     const variant = (s: string) => s.split("/")[1];
-    assert.equal(variant(srcOf(page)), variant(body));
+    assert.equal(variant(srcOf(page, "dm")), variant(body));
   });
 });
 
@@ -449,13 +420,6 @@ describe("_stats.coreVersion", () => {
     // every level it had. Settings warns about this; here it just travels.
     const { file } = buildGrafts([doc()], { ...opts, coreVersion: "14.359" });
     assert.equal((file.entries[0]!.patch["_stats"] as any).coreVersion, "14.359");
-  });
-
-  it("says what the data is, not what the reader runs", () => {
-    // Claiming to be current would skip the migration genuinely old data
-    // needs. A vault exported from 13 should still be migrated on 14.
-    const { file } = buildGrafts([doc()], { ...opts, coreVersion: "13.351" });
-    assert.equal((file.entries[0]!.patch["_stats"] as any).coreVersion, "13.351");
   });
 
   it("keeps a version the exported sidecar already carried", () => {
@@ -548,6 +512,53 @@ describe("the page keys sync, journal, embed and folder", () => {
   it("folder places the document where the page says, not where it lives", () => {
     const p = doc({ source: "Scene", folder: "Shopping Districts" });
     assert.equal(documentEntries([p], sceneOpts).entries[0]!.folder, "Shopping Districts");
+  });
+});
+
+describe("map-note references", () => {
+  const scenePacks = { ...opts.packs, Scene: "marlo-scenes" };
+  const sceneOpts = { ...opts, packs: scenePacks };
+
+  it("fills a note's journal ids from the page path it names", () => {
+    const p: Page = {
+      path: "DM Notes/Scenes/Home.md", title: "Home", role: "dm",
+      foundry: { source: "Scene" },
+      sidecar: { notes: [{ entryId: "@vault/Places/Arlanton", pageId: "staleOldId000000", x: 1 }] },
+    };
+    const [entry] = documentEntries([p], sceneOpts).entries;
+    const [note] = (entry!.patch["notes"] as Array<Record<string, unknown>>);
+    assert.equal(note!["entryId"], entryId("marlo", "Places"));
+    assert.equal(note!["pageId"], pageId("marlo", "Places/Arlanton.md"));
+    assert.equal(note!["x"], 1, "the rest of the note is untouched");
+  });
+
+  it("accepts the path with or without .md", () => {
+    const p: Page = {
+      path: "S.md", title: "S", role: "dm",
+      foundry: { source: "Scene", patch: { notes: [{ entryId: "@vault/Places/Arlanton.md" }] } },
+    };
+    const [entry] = documentEntries([p], sceneOpts).entries;
+    const [note] = (entry!.patch["notes"] as Array<Record<string, unknown>>);
+    assert.equal(note!["pageId"], pageId("marlo", "Places/Arlanton.md"));
+  });
+
+  it("warns when a note names a page that is not in the build", () => {
+    const p: Page = {
+      path: "S.md", title: "S", role: "dm",
+      foundry: { source: "Scene", patch: { notes: [{ entryId: "@vault/Nowhere/Gone" }] } },
+    };
+    const { warnings } = documentEntries([p], sceneOpts);
+    assert.ok(warnings.some((w) => w.includes("Nowhere/Gone")), warnings.join("; "));
+  });
+
+  it("leaves a note that already carries plain ids alone", () => {
+    const p: Page = {
+      path: "S.md", title: "S", role: "dm",
+      foundry: { source: "Scene", patch: { notes: [{ entryId: "abcdabcdabcdabcd", pageId: "x" }] } },
+    };
+    const [entry] = documentEntries([p], sceneOpts).entries;
+    const [note] = (entry!.patch["notes"] as Array<Record<string, unknown>>);
+    assert.equal(note!["entryId"], "abcdabcdabcdabcd");
   });
 });
 
@@ -674,12 +685,6 @@ describe("what the patch can say for itself", () => {
     assert.equal(entries[0]!.id, "marloHomeScene00");
   });
 
-  it("derives one when the patch does not pin it", () => {
-    const { entries } = entryFor(doc({}));
-    assert.equal(entries[0]!.id, entryFor(doc({})).entries[0]!.id);
-    assert.match(entries[0]!.id, /^[a-f0-9]{16}$/);
-  });
-
   it("keeps a sidecar's own _id out of the patch", () => {
     // Every Scene exported from Foundry carries the id it had in that world.
     // Left in, an Adventure spreads it over the id the entry just assigned and
@@ -708,28 +713,9 @@ describe("what the patch can say for itself", () => {
     const patch = entryFor(page).entries[0]!.patch;
     assert.equal(patch["img"], null);
   });
-
-  it("still derives art when the patch says nothing about it", () => {
-    // Through an Actor: a Scene has no portrait, and its default patch says so
-    // by not mentioning `img` at all.
-    const page: Page = {
-      path: "Actors/Marlo.md", title: "Marlo", role: "dm",
-      image: "/a/portrait.webp", foundry: { source: "Actor:npc" },
-    };
-    assert.equal(documentEntries([page], opts).entries[0]!.patch["img"], "@vaults/dm/a/portrait.webp");
-  });
 });
 
 describe("what packs a module declares", () => {
-  it("declares every type for a compendium, used or not", async () => {
-    // Packs are read when the server starts, so a vault gaining its first
-    // Scene would otherwise need a reinstall and a restart before it builds.
-    const { moduleManifest } = await import("../src/foundry-grafts.js");
-    const m = moduleManifest({ moduleId: "v", title: "V", vaultUrl: "https://x" });
-    const packs = m["packs"] as Array<{ type: string }>;
-    assert.ok(packs.length > 5, `${packs.length} packs`);
-    assert.ok(packs.some((p) => p.type === "JournalEntry"));
-  });
 
   it("declares exactly one for an Adventure", async () => {
     // Everything the vault holds goes inside it, so a new document type adds

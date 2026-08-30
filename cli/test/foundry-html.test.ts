@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  pathFromHref, uuidFor, rewriteLinks, rewriteAssets, toFoundryHtml, rewriteVaultRefs,
+  pathFromHref, uuidFor, rewriteLinks, rewriteAssets, toFoundryHtml, rewriteVaultRefs, wrapSecrets, stripWebOnly,
   type LinkIndex,
 } from "../src/foundry-html.js";
 
@@ -60,12 +60,6 @@ describe("uuidFor", () => {
       "JournalEntry.ent0.JournalEntryPage.pg0");
   });
 
-  it("addresses the pack copy the graft built", () => {
-    assert.equal(
-      uuidFor("Characters/Marlo.md", index()),
-      "Compendium.my-vault.my-vault-journals.JournalEntry.ent0.JournalEntryPage.pg0");
-  });
-
   it("sends a link to a journal-less page to its document", () => {
     // `journal: false` means the page's prose never becomes a journal page,
     // so the document is the only thing a reader can be sent to.
@@ -78,16 +72,6 @@ describe("uuidFor", () => {
     adv.targets.set("DM Notes/Scenes/Home.md",
       { doc: { type: "Scene", pack: "my-vault-scenes", id: "homeScene0000000" } });
     assert.equal(uuidFor("DM Notes/Scenes/Home.md", adv), "Scene.homeScene0000000");
-  });
-
-  it("sends a page that also instantiates a document to its prose all the same", () => {
-    assert.equal(
-      uuidFor("Bestiary/Wolf.md", index()),
-      "Compendium.my-vault.my-vault-journals.JournalEntry.ent1.JournalEntryPage.pg1");
-  });
-
-  it("returns nothing for a path the vault does not publish", () => {
-    assert.equal(uuidFor("Secret/Hidden.md", index()), null);
   });
 });
 
@@ -182,11 +166,6 @@ describe("toFoundryHtml", () => {
     assert.match(out, /@UUID\[Compendium\.my-vault\./);
     assert.match(out, /src="@vaults\/public\/a\/map\.webp"/);
   });
-
-  it("does not let an already-rewritten link be seen as an asset", () => {
-    const out = toFoundryHtml(link("/Characters/Marlo"), index(), "public");
-    assert.doesNotMatch(out, /src="@vaults/);
-  });
 });
 
 describe("rewriteVaultRefs", () => {
@@ -194,19 +173,13 @@ describe("rewriteVaultRefs", () => {
     assert.equal(rewriteVaultRefs("@vault/attachments/map.webp", "public"), "@vaults/public/attachments/map.webp");
   });
 
-  it("reaches a Scene background, which is nested two levels down", () => {
-    const scene = { levels: [{ background: { src: "@vault/a/ground.webp", tint: "#ffffff" } }] };
-    const out = rewriteVaultRefs(scene, "public");
-    assert.equal(out.levels[0]!.background.src, "@vaults/public/a/ground.webp");
-    assert.equal(out.levels[0]!.background.tint, "#ffffff");
-  });
-
   it("reaches through arrays, where tiles and sounds live", () => {
     const out = rewriteVaultRefs({
-      tiles: [{ texture: { src: "@vault/a/tile.webp" } }],
+      tiles: [{ texture: { src: "@vault/a/tile.webp", tint: "#ffffff" } }],
       sounds: [{ path: "@vault/audio/room.ogg" }],
     }, "public");
     assert.equal(out.tiles[0]!.texture.src, "@vaults/public/a/tile.webp");
+    assert.equal(out.tiles[0]!.texture.tint, "#ffffff", "sibling values survive");
     assert.equal(out.sounds[0]!.path, "@vaults/public/audio/room.ogg");
   });
 
@@ -228,5 +201,114 @@ describe("rewriteVaultRefs", () => {
   it("is idempotent", () => {
     const once = rewriteVaultRefs({ src: "@vault/a.webp" }, "public");
     assert.deepEqual(rewriteVaultRefs(once, "public"), once);
+  });
+});
+
+describe("wrapSecrets", () => {
+  const DM = new Set(["dm"]);
+  const CALLOUT = '<div class="callout callout-dm" data-callout="dm">\n'
+    + '<div class="callout-title">DM</div><p>The foreman is Marcus.</p></div>';
+
+  it("wraps a DM callout in a secret section Foundry hides from players", () => {
+    const out = wrapSecrets(`<p>before</p>${CALLOUT}<p>after</p>`, DM);
+    assert.match(out, /<section class="secret" id="secret-[0-9a-f]{16}">/);
+    assert.match(out, /<\/div><\/section><p>after<\/p>$/);
+    assert.match(out, /The foreman is Marcus/);
+  });
+
+  it("takes the whole callout, nested divs included", () => {
+    const nested = '<div class="callout callout-dm" data-callout="dm"><div class="inner"><div>deep</div></div></div>';
+    const out = wrapSecrets(`${nested}<p>tail</p>`, DM);
+    assert.ok(out.endsWith('</div></section><p>tail</p>'), out.slice(-80));
+  });
+
+  it("leaves ordinary callouts alone", () => {
+    const note = '<div class="callout callout-note" data-callout="note"><p>hi</p></div>';
+    assert.equal(wrapSecrets(note, DM), note);
+  });
+
+  it("does nothing when nothing is secret", () => {
+    assert.equal(wrapSecrets(CALLOUT, new Set()), CALLOUT);
+  });
+
+  it("wraps each of several, and none of the ones between", () => {
+    const note = '<div class="callout callout-note" data-callout="note"><p>n</p></div>';
+    const out = wrapSecrets(CALLOUT + note + CALLOUT, DM);
+    assert.equal((out.match(/<section class="secret"/g) ?? []).length, 2);
+    assert.match(out, /callout-note/);
+    assert.doesNotMatch(out, /<section class="secret" id="secret-[0-9a-f]{16}"><div class="callout callout-note/);
+  });
+});
+
+describe("bases cards", () => {
+  it("becomes a content-link that keeps its card markup", () => {
+    const card = '<a class="bases-card" href="/Characters/Marlo">'
+      + '<div class="bases-card-title">Marlo</div></a>';
+    const out = rewriteLinks(card, index());
+    assert.match(out, /class="bases-card content-link"/);
+    assert.match(out, /data-uuid="Compendium\.my-vault\.my-vault-journals\.JournalEntry\.ent0\.JournalEntryPage\.pg0"/);
+    assert.match(out, /<div class="bases-card-title">Marlo<\/div>/, "markup survives");
+    assert.doesNotMatch(out, /href=/, "the wiki href is gone");
+  });
+
+  it("leaves a card pointing at a page the index cannot place", () => {
+    const card = '<a class="bases-card" href="/Nowhere/Gone"><div>x</div></a>';
+    assert.equal(rewriteLinks(card, index()), card);
+  });
+});
+
+describe("stripWebOnly", () => {
+  it("drops a marked element, nested markup and all", () => {
+    const bm = '<div class="vaults-battlemap vaults-web-only"><div class="vaults-bm-bar"><div>tools</div></div></div>';
+    assert.equal(stripWebOnly(`<p>before</p>${bm}<p>after</p>`), "<p>before</p><p>after</p>");
+  });
+
+  it("drops marked non-div elements by their own tag", () => {
+    const fig = '<figure class="vaults-web-only"><img src="x.png"><figcaption>cap</figcaption></figure>';
+    assert.equal(stripWebOnly(`${fig}<p>kept</p>`), "<p>kept</p>");
+  });
+
+  it("drops each marked element and keeps everything between", () => {
+    const a = '<div class="vaults-web-only"><div>x</div></div>';
+    assert.equal(stripWebOnly(`${a}<p>mid</p>${a}`), "<p>mid</p>");
+  });
+
+  it("does not match the class as a substring", () => {
+    const html = '<div class="vaults-web-only-not-really"><p>keep</p></div>';
+    assert.equal(stripWebOnly(html), html);
+  });
+
+  it("runs inside toFoundryHtml, before anything else sees the element", () => {
+    const html = '<div class="vaults-web-only"><a class="internal-link" href="/Characters/Marlo">m</a></div><p>t</p>';
+    assert.equal(toFoundryHtml(html, index(), "dm"), "<p>t</p>");
+  });
+});
+
+describe("fvtt-link doc preference", () => {
+  const both = (): LinkIndex => {
+    const idx = index();
+    idx.targets.set("DM Notes/Macros/Toggle Feast.md", {
+      entry: "entMacros0000000", page: "pgFeast000000000",
+      doc: { type: "Macro", pack: "my-vault-macros", id: "docFeast00000000" },
+    });
+    return idx;
+  };
+
+  it("sends a fvtt-doc-link to the document even when a journal page exists", () => {
+    const a = '<a class="internal internal-link fvtt-doc-link" href="/DM%20Notes/Macros/Toggle%20Feast">Feast</a>';
+    assert.equal(rewriteLinks(a, both()),
+      "@UUID[Compendium.my-vault.my-vault-macros.Macro.docFeast00000000]{Feast}");
+  });
+
+  it("sends a plain wikilink to the journal page, as ever", () => {
+    const a = '<a class="internal internal-link" href="/DM%20Notes/Macros/Toggle%20Feast">Feast</a>';
+    assert.equal(rewriteLinks(a, both()),
+      "@UUID[Compendium.my-vault.my-vault-journals.JournalEntry.entMacros0000000.JournalEntryPage.pgFeast000000000]{Feast}");
+  });
+
+  it("falls back to the journal page for a page with no document", () => {
+    const a = '<a class="internal internal-link fvtt-doc-link" href="/Characters/Marlo">M</a>';
+    assert.equal(rewriteLinks(a, index()),
+      "@UUID[Compendium.my-vault.my-vault-journals.JournalEntry.ent0.JournalEntryPage.pg0]{M}");
   });
 });

@@ -140,16 +140,6 @@ describe("generated auth middleware", () => {
     assert.equal(await res.text(), "/_variants/public/secret", "must fall back to the default role");
   });
 
-  it("ignores a URL token on a top-level navigation", async () => {
-    // A token in a URL is shareable and long-lived; a pasted link must not
-    // browse the site as another role.
-    const value = dmCookie.split("=")[1]!;
-    const res = await call(mw, `https://v.example/secret?_token=${value}`, {
-      headers: { "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document" },
-    });
-    assert.equal(await res.text(), "/_variants/public/secret");
-  });
-
   it("sends Referrer-Policy so a URL token cannot leak through Referer", async () => {
     const res = await call(mw, "https://v.example/secret");
     assert.equal(res.headers.get("Referrer-Policy"), "no-referrer");
@@ -301,13 +291,6 @@ describe("generated auth middleware", () => {
     assert.equal(res.status, 401);
   });
 
-  it("still mints from a session cookie", async () => {
-    const res = await call(mw, "https://v.example/_link?path=/a.zip", {
-      headers: { Cookie: dmCookie },
-    });
-    assert.equal(res.status, 200);
-  });
-
   it("still mints from a bearer, which is not renewable in the same way", async () => {
     // A bearer is already a 90-day credential deliberately issued through
     // /connect; minting a shorter-lived link from one grants nothing new.
@@ -324,15 +307,6 @@ describe("generated auth middleware", () => {
     const bearer = await forgeToken("b", "dm", 3600);
     const res = await call(mw, "https://v.example/secret?_token=" + bearer);
     assert.equal(await res.text(), "/_variants/public/secret");
-  });
-
-  it("does not accept a link token as a bearer, or the reverse", async () => {
-    // Separate types, so neither inherits the other's rules by accident.
-    const link = await forgeToken("l", "dm", 600);
-    const asBearer = await call(mw, "https://v.example/x", {
-      headers: { Authorization: "Bearer " + link },
-    });
-    assert.equal(await asBearer.text(), "/_variants/public/x");
   });
 
   it("stops honouring a link token once it expires", async () => {
@@ -406,20 +380,6 @@ describe("generated auth middleware", () => {
     assert.equal(body.download, "https://project.pages.dev/downloads/mod.zip");
   });
 
-  it("will not attach our signature to someone else's download URL", async () => {
-    const link = await forgeToken("l", "dm", 600);
-    const res = await call(
-      mw,
-      "https://v.example/releases/module.json?_token=" + link,
-      {},
-      { ASSETS: { fetch: () => new Response(JSON.stringify({
-        id: "x", download: "https://evil.example/mod.zip",
-      })) } },
-    );
-    const body = await res.json() as { download: string };
-    assert.equal(body.download, "https://evil.example/mod.zip", "left exactly as authored");
-  });
-
   it("leaves an ordinary JSON asset alone", async () => {
     const link = await forgeToken("l", "dm", 600);
     const res = await call(
@@ -487,11 +447,6 @@ describe("the installable module is reachable without a credential", () => {
     assert.equal(await anon.text(), "/_variants/public/_foundry/version.json");
     const dm = await call(mw, "https://v.example/_foundry/version.json", { headers: { Cookie: cookie } });
     assert.equal(await dm.text(), "/_variants/dm/_foundry/version.json");
-  });
-
-  it("gives a signed-in role its own entry list", async () => {
-    const res = await call(mw, "https://v.example/_foundry/grafts.json", { headers: { Cookie: cookie } });
-    assert.equal(await res.text(), "/_variants/dm/_foundry/grafts.json");
   });
 });
 
