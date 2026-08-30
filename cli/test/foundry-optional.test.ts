@@ -1,14 +1,14 @@
 // `foundry.package: none` drops the Foundry integration from a deploy.
 //
-// The importer bundle is ~60KB shipped to every site, and the /_batch
-// endpoints are the API the Foundry module syncs through. A course site or a
-// research wiki has no use for either, and shouldn't be serving them.
+// The /_batch endpoints are the API the Foundry provider reads through, and
+// `_foundry/` holds the module a reader installs. A course site or a research
+// wiki has no use for either, and shouldn't be serving them.
 //
 // Default is true, so existing vaults are unaffected.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildSite } from "../src/build.js";
@@ -36,47 +36,40 @@ async function build(settings: string, extra: Record<string, string> = {}): Prom
 const exists = (p: string) => stat(p).then(() => true, () => false);
 
 describe("foundry.package: none", () => {
-  it("omits the importer bundle", async () => {
+  it("omits the entry list a reader would build from", async () => {
     const out = await build("foundry:\n  package: none\n");
-    assert.equal(await exists(join(out, "_foundry/importer.js")), false);
+    assert.equal(await exists(join(out, "_foundry/grafts.json")), false);
     await rm(out, { recursive: true, force: true });
   });
 
-  it("ships the importer bundle by default", async () => {
-    // Default true: an existing vault that never heard of this setting must
-    // keep working exactly as before.
+  it("ships one by default", async () => {
+    // Default is on: a vault that never heard of this setting keeps working.
     const out = await build("");
-    assert.equal(await exists(join(out, "_foundry/importer.js")), true);
+    assert.equal(await exists(join(out, "_foundry/grafts.json")), true);
     await rm(out, { recursive: true, force: true });
   });
 
-  it("stops advertising Foundry handler assets in the manifest", async () => {
-    const on = JSON.parse(await readFile(join(await build(""), "_manifest.json"), "utf8"));
-    const off = JSON.parse(await readFile(join(await build("foundry:\n  package: none\n"), "_manifest.json"), "utf8"));
-    assert.equal(off.assets?.foundry, undefined);
-    // The browser bundles are unrelated and must survive.
-    assert.ok(off.assets?.browser, "browser handler assets are not Foundry-specific");
-    assert.deepEqual(off.assets.browser, on.assets.browser);
+  it("ships the installable module only once the vault knows its own URL", async () => {
+    // module.json names the vault it reads from, so a deploy that cannot say
+    // where it lives would produce a module pointing at nothing.
+    const without = await build("");
+    assert.equal(await exists(join(without, "_foundry/module.json")), false);
+    const withUrl = await build('site_url: "https://v.example.com"\n');
+    assert.equal(await exists(join(withUrl, "_foundry/module.json")), true);
+    assert.equal(await exists(join(withUrl, "_foundry/version.json")), true);
+    await rm(without, { recursive: true, force: true });
+    await rm(withUrl, { recursive: true, force: true });
   });
+
 
   it("leaves the rest of the deploy untouched", async () => {
     const out = await build("foundry:\n  package: none\n");
-    for (const f of ["index.html", "index.body.html", "_search-index.json", "styles.css", "_manifest.json"]) {
+    for (const f of ["index.html", "index.body.html", "_search-index.json", "styles.css"]) {
       assert.equal(await exists(join(out, f)), true, `${f} must still ship`);
     }
     await rm(out, { recursive: true, force: true });
   });
 
-  it("keeps foundry: frontmatter in the manifest either way", async () => {
-    // The setting controls what the deploy *serves*, not what pages may say.
-    // A vault can flip it back on without editing every page.
-    const page = { "NPC.md": '---\ntitle: Bob\nfoundry:\n  source: "Actor:npc"\n---\nBob.\n' };
-    const out = await build("foundry:\n  package: none\n", page);
-    const m = JSON.parse(await readFile(join(out, "_manifest.json"), "utf8"));
-    const row = m.files.find((f: { path: string }) => f.path === "NPC.body.html");
-    assert.equal(row?.meta?.foundry?.base, "Actor:npc");
-    await rm(out, { recursive: true, force: true });
-  });
 });
 
 describe("foundry.package validation", () => {

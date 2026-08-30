@@ -45,7 +45,7 @@ Cloudflare Pages           ← per-user, your account
 - **Per-tier deploys.** A page tagged `role: dm` in its frontmatter only includes to the dm variant. Public visitors *cannot* fetch it; the file structurally doesn't exist in their variant.
 - **Inline gating with callouts.** Drop a `> [!dm]` callout in an otherwise public page; the entire block is stripped from the public deploy. Same for any other configured role.
 - **Images and media are gated too.** Only images, audio, video, PDFs, and EPUBs embedded by visible pages are copied into a given variant. Unknown extensions are skipped by default (toggle `include_unknown_files`).
-- **Incremental sync.** External clients (the [Foundry VTT module](https://github.com/wizzlethorpe/vaults)) probe `/_manifest.json` to discover the deploy's name, auth requirements, and role order, then pull `/_batch` (text) and `/_batch-images` (binary) for changed content. Manifest hashes fold in per-page frontmatter, so a role flip or title rename triggers a sync without a body diff.
+- **Foundry integration.** The build compiles each role's pages into `_foundry/grafts.json`, an entry list the [Foundry module](https://github.com/wizzlethorpe/vaults) hands to [graft](https://github.com/wizzlethorpe/graft) to build on the reader's own machine. Bodies and art travel as references and are pulled through `/_batch` (text) and `/_batch-images` (binary) in the reader's own role variant, so a player never receives the GM's rendering of a page.
 - **Bases support.** `.base` files render as cards / table / list inside the wiki, just like inside Obsidian.
 - **LaTeX math.** `$inline$` and `$$display$$` math render server-side via KaTeX, matching Obsidian's syntax. The stylesheet and fonts are self-hosted and only ship for vaults that contain math.
 - **Social meta.** OG / Twitter card tags are auto-generated. Pages without an explicit `image:` frontmatter use the first body embed (toggle with `auto_image`).
@@ -217,7 +217,7 @@ Multi-role deploys include with a small Cloudflare Pages Function (`_middleware.
 - **Issues bearer tokens** through an OAuth-style `/connect` flow used by the [Foundry module](https://github.com/wizzlethorpe/vaults).
 - **Handles Patreon login** at `/auth/patreon/start` and `/auth/patreon/callback`, and **OIDC login** at `/auth/oidc/start` and `/auth/oidc/callback`, when configured.
 - **Exposes** `/_batch` (text) and `/_batch-images` (binary) for bulk content sync.
-- **Publishes** `/_manifest.json` with the deploy's name, role order, and auth requirements so external clients can probe the deploy before picking an auth flow.
+- **Publishes** `_foundry/module.json`, `module.zip` and `version.json` ungated, so Foundry can install the vault's module without a credential, while the entry list behind them stays role-gated.
 
 Tokens are stateless HMAC-signed JWTs; revocation = rotate `SESSION_SECRET` via `vaults push --rotate-secret`.
 

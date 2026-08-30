@@ -51,28 +51,3 @@ test("a public vault carries a role but no token", () => {
 });
 
 // ── what the media cache should and should not pull ──────────────────────────
-
-test("the module manifest is not cached as page media", async () => {
-  // `vaults build --module` writes module.json beside the module zip. It is
-  // there to be installed from, and Foundry refuses to overwrite a non-media
-  // file, so every sync after the first failed its upload and reported an
-  // image error. The zip is already excluded, by extension.
-  const { isCacheable } = await import("../scripts/media.mjs");
-  assert.equal(isCacheable("downloads/module.json"), false);
-  assert.equal(isCacheable("module.json"), false);
-  assert.equal(isCacheable("downloads/marlo-download-test.zip"), false);
-});
-
-test("real page media is still cached", async () => {
-  const { isCacheable } = await import("../scripts/media.mjs");
-  assert.equal(isCacheable("attachments/npcs/images/Macy Arla.webp"), true);
-  assert.equal(isCacheable("attachments/foundry/gnome-bank.ogg"), true);
-  // A JSON that is genuinely page data still is, so the rule stays narrow.
-  assert.equal(isCacheable("attachments/scenes/junkyard.json"), true);
-});
-
-test("build-internal artifacts stay excluded", async () => {
-  const { isCacheable } = await import("../scripts/media.mjs");
-  assert.equal(isCacheable("_search-index.json"), false);
-  assert.equal(isCacheable("Creatures/index.preview.json"), false);
-});

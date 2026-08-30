@@ -62,7 +62,7 @@ stage_module() {
   local dest="$1"
   mkdir -p "$dest"
   cp module.json "$dest/"
-  cp -r scripts styles lang "$dest/"
+  cp -r scripts lang "$dest/"
   [ -f LICENSE ]   && cp LICENSE   "$dest/" || true
   [ -f README.md ] && cp README.md "$dest/" || true
 }

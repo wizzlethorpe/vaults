@@ -21,7 +21,7 @@
   "author": "wizzlethorpe",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.2.0"
   },
   "bin": {
     "vaults": "dist/index.js"
@@ -32,7 +32,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && node scripts/bundle-importer.mjs",
+    "build": "tsc",
     "start": "node dist/index.js",
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",

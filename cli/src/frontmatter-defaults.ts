@@ -15,7 +15,7 @@ import picomatch from "picomatch";
 import type { FrontmatterRule } from "./settings.js";
 
 /** Deep-merge `source` into `target` without overwriting anything present. */
-function mergeDefaults(target: Record<string, unknown>, source: Record<string, unknown>): void {
+export function mergeDefaults(target: Record<string, unknown>, source: Record<string, unknown>): void {
   for (const [k, v] of Object.entries(source)) {
     const existing = target[k];
     if (v && typeof v === "object" && !Array.isArray(v)) {

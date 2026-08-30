@@ -8,7 +8,7 @@ Module ID: `vaults`. Requires Foundry V14 or newer.
 
 1. Deploy a vault with `vaults push`.
 2. Install this module, click **Sync Vault** in the Compendium sidebar.
-3. **Add Vault** → paste the deploy URL. The module probes `/_manifest.json`; for multi-role deploys click **Authenticate** to elevate above the public tier.
+3. Install the vault's own module from its deploy, `<vault>/_foundry/module.json`, and enable it alongside this one and [graft](https://github.com/wizzlethorpe/graft). Building it prompts once for a token; a role-gated vault serves each reader only the pages their role may read.
 4. **Sync**. The module fetches the manifest, diffs against the last sync, and pulls only changed pages / media.
 
 ## What lands in Foundry

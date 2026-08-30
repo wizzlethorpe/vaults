@@ -184,11 +184,6 @@ program
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .option("-o, --output <dir>", "Output directory (default: <vault>/.vaults/cache/rendered)")
   .option("--all-warnings", "Print every page with warnings instead of truncating at 20")
-  .option("--module [dir]",
-    "Also compile the vault into an installable Foundry VTT module. The optional"
-    + " directory is vault-relative and is where the manifest and zip are written"
-    + " (default: downloads). Ignored by a module whose manifest names its own"
-    + " download URL, which is built in place beside it.")
   .action(wrap(build));
 
 program

@@ -2,9 +2,9 @@
 // a `?_token=` query param (not an Authorization header) so cross-origin
 // GETs stay CORS-simple; no preflight per file.
 //
-// Public (single-role) vaults don't ship Pages Functions, so /_batch and
-// /_connect don't exist. Falls back to direct CDN GETs in that case;
-// chunked + parallel-bounded to stay polite with rate limits.
+// A single-role vault ships no Pages Functions, so /_batch does not exist.
+// Falls back to direct GETs in that case; chunked and parallel-bounded to stay
+// polite with rate limits.
 
 /**
  * Build a fully-qualified URL for a vault endpoint, appending the bearer
@@ -19,32 +19,7 @@ export function url(vault, path) {
   return u.toString();
 }
 
-async function fetchJson(u) {
-  const res = await fetch(u);
-  if (!res.ok) throw new Error(`GET ${u} → ${res.status}`);
-  return res.json();
-}
 
-export async function fetchManifest(vault) {
-  return fetchJson(url(vault, "/_manifest.json"));
-}
-
-/**
- * Fetch a text file from the vault by absolute path. Returns the body as a
- * string, or null on any non-OK response (404 included). Used by the
- * handler-asset import flow to grab `_handlers.foundry.{js,css}` if and
- * only if the GM has opted in — these files only exist when at least one
- * handler in the vault opted into Foundry import too.
- */
-export async function fetchTextOrNull(vault, path) {
-  try {
-    const res = await fetch(url(vault, path));
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
-  }
-}
 
 const BATCH_SIZE = 100;
 const BATCH_CONCURRENCY = 4;
@@ -78,7 +53,7 @@ export function batchEndpoint(vault, role) {
 
 export async function fetchSourceBatch(vault, paths, role) {
   if (paths.length === 0) return new Map();
-  if (vault.public) return fetchSourceDirect(vault, paths);
+  if (!vault.gated) return fetchSourceDirect(vault, paths);
 
   // `role` asks for a specific rendering. A page is fetched in the variant
   // matching its *own* role, not the syncing user's: a page marked readable by

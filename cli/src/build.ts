@@ -13,8 +13,7 @@ import {
 } from "./asset-refs.js";
 import { downloadFilePaths } from "./render/handlers/builtin/download.js";
 import { foundryManifestPaths, manifestDownloadPath } from "./render/handlers/builtin/foundry-manifest.js";
-import { buildManifest, type BodyMeta } from "./manifest.js";
-import { collectBodyMeta, warnFoundryDocCollisions } from "./foundry-meta.js";
+import { warnFoundryDocCollisions } from "./foundry-meta.js";
 import { compressImage } from "./images.js";
 import {
   IMAGE_EXT_RE,
@@ -25,14 +24,13 @@ import { buildFavicon } from "./favicon.js";
 import { renderMarkdown, type PreParsedFrontmatter } from "./render/pipeline.js";
 import { extractH1 } from "./render/frontmatter.js";
 import { renderLayout, render404 } from "./render/layout.js";
-import { writeFoundryImporter } from "./foundry-importer.js";
 import { slugify } from "./render/slug.js";
 import { buildPreview } from "./render/preview.js";
 import { resolvePageImage } from "./render/cover.js";
 import { DEFAULT_CSS, renderThemeOverride } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
 import { loadSettings, writeSettings, SETTINGS_FILE, type Settings, type FrontmatterRule } from "./settings.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, saveConfig } from "./config.js";
 import { applyFrontmatterDefaults, compileFrontmatterRules } from "./frontmatter-defaults.js";
 import matter from "gray-matter";
 import { renderAuthMiddleware, renderLoginPage } from "./render/auth-template.js";
@@ -46,6 +44,10 @@ import { runMigrations } from "./migrate/run.js";
 import { cacheDir } from "./paths.js";
 import { formatDuration, pMap, Progress } from "./util.js";
 import { buildGrafts, moduleManifest, moduleGrafts, packsFor, pagesFrom } from "./foundry-grafts.js";
+import { toFoundryHtml } from "./foundry-html.js";
+import { zip } from "./zip.js";
+import { moduleVersion } from "./foundry-version.js";
+import { loadDataJson } from "./foundry-meta.js";
 
 export interface BuildOptions {
   vaultPath: string;
@@ -560,7 +562,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // integration — it is ~60KB shipped to every deploy, and a course site or
   // research wiki will never fetch it.
   const foundryEnabled = settings.values.foundry.package !== "none";
-  if (foundryEnabled) await writeFoundryImporter(opts.outputDir);
   // Foundry-import bundles are written per-variant inside the role loop
   // below (instead of at the root) so the middleware role-gates them. A
   // public visitor can't fetch the dm-tier handler bundle even if it
@@ -608,6 +609,34 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
 
   warnFoundryDocCollisions(allPageMetas);
 
+  // Said once for the vault, not once per role: it is a fact about the
+  // settings, and the per-variant emitter would repeat it for each.
+  if (foundryEnabled && !settings.values.foundry.core_version
+    && allPageMetas.some((p) => (p.frontmatter?.["foundry"] as { source?: unknown })?.source)) {
+    console.warn(
+      "  foundry.core_version is not set, so documents carry no _stats.coreVersion."
+      + " Foundry rejects those and builds a degraded copy instead: a Scene loses its levels."
+      + " Set it to the full Foundry version your exported JSON came from, e.g. 14.359.",
+    );
+  }
+
+  // Read each page's `foundry.patch_json` once, before any variant is
+  // rendered: the file is the same whoever is reading, and a Scene sidecar is
+  // the largest thing in the vault to be re-parsing per role. It stays separate
+  // from the page's inline patch, because it is a weaker statement than one —
+  // an export carries whatever Foundry had, including its placeholders.
+  const foundryPatches = new Map<string, Record<string, unknown>>();
+  await Promise.all(allPageMetas.map(async (p) => {
+    const fo = p.frontmatter?.["foundry"];
+    if (!fo || typeof fo !== "object" || Array.isArray(fo)) return;
+    const block = fo as Record<string, unknown>;
+    const ref = block["patch_json"];
+    if (typeof ref !== "string" || !ref.trim()) return;
+    const loaded = await loadDataJson(opts.vaultPath, ref.trim(), p.path);
+    if (!loaded || typeof loaded !== "object" || Array.isArray(loaded)) return;
+    foundryPatches.set(p.path, loaded as Record<string, unknown>);
+  }));
+
   // A module id from the vault name: stable, lowercase, no spaces. It names
   // the packs too, so changing it orphans what a reader already built.
   const foundryModuleId = opts.vaultName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
@@ -618,6 +647,21 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   const collapseToRoot = roles.length === 1;
   let defaultRolePagePaths: string[] = [];
   let katexCopied = false;
+  // What the Foundry provider compares a cached file against, so a rebuild
+  // re-fetches only what changed. Keyed "<variant>/<path>", and hashed once
+  // per asset rather than once per variant: every variant copies the same
+  // staged file. Roles run least privileged first, so by the time a variant
+  // writes its grafts.json the map holds every variant it can reference.
+  const assetHashes = new Map<string, string>();
+  const hashOf = new Map<string, string>();
+  const hashAsset = async (path: string, dir: string): Promise<string> => {
+    let digest = hashOf.get(path);
+    if (!digest) {
+      digest = createHash("md5").update(await readFile(join(dir, path))).digest("hex").slice(0, 16);
+      hashOf.set(path, digest);
+    }
+    return digest;
+  };
 
   for (const role of roles) {
     const variantDir = collapseToRoot
@@ -661,6 +705,9 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       allWarnings: opts.allWarnings,
     });
     perRolePageCount[role] = stats.pageCount;
+    for (const path of stats.assetPaths) {
+      assetHashes.set(`${role}/${path}`, await hashAsset(path, variantDir));
+    }
     // Only the default (lowest) role feeds the sitemap; see writeSitemap.
     if (role === roles[0]) defaultRolePagePaths = stats.pagePaths;
     if (!collapseToRoot) console.log(`  variant '${role}': ${stats.pageCount} pages`);
@@ -696,8 +743,9 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     // auth middleware gates it: a role only ever receives the pages it may
     // read, and the GM's variant is the one that lists everything.
     if (foundryEnabled) {
+      const graftPages = pagesFrom(allPageMetas, visibleRoles, foundryPatches);
       const grafts = buildGrafts(
-        pagesFrom(allPageMetas, visibleRoles),
+        graftPages,
         {
           vaultId: foundryModuleId,
           roles,
@@ -705,6 +753,11 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
           buildRole: role,
           packs: packsFor(foundryModuleId),
           version: assetVersion,
+          coreVersion: settings.values.foundry.core_version,
+          system: settings.values.foundry.system,
+          packaging: settings.values.foundry.package === "adventure" ? "adventure" : "compendium",
+          title: opts.vaultName,
+          assets: Object.fromEntries(assetHashes),
         },
       );
       for (const warning of grafts.warnings) console.warn(`  warning: ${warning}`);
@@ -713,25 +766,26 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
         join(variantDir, "_foundry", "grafts.json"),
         JSON.stringify(grafts.file, null, 2),
       );
+      // The freshness signal, apart from the 1MB+ file it describes: the
+      // module reads this on world load to ask "anything new since I built?".
+      await writeFile(
+        join(variantDir, "_foundry", "version.json"),
+        JSON.stringify({ content: grafts.file.contentHash }),
+      );
+
+      // A second body per page, with links resolved to UUIDs and media pointed
+      // at markers the provider fills in. Foundry gets this one; the wiki keeps
+      // the plain `.body.html`, since the same HTML cannot serve both.
+      for (const page of graftPages) {
+        const base = page.path.replace(/\.md$/i, "");
+        const body = await readFile(join(variantDir, `${base}.body.html`), "utf8");
+        await writeFile(
+          join(variantDir, `${base}.foundry.html`),
+          toFoundryHtml(body, grafts.links, role),
+        );
+      }
     }
 
-    // Write a per-variant _manifest.json so external clients (Foundry, MCP,
-    // etc.) can do an incremental diff. Includes EVERY file that variant
-    // serves; html, md, images (as relative paths into shared root), css.
-    // bodyMeta carries per-page Foundry reskin metadata; folded into each
-    // body row's hash so meta-only changes trigger a re-sync.
-    const manifest = await buildManifest(
-      opts.outputDir, variantDir, stats.bodyMeta, !collapseToRoot, roles, opts.vaultName,
-      {
-        hasHandlerJs,
-        hasHandlerCss,
-        hasFoundryJs: foundryEnabled && (handlerAssets.foundry?.js.length ?? 0) > 0,
-        hasFoundryCss: foundryEnabled && (handlerAssets.foundry?.css.length ?? 0) > 0,
-      },
-      settings.values.foundry.package,
-      allRoleSet.has(settings.values.foundry.player_role) ? settings.values.foundry.player_role : "",
-    );
-    await writeFile(join(variantDir, "_manifest.json"), JSON.stringify(manifest));
   }
 
   // The module a reader installs, served by the vault itself: no release, no
@@ -740,17 +794,40 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   if (foundryEnabled && opts.siteUrl) {
     const dir = join(opts.outputDir, "_foundry");
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, "module.json"), JSON.stringify(moduleManifest({
+    // Versioned from the manifest itself, so it reads as a date and moves only
+    // when the module changes. `assetVersion` is a hash of the stylesheet: it
+    // cannot be ordered, which is what Foundry needs to offer an update.
+    const manifest = moduleManifest({
       moduleId: foundryModuleId,
       title: opts.vaultName,
       vaultUrl: opts.siteUrl,
-      version: assetVersion,
+      version: "",
+      systemId: settings.values.foundry.system,
+      packaging: settings.values.foundry.package === "adventure" ? "adventure" : "compendium",
       extra: settings.values.foundry.module as Record<string, unknown>,
-    }), null, 2));
-    await writeFile(join(dir, "grafts.json"), JSON.stringify(moduleGrafts(opts.siteUrl), null, 2));
-    // What the freshness check reads, so a reader is told there is new content
-    // without pulling the whole entry list to find out.
-    await writeFile(join(dir, "version.json"), JSON.stringify({ version: assetVersion }));
+    });
+    const stamped = moduleVersion(manifest, cfg.foundryModule);
+    manifest["version"] = stamped.version;
+    if (stamped.version !== cfg.foundryModule?.version) {
+      await saveConfig(input.vaultPath, { ...cfg, foundryModule: stamped });
+    }
+    await writeFile(join(dir, "module.json"), JSON.stringify(manifest, null, 2));
+
+    // The module itself, which is what Foundry installs from the manifest. It
+    // holds no content: a manifest, and the one line naming the vault to read.
+    //
+    // The marker exists only inside the archive. graft reads a module's entry
+    // file from `modules/<id>/grafts.json` — the installed copy — so serving
+    // one at the deploy root would be a file nothing fetches, sharing a name
+    // with the per-variant entry list the middleware rewrites `/_foundry/` to.
+    // Pack directories are absent on purpose: Foundry creates them.
+    const manifestJson = await readFile(join(dir, "module.json"));
+    const marker = Buffer.from(
+      JSON.stringify(moduleGrafts(opts.siteUrl, !collapseToRoot), null, 2) + "\n");
+    await writeFile(join(dir, "module.zip"), zip([
+      { name: `${foundryModuleId}/module.json`, data: manifestJson },
+      { name: `${foundryModuleId}/grafts.json`, data: marker },
+    ]));
   }
 
   // ── Pages Functions ─────────────────────────────────────────────────────
@@ -895,10 +972,10 @@ interface VariantStats {
   pageCount: number;
   /** Vault-relative .md paths visible in this variant, for the sitemap. */
   pagePaths: string[];
-  /** Maps `.body.html` path (variant-relative) to its meta payload. Empty unless any page sets a foundry block / image. */
-  bodyMeta: Map<string, BodyMeta>;
   /** True when any page in this variant rendered KaTeX math. */
   hasMath: boolean;
+  /** Variant-relative paths of the images and media copied into it. */
+  assetPaths: string[];
 }
 
 async function buildVariant(a: VariantArgs): Promise<VariantStats> {
@@ -1007,7 +1084,6 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   const previewMode = previewModeOf(a.settings.preview_mode);
   const previewModeMobile = previewModeOf(a.settings.preview_mode_mobile);
   const previewsEnabled = previewMode !== "none" || previewModeMobile !== "none";
-  const bodyMeta = new Map<string, BodyMeta>();
   await pMap(visibleMetas, a.concurrency, async (p) => {
     const r = rendered.get(p.path)!;
     const backlinkPaths = backlinkMap.get(p.path) ?? new Set();
@@ -1048,8 +1124,6 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     // remark/rehype pipeline land in journals as-is, no client-side render.
     const bodyPath = outputBase + ".body.html";
     await writeFile(join(a.variantDir, bodyPath), r.html);
-
-    bodyMeta.set(bodyPath, await collectBodyMeta(p, a.vaultPath));
 
     // Preview JSON feeds the popover; skip it only when neither device class
     // shows previews (both modes "none").
@@ -1103,19 +1177,19 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   // under the variants that need them so guessing a DM-only image URL on
   // the public wiki structurally 404s. coverImage feeds in here too so
   // images named via `image:` frontmatter (no body embed) still ship.
-  await copyReferencedImages(visibleSources, visibleMetas, a.imageIndex, a.imageStagingDir, a.variantDir);
+  const copiedImages = await copyReferencedImages(visibleSources, visibleMetas, a.imageIndex, a.imageStagingDir, a.variantDir);
 
   // Passthrough files (audio/video/pdf/epub) follow the same gating
   // contract as images: ship only into variants whose visible pages
   // reference the file. A DM-only audio cue can't ride along into the
   // public deploy because no public-tier source mentions it.
-  await copyReferencedPassthroughs(visibleSources, visibleMetas, a.passthroughIndex, a.passthroughStagingDir, a.variantDir, a.manifestDownloads);
+  const copiedOther = await copyReferencedPassthroughs(visibleSources, visibleMetas, a.passthroughIndex, a.passthroughStagingDir, a.variantDir, a.manifestDownloads);
 
   return {
     pageCount: visibleMetas.length,
     pagePaths: visibleMetas.map((m) => m.path),
-    bodyMeta,
     hasMath: hasMathCss,
+    assetPaths: [...copiedImages, ...copiedOther],
   };
 }
 

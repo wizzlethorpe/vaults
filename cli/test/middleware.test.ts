@@ -440,6 +440,61 @@ describe("generated auth middleware", () => {
 
 });
 
+describe("the installable module is reachable without a credential", () => {
+  // Foundry's installer fetches a module's manifest and archive with no
+  // credential of its own. Gating them makes the module uninstallable, and the
+  // failure is a 404 at install time that says nothing about auth.
+  //
+  // This is the allowlist in `isSharedAsset`, which the build comment calls a
+  // synchronisation point. It went stale once already: it still named
+  // `_foundry/importer.js` after that file stopped being built, while the three
+  // files that replaced it were rewritten into the variant directory and 404ed
+  // for everyone.
+  let mw: Middleware;
+  let cookie: string;
+
+  before(async () => {
+    mw = await loadMiddleware({
+      roles: ["public", "dm"],
+      foundry: true,
+      rolePasswords: { dm: await hashPassword("hunter2") },
+    });
+    const res = await call(mw, "https://v.example/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "role=dm&password=hunter2&next=/",
+    });
+    cookie = (res.headers.get("Set-Cookie") ?? "").split(";")[0]!;
+  });
+
+  for (const path of ["/_foundry/module.json", "/_foundry/module.zip"]) {
+    it(`serves ${path} from the root, ungated`, async () => {
+      const res = await call(mw, `https://v.example${path}`);
+      assert.equal(res.status, 200);
+      // Passed through to the static root ("NEXT") rather than rewritten into
+      // a variant directory the installer has no credential to read.
+      assert.equal(await res.text(), "NEXT");
+    });
+  }
+
+  it("still gates the entry list, which is per-role and is the content", async () => {
+    const res = await call(mw, "https://v.example/_foundry/grafts.json");
+    assert.equal(await res.text(), "/_variants/public/_foundry/grafts.json");
+  });
+
+  it("gates version.json the same way, so a hash never says what a role cannot see", async () => {
+    const anon = await call(mw, "https://v.example/_foundry/version.json");
+    assert.equal(await anon.text(), "/_variants/public/_foundry/version.json");
+    const dm = await call(mw, "https://v.example/_foundry/version.json", { headers: { Cookie: cookie } });
+    assert.equal(await dm.text(), "/_variants/dm/_foundry/version.json");
+  });
+
+  it("gives a signed-in role its own entry list", async () => {
+    const res = await call(mw, "https://v.example/_foundry/grafts.json", { headers: { Cookie: cookie } });
+    assert.equal(await res.text(), "/_variants/dm/_foundry/grafts.json");
+  });
+});
+
 describe("OAuth state cookie", () => {
   it("survives a page path outside Latin-1", async () => {
     // btoa throws above U+00FF, so a page named e.g. Sunawi with a

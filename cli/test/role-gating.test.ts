@@ -72,13 +72,6 @@ async function readJson(path: string): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
-interface ManifestEntry {
-  path: string;
-  hash: string;
-  meta?: { role: string; foundry?: { base?: string } };
-}
-interface Manifest { auth: { required: boolean; roles: string[] }; files: ManifestEntry[]; }
-
 /** Three-role vaultrc with placeholder password hashes (roleAdd hashes match this shape). */
 const VAULTRC_3 = JSON.stringify({
   roles: ["public", "patron", "dm"],
@@ -88,7 +81,6 @@ const VAULTRC_3 = JSON.stringify({
   },
 });
 
-const VAULTRC_1 = JSON.stringify({ roles: ["public"], rolePasswords: {} });
 
 const VARIANT = (role: string, path: string) => `_variants/${role}/${path}`;
 
@@ -390,94 +382,6 @@ describe("role gating: callouts", () => {
 
 // ── Manifest contract ─────────────────────────────────────────────────────
 
-describe("role gating: manifest contract", () => {
-  it("multi-role build sets auth.required = true and lists roles in order", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_3,
-      "A.md": "# A",
-    });
-    try {
-      await build(v);
-      const m = await readJson(join(v.out, VARIANT("public", "_manifest.json"))) as Manifest;
-      assert.equal(m.auth.required, true);
-      assert.deepEqual(m.auth.roles, ["public", "patron", "dm"]);
-    } finally { await cleanup(v); }
-  });
-
-  it("single-role build sets auth.required = false (no functions deployed)", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "A.md": "# A",
-    });
-    try {
-      await build(v);
-      // Single-role builds collapse to the deploy root — no _variants prefix.
-      const m = await readJson(join(v.out, "_manifest.json")) as Manifest;
-      assert.equal(m.auth.required, false);
-      assert.deepEqual(m.auth.roles, ["public"]);
-    } finally { await cleanup(v); }
-  });
-
-  it("each .body.html entry carries meta.role for the page's tier", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_3,
-      "Open.md": "# Open",
-      "Half.md": "---\nrole: patron\n---\n# Half",
-      "Secret.md": "---\nrole: dm\n---\n# Secret",
-    });
-    try {
-      await build(v);
-      const m = await readJson(join(v.out, VARIANT("dm", "_manifest.json"))) as Manifest;
-      const byPath = new Map(m.files.filter((f) => f.path.endsWith(".body.html")).map((f) => [f.path, f.meta?.role]));
-      assert.equal(byPath.get("Open.body.html"), "public");
-      assert.equal(byPath.get("Half.body.html"), "patron");
-      assert.equal(byPath.get("Secret.body.html"), "dm");
-    } finally { await cleanup(v); }
-  });
-
-  it("higher-tier pages don't appear in lower-tier manifests", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_3,
-      "Open.md": "# Open",
-      "Secret.md": "---\nrole: dm\n---\n# Secret",
-    });
-    try {
-      await build(v);
-      const pubManifest = await readJson(join(v.out, VARIANT("public", "_manifest.json"))) as Manifest;
-      const paths = pubManifest.files.map((f) => f.path);
-      assert.ok(paths.includes("Open.body.html"));
-      assert.ok(!paths.includes("Secret.body.html"), "public manifest leaked a DM-tier page");
-      assert.ok(!paths.includes("Secret.html"));
-    } finally { await cleanup(v); }
-  });
-
-  it("manifest hash folds in meta.role so a frontmatter-only role flip triggers re-sync", async () => {
-    // The Foundry side relies on the manifest hash changing when meta does;
-    // otherwise a page's role flipping (patron → public, say) wouldn't trip
-    // the diff and the importer wouldn't re-evaluate ownership.
-    const v1 = await setupVault({
-      ".vaultrc.json": VAULTRC_3,
-      "P.md": "---\nrole: patron\n---\n# Same body",
-    });
-    const v2 = await setupVault({
-      ".vaultrc.json": VAULTRC_3,
-      "P.md": "---\nrole: dm\n---\n# Same body",
-    });
-    try {
-      await build(v1);
-      await build(v2);
-      const m1 = await readJson(join(v1.out, VARIANT("dm", "_manifest.json"))) as Manifest;
-      const m2 = await readJson(join(v2.out, VARIANT("dm", "_manifest.json"))) as Manifest;
-      const h1 = m1.files.find((f) => f.path === "P.body.html")?.hash;
-      const h2 = m2.files.find((f) => f.path === "P.body.html")?.hash;
-      assert.ok(h1 && h2, "both manifests should have a hash for P.body.html");
-      assert.notEqual(h1, h2, "role flip without body change must still bump the manifest hash");
-    } finally {
-      await cleanup(v1);
-      await cleanup(v2);
-    }
-  });
-});
 
 // ── Passthrough files (audio/video/pdf/epub) ─────────────────────────────
 

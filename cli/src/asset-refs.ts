@@ -57,7 +57,7 @@ export async function copyReferencedImages(
   imageIndex: Map<string, ImageEntry>,
   stagingDir: string,
   variantDir: string,
-): Promise<void> {
+): Promise<string[]> {
   const refs = new Set<string>();
   for (const source of visibleSources.values()) {
     for (const m of source.matchAll(EMBED_RE)) {
@@ -117,17 +117,21 @@ export async function copyReferencedImages(
       if (image) refs.add(image.outputPath);
     }
   }
+  const copied: string[] = [];
   for (const outputPath of refs) {
     const src = join(stagingDir, outputPath);
     const dst = join(variantDir, outputPath);
     await mkdir(dirname(dst), { recursive: true });
-    try { await copyFile(src, dst); }
-    catch (err) {
+    try {
+      await copyFile(src, dst);
+      copied.push(outputPath);
+    } catch (err) {
       // Source may legitimately be missing if the file is in the index but
       // wasn't compressed (e.g. quality=0 path). Surface but don't crash.
       console.warn(`  warning: could not copy image ${outputPath}: ${(err as Error).message}`);
     }
   }
+  return copied;
 }
 
 /** Collect the `@vault/...` paths a page's foundry block references, from both
@@ -205,8 +209,8 @@ export async function copyReferencedPassthroughs(
    * manifest's role: a DM-only install link does not leak its module.
    */
   manifestDownloads: ReadonlyMap<string, string> = new Map(),
-): Promise<void> {
-  if (passthroughIndex.size === 0) return;
+): Promise<string[]> {
+  if (passthroughIndex.size === 0) return [];
   const refs = new Set<string>();
   for (const source of visibleSources.values()) {
     for (const m of source.matchAll(WIKI_LINK_RE)) {
@@ -253,13 +257,17 @@ export async function copyReferencedPassthroughs(
       if (entry) refs.add(entry.outputPath);
     }
   }
+  const copied: string[] = [];
   for (const outputPath of refs) {
     const src = join(stagingDir, outputPath);
     const dst = join(variantDir, outputPath);
     await mkdir(dirname(dst), { recursive: true });
-    try { await copyFile(src, dst); }
-    catch (err) {
+    try {
+      await copyFile(src, dst);
+      copied.push(outputPath);
+    } catch (err) {
       console.warn(`  warning: could not copy ${outputPath}: ${(err as Error).message}`);
     }
   }
+  return copied;
 }

@@ -1271,9 +1271,10 @@ function isSharedAsset(pathname) {
   //   - styles.css / user.css        — build.ts (writeFile join(outputDir, ...))
   //   - _handlers.js / _handlers.css — build.ts (handler asset bundles, root)
   //   - katex/…                      — build.ts (copyKatexAssets; math vaults only)
-  //   - _foundry/importer.js            — build.ts (foundry-importer bundle)
   //   - login.html                   — build.ts (multi-role only)
   //   - favicon.ico                  — build.ts (buildFavicon)
+  //   - _foundry/{module.json,module.zip}
+  //                                  — build.ts (the installable module)
   //   - functions/_middleware.js     — build.ts (multi-role only; not served)
   // If you add another, add it both here AND in build.ts.
   //
@@ -1287,7 +1288,13 @@ function isSharedAsset(pathname) {
   if (pathname === "/_handlers.js") return true;
   if (pathname === "/_handlers.css") return true;
   if (pathname === "/katex/katex.min.css" || pathname.startsWith("/katex/fonts/")) return true;
-  if (pathname === "/_foundry/importer.js") return true;
+  // How a reader installs and updates. Foundry's installer fetches the
+  // manifest and the archive with no credential of its own, so gating these
+  // makes the module uninstallable. They carry no vault content: a manifest
+  // and an archive of two JSON files. The entry list and its version.json
+  // stay gated, under each variant.
+  if (pathname === "/_foundry/module.json") return true;
+  if (pathname === "/_foundry/module.zip") return true;
   if (pathname === "/login.html") return true;
   if (pathname === "/favicon.ico" || pathname === "/favicon.svg") return true;
   if (pathname === "/robots.txt") return true;

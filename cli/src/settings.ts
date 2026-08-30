@@ -63,13 +63,22 @@ export interface FoundrySettings {
   package: FoundryPackage;
   /** Highest role players may read; "" means none of it is player-visible. */
   player_role: string;
-  /** Module manifest for `build --module`; empty means look for module.json. */
+  /**
+   * Foundry version the vault's exported document data was authored at, e.g.
+   * "14". Empty means unstated.
+   */
+  core_version: string;
+  /** Game system the vault's Actor and Item content targets, e.g. "dnd5e". */
+  system: string;
+  /** Extra keys merged into the generated module.json. */
   module: Record<string, unknown>;
 }
 
 export const FOUNDRY_DEFAULTS: FoundrySettings = {
   package: "compendium",
   player_role: "",
+  core_version: "",
+  system: "dnd5e",
   module: {},
 };
 
@@ -99,7 +108,7 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
   vault_name: {
     default: "Vault",
     type: "string",
-    description: "Display name for the wiki (shown in header and page titles).",
+    description: "Display name for the wiki. Shown in the header and in page titles.",
   },
   image_quality: {
     default: 85,
@@ -112,38 +121,31 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     description: "Hard cap (in bytes) on a single file. Larger files are skipped.",
   },
   default_frontmatter: {
-    // A page with no `role:` is public, which is what `default_role` used to
-    // say in a setting of its own. A rule says it in the vocabulary everything
-    // else already uses, and a vault that wants the opposite polarity edits
-    // this one line rather than learning a second mechanism.
+    // Where a vault's default role comes from; there is no separate setting.
     default: [{ match: "**", data: { role: "public" } }],
     type: "rules",
     description:
-      "Frontmatter applied to pages that match a glob, before anything else reads them. "
-      + "An ordered list of { match, data }: later rules merge over earlier ones, and a page's "
-      + "own frontmatter always wins. Use it to set a baseline without editing every file — "
-      + "e.g. role for a whole vault, or 'foundry: { journal: false }' for a folder whose pages "
-      + "exist to make compendium documents rather than articles. Applied once, where "
-      + "frontmatter is read, so the wiki, the Foundry sync and the module compiler all see "
-      + "the same page.",
+      "Frontmatter applied to pages matching a glob, as an ordered list of { match, data }. "
+      + "Later rules merge over earlier ones, and a page's own frontmatter beats all of them. "
+      + "Use it to set a baseline without editing every file, such as a role for the whole vault.",
   },
   ignore: {
     default: [],
     type: "string[]",
     description:
-      "Glob patterns of files to skip when rendering and syncing. Examples: 'Templates/**', '*.draft.md', 'Private/**'. Wildcards cross hidden segments, so 'tools/**' also covers 'tools/.venv/**'.",
+      "Glob patterns of files to skip, e.g. 'Templates/**' or '*.draft.md'. Wildcards cross hidden segments, so 'tools/**' also covers 'tools/.venv/**'.",
   },
   inline_title: {
     default: true,
     type: "boolean",
     description:
-      "Inject the page title as an <h1> at the top. Set false if your notes already start with a '# Title' heading and you don't want the duplicate.",
+      "Inject the page title as an <h1>. Set false if your notes already start with their own '# Title'.",
   },
   default_image_width: {
     default: "300px",
     type: "string",
     description:
-      "CSS width applied to images embedded without an explicit '|N' size hint. Any valid CSS dimension works (300px, 50vw, 100%, etc). Set empty string to leave images at natural size.",
+      "CSS width for images embedded without a '|N' size hint (300px, 50vw, 100%). Empty leaves them at natural size.",
   },
   center_images: {
     default: true,
@@ -155,79 +157,84 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     default: "normal",
     type: "string",
     description:
-      "Internal-link preview behavior on pointer (desktop) devices: 'normal' (the default) hovers a preview popover and navigates on click; 'sticky' hovers a preview and pins it open on click (with a 'Go to page' link) instead of navigating; 'none' disables previews entirely so links just navigate.",
+      "Link previews on desktop: 'normal' hovers a preview and navigates on click, 'sticky' pins the preview open on click instead, 'none' disables them.",
   },
   preview_mode_mobile: {
     default: "sticky",
     type: "string",
     description:
-      "Internal-link preview behavior on touch (mobile) devices, where there is no hover: 'sticky' (the default) shows a preview on tap with a 'Go to page' link instead of navigating; 'none' disables previews so taps just navigate. ('normal' has no hover to trigger it on touch and behaves like 'none'.)",
+      "Link previews on touch, where there is no hover: 'sticky' shows a preview on tap with a 'Go to page' link, 'none' disables them. 'normal' behaves like 'none' here.",
   },
   accent_color: {
     default: "",
     type: "string",
     description:
-      "Override the accent color (links, headings, highlights). Any CSS color works: '#a8201a', 'crimson', 'rgb(168 32 26)'. Empty = use the built-in scarlet.",
+      "Accent color for links, headings and highlights. Any CSS color. Empty uses the built-in scarlet.",
   },
   bg_color: {
     default: "",
     type: "string",
     description:
-      "Override the background color for the light palette. Any CSS color works: '#f4ecd8', 'wheat', 'rgb(244 236 216)'. Empty = use the built-in parchment.",
+      "Background color for the light palette. Any CSS color. Empty uses the built-in parchment.",
   },
   accent_color_dark: {
     default: "",
     type: "string",
     description:
-      "Override the accent color for the dark palette. Any CSS color works. Empty = use the built-in dark accent (a brighter scarlet).",
+      "Accent color for the dark palette. Empty uses the built-in brighter scarlet.",
   },
   bg_color_dark: {
     default: "",
     type: "string",
     description:
-      "Override the background color for the dark palette. Any CSS color works. Empty = use the built-in deep warm dark.",
+      "Background color for the dark palette. Empty uses the built-in deep warm dark.",
   },
   theme: {
     default: "auto",
     type: "string",
     description:
-      "Default colour theme: 'auto' (follows the visitor's OS preference), 'light' (parchment + scarlet), or 'dark'. Visitors can flip via the sidebar toggle; their choice persists in localStorage.",
+      "Default theme: 'auto' follows the visitor's OS setting, or 'light' or 'dark'. Visitors can flip it from the sidebar and their choice persists.",
   },
   favicon: {
     default: "",
     type: "string",
     description:
-      "Vault-relative path to an image used as the site favicon (png/jpg/svg/webp). Empty = generated default with the vault's accent color.",
+      "Vault-relative path to a favicon image (png/jpg/svg/webp). Empty generates one from the accent color.",
   },
   auto_image: {
     default: true,
     type: "boolean",
     description:
-      "When a page has no 'image:' frontmatter, fall back to the first embedded image in the body. Used for OG/Twitter social cards, Bases card covers, and Foundry actor/item reskins. Set false to opt out.",
+      "Fall back to a page's first embedded image when it has no 'image:' frontmatter. Used for social cards, Bases card covers, and Foundry art.",
   },
   include_unknown_files: {
     default: false,
     type: "boolean",
     description:
-      "Ship files with unrecognized extensions to every deploy variant. Default false skips them (with a warning) so a stray file in your vault can't accidentally bypass role gating. Recognized media types (audio/video/pdf/epub) are reference-gated like images regardless of this setting.",
+      "Ship files with unrecognized extensions. Default false skips them with a warning, so a stray file cannot bypass role gating. Recognized media (audio, video, pdf, epub) is reference-gated either way.",
   },
   foundry: {
     default: FOUNDRY_DEFAULTS,
     type: "object",
     description:
-      "Everything this vault says about Foundry VTT. 'package' is how it is delivered: 'adventure' packages it as one Adventure document, so importing it once makes every internal link resolve to the documents you imported \u2014 what a campaign wants; 'compendium' (the default) produces browsable packs, one per document type, which is what a reference library wants; 'none' ships no integration at all and the deploy drops the importer bundle and sync endpoints. 'player_role' is the highest role your players may read: pages at that role or below import player-visible, everything above stays GM-only, and empty (the default) means none of it is. 'module' is the manifest for 'vaults build --module' \u2014 anything Foundry accepts in a module.json, with only 'packs' written for you; leave it empty and the compiler looks for a module.json at the vault root or in foundry/ instead.",
+      "Foundry VTT integration. "
+      + "'package': 'adventure' ships the vault as one Adventure document you import once, 'compendium' (the default) as browsable packs, one per document type, 'none' ships nothing. "
+      + "'player_role': the highest role players may read. Pages at or below it arrive player-visible; empty (the default) means none are. "
+      + "'system': the game system your Actor and Item content targets, e.g. dnd5e. "
+      + "'core_version': the full quoted Foundry version your exported Scene / Actor JSON came from, e.g. '14.359'. A bare '14' sorts before every release in that generation and costs a Scene its levels. "
+      + "'module': extra keys merged into the module.json the vault serves, such as 'authors'."
   },
   site_url: {
     default: "",
     type: "string",
     description:
-      "Public base URL this vault is served from, e.g. 'https://notes.example.com'. Set it and the build emits sitemap.xml and robots.txt so search engines can index the site; leave it empty and neither is written. Only pages in the default (lowest) role are listed — a sitemap naming gated pages would advertise that they exist.",
+      "Public base URL this vault is served from, e.g. 'https://notes.example.com'. Set it and the build writes sitemap.xml and robots.txt; leave it empty and neither is written. Only default-role pages are listed, so a sitemap cannot advertise gated ones.",
   },
   footer: {
     default: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com).",
     type: "string",
     description:
-      "Markdown text rendered in a small <footer> at the bottom of every page. Supports inline markdown (links, *italic*, **bold**). Set to an empty string to hide the footer entirely.",
+      "Markdown rendered in a <footer> on every page. Inline markdown works. Empty hides the footer.",
   },
 
 };
@@ -339,6 +346,32 @@ function normalizeFoundry(values: Settings, warnings: string[]): void {
   if (role !== undefined && typeof role !== "string") {
     warnings.push(`settings.md: 'foundry.player_role' should be a role name, got ${describeType(role)}.`);
   }
+  const core = raw["core_version"];
+  if (core !== undefined && typeof core !== "string" && typeof core !== "number") {
+    warnings.push(`settings.md: 'foundry.core_version' should be a Foundry version like 14.359, got ${describeType(core)}.`);
+  } else if (typeof core === "number") {
+    // YAML reads an unquoted 14.350 as the number 14.35, which is a different
+    // version, and 14 as a generation. Quoting is the only way to say either
+    // one exactly.
+    warnings.push(
+      `settings.md: 'foundry.core_version' is unquoted, so YAML read it as the number ${core}.`
+      + ` Quote it, as '14.359': unquoted, a trailing zero is lost and a bare generation is ambiguous.`);
+  } else if (typeof core === "string" && /^\d+$/.test(core.trim())) {
+    // A bare generation sorts before every patch-level migration inside it, so
+    // Foundry treats the data as older than anything released that generation
+    // and runs migrations written for the generation before. `14` is how a
+    // Scene loses its levels: `migrateLevels` is registered at 14.353 and
+    // rebuilds `levels` from a v13 root background that a v14 export does not
+    // have.
+    warnings.push(
+      `settings.md: 'foundry.core_version' is '${String(core)}', a generation rather than a version.`
+      + ` Foundry sorts that before every release in it and runs migrations your data is already past,`
+      + ` which costs a Scene its levels. Use the full version you exported from, e.g. 14.359.`);
+  }
+  const sys = raw["system"];
+  if (sys !== undefined && typeof sys !== "string") {
+    warnings.push(`settings.md: 'foundry.system' should be a system id like dnd5e, got ${describeType(sys)}.`);
+  }
   const module = raw["module"];
   if (module !== undefined && !isPlainObject(module)) {
     warnings.push(`settings.md: 'foundry.module' should be a manifest object, got ${describeType(module)}.`);
@@ -348,6 +381,9 @@ function normalizeFoundry(values: Settings, warnings: string[]): void {
     package: FOUNDRY_PACKAGES.includes(pkg as FoundryPackage)
       ? pkg as FoundryPackage : FOUNDRY_DEFAULTS.package,
     player_role: typeof role === "string" ? role : FOUNDRY_DEFAULTS.player_role,
+    system: typeof sys === "string" && sys ? sys : FOUNDRY_DEFAULTS.system,
+    core_version: typeof core === "string" ? core
+      : typeof core === "number" ? String(core) : FOUNDRY_DEFAULTS.core_version,
     module: isPlainObject(module) ? module as Record<string, unknown> : {},
   };
 }
@@ -361,7 +397,7 @@ function matchesType(v: unknown, t: SettingType): boolean {
       && typeof (item as Record<string, unknown>)["match"] === "string"
       // A plain object: `typeof` also admits null and arrays, which would pass
       // validation here and then supply nothing (or index keys) downstream.
-      && isPlainObject((item as Record<string, unknown>)["patch"]));
+      && isPlainObject((item as Record<string, unknown>)["data"]));
   }
   return typeof v === t;
 }

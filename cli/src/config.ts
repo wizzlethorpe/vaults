@@ -34,6 +34,13 @@ export interface VaultConfig {
   rolePasswords: Record<string, string>;
 
   /**
+   * The version last assigned to the vault's Foundry module, with the
+   * fingerprint of the manifest it describes. Kept so the version only moves
+   * when the module itself does, rather than on every push.
+   */
+  foundryModule?: { version: string; hash: string };
+
+  /**
    * OAuth provider overlays (optional, additive). Roles always have a password
    * gate; if a role's name appears in any provider's `tiers`, members whose
    * pledge / membership grants that tier can ALSO authenticate via the
