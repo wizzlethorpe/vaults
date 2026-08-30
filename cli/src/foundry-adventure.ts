@@ -19,6 +19,8 @@ export interface AdventureOptions {
   name: string;
   /** Shown on the import dialog. */
   description?: string;
+  /** Stamped as the wrapper's own _stats.coreVersion, when the vault says. */
+  coreVersion?: string;
   /** Deterministic id for the folder of `type` at `path`. */
   folderId: (type: string, path: string) => string;
 }
@@ -98,6 +100,7 @@ export function asAdventure(
       pack: opts.pack,
       patch: {
         name: opts.name,
+        ...(opts.coreVersion ? { _stats: { coreVersion: opts.coreVersion } } : {}),
         ...(opts.description ? { description: opts.description } : {}),
         ...(folders.length ? { folders } : {}),
         ...content,

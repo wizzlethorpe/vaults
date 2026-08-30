@@ -4,7 +4,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DOC_TYPES } from "./foundry-types.js";
-import { documentTypeOf, firstBase } from "./foundry-grafts.js";
+import { documentFolder, documentTypeOf, firstBase } from "./foundry-grafts.js";
 import type { PageMeta } from "./render/types.js";
 
 export function warnFoundryDocCollisions(pages: PageMeta[]): void {
@@ -20,10 +20,7 @@ export function warnFoundryDocCollisions(pages: PageMeta[]): void {
     const docType = documentTypeOf(spec);
     if (!docType || !DOC_TYPES[docType]) continue;
 
-    const override = (fo as Record<string, unknown>)["folder"];
-    const folder = typeof override === "string" && override.trim()
-      ? override.trim().replace(/^\/+|\/+$/g, "")
-      : p.path.split("/").slice(0, -1).join("/");
+    const folder = documentFolder({ path: p.path, foundry: fo as { folder?: string } });
     const name = p.title || p.path.split("/").pop()!.replace(/\.md$/i, "");
 
     const key = `${docType}\u0000${folder}\u0000${name}`;

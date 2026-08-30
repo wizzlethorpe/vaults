@@ -558,6 +558,8 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     .slice(0, 10);
 
   const foundryEnabled = settings.values.foundry.package !== "none";
+  const foundryPackaging: "compendium" | "adventure" =
+    settings.values.foundry.package === "adventure" ? "adventure" : "compendium";
 
   // Favicon; either user-supplied via settings.favicon, or a generated
   // default with the vault's first letter in accent on the theme background.
@@ -726,7 +728,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
           packs: packsFor(foundryModuleId),
           coreVersion: settings.values.foundry.core_version,
           system: settings.values.foundry.system,
-          packaging: settings.values.foundry.package === "adventure" ? "adventure" : "compendium",
+          packaging: foundryPackaging,
           title: opts.vaultName,
           assets: Object.fromEntries(assetHashes),
         },
@@ -796,7 +798,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       title: opts.vaultName,
       vaultUrl: opts.siteUrl,
       systemId: settings.values.foundry.system,
-      packaging: settings.values.foundry.package === "adventure" ? "adventure" : "compendium",
+      packaging: foundryPackaging,
       extra: settings.values.foundry.module as Record<string, unknown>,
     });
     const stamped = moduleVersion(manifest, cfg.foundryModule);

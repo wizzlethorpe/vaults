@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  buildGrafts, contentHash, journalEntries, documentEntries, documentTypeOf, visibility,
+  buildGrafts, contentHash, journalEntries, documentEntries, documentTypeOf, observable,
   entryId, pageId, instanceId, folderOf, pagesFrom, linkIndex, withFolderIndexes, type Page, type GraftOptions,
 } from "../src/foundry-grafts.js";
 
@@ -24,28 +24,19 @@ const opts: GraftOptions = {
 const page = (path: string, over: Partial<Page> = {}): Page =>
   ({ path, title: path.split("/").pop()!.replace(/\.md$/, ""), role: "public", ...over });
 
-describe("visibility", () => {
-  it("carries the build role's own body, with player visibility as ownership", () => {
-    // The GM's copy of a player-visible page keeps its DM callouts; those hide
-    // from players as secret sections (see wrapSecrets), not by serving the GM
-    // a lesser body.
-    const v = visibility(page("Characters/Marlo.md", { role: "public" }), opts);
-    assert.deepEqual(v, { variant: "dm", ownership: 2 });
+describe("observable", () => {
+  it("marks a page at or below the player ceiling observable", () => {
+    assert.equal(observable(page("Characters/Marlo.md", { role: "public" }), opts), true);
+    assert.equal(observable(page("x.md", { role: "player" }), opts), true);
   });
 
-  it("keeps anything above the player ceiling hidden, from the GM's variant", () => {
-    const v = visibility(page("Secrets/Rot.md", { role: "dm" }), opts);
-    assert.deepEqual(v, { variant: "dm", ownership: 0 });
-  });
-
-  it("treats a role at the ceiling as visible", () => {
-    assert.equal(visibility(page("x.md", { role: "player" }), opts).ownership, 2);
+  it("keeps anything above the player ceiling hidden", () => {
+    assert.equal(observable(page("Secrets/Rot.md", { role: "dm" }), opts), false);
   });
 
   it("treats an unknown role as privileged, not public", () => {
     // A typo in a role name must fail closed.
-    assert.deepEqual(visibility(page("x.md", { role: "typo" }), opts),
-      { variant: "dm", ownership: 0 });
+    assert.equal(observable(page("x.md", { role: "typo" }), opts), false);
   });
 });
 
@@ -299,10 +290,9 @@ describe("an unset player role", () => {
     // "Empty means none of it is [player-visible]" is what the setting
     // documents, and it is the only safe reading: a vault that has not opted
     // in must not put content in front of the table.
-    const { visibility, journalEntries } = await import("../src/foundry-grafts.js");
     const shut = { ...opts, playerRole: "" };
 
-    assert.deepEqual(visibility(page("A.md", { role: "public" }), shut), { variant: "dm", ownership: 0 });
+    assert.equal(observable(page("A.md", { role: "public" }), shut), false);
     const [entry] = journalEntries([page("A.md", { role: "public" })], shut);
     assert.equal((entry!.patch["ownership"] as any).default, 0);
   });
@@ -464,11 +454,6 @@ describe("_stats.coreVersion", () => {
     const { file } = buildGrafts([sourced], opts2);
     const actor = file.entries.find((e) => e.type === "Actor")!;
     assert.equal(actor.patch["_stats"], undefined);
-  });
-
-  it("records the version in the file, so a reader can see what it was built from", () => {
-    assert.equal(buildGrafts([doc()], opts2).file.coreVersion, "14");
-    assert.equal(buildGrafts([doc()], opts).file.coreVersion, undefined);
   });
 });
 

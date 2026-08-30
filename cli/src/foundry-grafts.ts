@@ -25,12 +25,6 @@ export interface GraftEntry {
 export interface GraftsFile {
   format: 1;
   /**
-   * The Foundry version these documents were authored at, when the vault says.
-   * Recorded so a reader can see what a build was made from; the value that
-   * matters is the one stamped on each document's own `_stats`.
-   */
-  coreVersion?: string;
-  /**
    * Content hash per `"<variant>/<path>"`, for every asset this file can
    * reach. What lets a reader tell a file it already downloaded from one that
    * only shares its name: nothing else about a reference changes when the
@@ -134,19 +128,15 @@ function defaulted(
  * reported and ignored rather than passed on: Foundry would refuse the document
  * and the page would simply not appear.
  */
-function pinnedId(patch: Record<string, unknown> | undefined, warnings: string[], path: string): string | null {
+function pinnedId(
+  patch: Record<string, unknown> | undefined, report?: { warnings: string[]; path: string },
+): string | null {
   const id = patch?.["_id"];
-  if (id === undefined || id === null) return null;
-  const pinned = pinnedIdOf(patch);
-  if (pinned) return pinned;
-  warnings.push(`${path}: foundry.patch._id must be 16 letters or digits, got ${JSON.stringify(id)}; using the derived id`);
+  if (typeof id === "string" && /^[A-Za-z0-9]{16}$/.test(id)) return id;
+  if (id !== undefined && id !== null) {
+    report?.warnings.push(`${report.path}: foundry.patch._id must be 16 letters or digits, got ${JSON.stringify(id)}; using the derived id`);
+  }
   return null;
-}
-
-/** `patch._id` when it is a well-formed pin, with no warning: the emitter warns once. */
-function pinnedIdOf(patch: Record<string, unknown> | undefined): string | null {
-  const id = patch?.["_id"];
-  return typeof id === "string" && /^[A-Za-z0-9]{16}$/.test(id) ? id : null;
 }
 
 /** Every usable UUID in a `foundry.source`, which may be a list, in order. */
@@ -215,17 +205,15 @@ export const folderOf = (path: string): string => {
 };
 
 /**
- * Whether players may see a page's document, and whose body it carries.
- *
- * The body is always the build role's own rendering — the reader of this file
- * cannot fetch any other. A player-visible page's body carries the player
- * render alongside it, inside the file (see dualVariantBody).
+ * Whether players may see a page's document. An unknown role fails closed.
+ * The body is always the build role's own rendering — the reader of this
+ * file cannot fetch any other; a player-visible page's body carries the
+ * player render alongside it, inside the file (see dualVariantBody).
  */
-export function visibility(page: Page, opts: GraftOptions): { variant: string; ownership: number } {
+export function observable(page: Page, opts: GraftOptions): boolean {
   const rank = (role: string) => opts.roles.indexOf(role);
   const ceiling = rank(opts.playerRole);
-  const observable = ceiling >= 0 && rank(page.role) >= 0 && rank(page.role) <= ceiling;
-  return { variant: opts.buildRole, ownership: observable ? OBSERVER : NONE };
+  return ceiling >= 0 && rank(page.role) >= 0 && rank(page.role) <= ceiling;
 }
 
 
@@ -289,10 +277,18 @@ function vaultIdTargets(pages: Page[], opts: GraftOptions): VaultIdTargets {
     const base = firstBase(p.foundry?.source);
     const type = base ? documentTypeOf(base) : null;
     if (type && opts.packs[type]) {
-      docs.set(p.path, pinnedIdOf(p.foundry?.patch) ?? instanceId(opts.vaultId, p.path));
+      docs.set(p.path, pinnedId(p.foundry?.patch) ?? instanceId(opts.vaultId, p.path));
     }
   }
   return { docs, journals };
+}
+
+/** Where a page's document files: its foundry.folder override, or its own directory. */
+export function documentFolder(page: { path: string; foundry?: { folder?: string } | null }): string {
+  const override = page.foundry?.folder;
+  return typeof override === "string" && override.trim()
+    ? override.trim().replace(/^\/+|\/+$/g, "")
+    : folderOf(page.path);
 }
 
 /** `"Characters/Nobles/Marlo.md"` to `"Characters/Nobles"`, or undefined at the root. */
@@ -328,14 +324,14 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
     const sorted = [...group].sort((a, b) =>
       Number(isIndex(b)) - Number(isIndex(a)) || a.path.localeCompare(b.path));
     const journalPages = sorted.map((page, i) => {
-      const { variant, ownership } = visibility(page, opts);
+      const ownership = observable(page, opts) ? OBSERVER : NONE;
       return {
         _id: pageId(opts.vaultId, page.path),
         name: page.title,
         type: "text",
         sort: (i + 1) * 100,
         title: { show: false, level: 1 },
-        text: { format: 1, content: `@vaults/${variant}/${page.path.replace(/\.md$/i, "")}.foundry.html` },
+        text: { format: 1, content: `@vaults/${opts.buildRole}/${page.path.replace(/\.md$/i, "")}.foundry.html` },
         ownership: { default: ownership },
       };
     });
@@ -392,7 +388,7 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
       continue;
     }
 
-    const { variant, ownership } = visibility(page, opts);
+    const ownership = observable(page, opts) ? OBSERVER : NONE;
     const subtype = subtypeOf(base);
     const resolved = {
       ...page,
@@ -402,16 +398,14 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
       name: page.title,
       ...(subtype ? { type: subtype } : {}),
       ...defaulted(resolveVaultIds(spec.patch ?? {}, opts, targets, warnings, page.path),
-        type, resolved, variant, opts.system ?? "dnd5e"),
+        type, resolved, opts.buildRole, opts.system ?? "dnd5e"),
       // Over the patch, not under it: ownership is role gating, and a page that
       // could overrule its own would be a page that could publish itself.
       ownership: { default: ownership },
-    }, variant);
-    const folder = typeof spec.folder === "string" && spec.folder.trim()
-      ? spec.folder.trim().replace(/^\/+|\/+$/g, "")
-      : folderOf(page.path);
+    }, opts.buildRole);
+    const folder = documentFolder(page);
     entries.push({
-      id: pinnedId(spec.patch, warnings, page.path) ?? instanceId(opts.vaultId, page.path),
+      id: pinnedId(spec.patch, { warnings, path: page.path }) ?? instanceId(opts.vaultId, page.path),
       type,
       pack,
       ...(graftFolder(folder) ? { folder } : {}),
@@ -472,7 +466,7 @@ export function linkIndex(pages: Page[], opts: GraftOptions): LinkIndex {
     if (type && pack) {
       target.doc = {
         type, pack,
-        id: pinnedIdOf(page.foundry?.patch) ?? instanceId(opts.vaultId, page.path),
+        id: pinnedId(page.foundry?.patch) ?? instanceId(opts.vaultId, page.path),
       };
     }
     if (page.foundry?.journal !== false) {
@@ -532,17 +526,17 @@ export function buildGrafts(
   const shaped = opts.packaging === "adventure"
     ? asAdventure(typed, {
       id: instanceId(opts.vaultId, "\u0000adventure"),
-      pack: opts.packs["Adventure"] ?? `${opts.vaultId}-adventure`,
+      pack: opts.packs["Adventure"]!,
       name: opts.title ?? opts.vaultId,
+      coreVersion: opts.coreVersion,
       folderId: (type, path) => det("folder", `${opts.vaultId}:${type}:${path}`),
     })
     : { entries: typed, warnings: [] };
-  const entries = stampCoreVersion(shaped.entries, opts.coreVersion ?? "");
+  const entries = shaped.entries;
   const assets = opts.assets && Object.keys(opts.assets).length ? opts.assets : undefined;
   return {
     file: {
       format: 1,
-      ...(opts.coreVersion ? { coreVersion: opts.coreVersion } : {}),
       ...(assets ? { assets } : {}),
       // Finished by the caller once the bodies exist; see contentHash().
       contentHash: "",
