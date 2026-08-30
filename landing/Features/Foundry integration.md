@@ -347,27 +347,25 @@ Roles still work, in the world where Foundry can enforce them. Each document car
 
 ## Everything Foundry, under `foundry:`
 
-A vault says three things about Foundry, in `settings.md`, in the same vocabulary a page uses for its own `foundry:` block:
+A vault says what it needs to about Foundry in `settings.md`, in the same vocabulary a page uses for its own `foundry:` block:
 
 ```yaml
 foundry:
-  package: adventure      # none | compendium | adventure
+  package: compendium     # none | compendium | adventure
   player_role: public     # highest role players may read; empty = none of it
-  module:                 # optional; the manifest for `vaults build --module`
-    id: my-module
-    version: 1.0.0
+  core_version: '14.359'  # the full Foundry version your exported JSON came from
+  module:                 # optional; extra keys for the module.json served
+    authors:
+      - name: You
 ```
 
-Compile it with:
+## `foundry.core_version`: what your document data is
 
-```bash
-vaults build . --module              # writes downloads/module.json + the zip
-vaults build . --module ./dist       # somewhere else, vault-relative
-```
+Only matters if pages carry exported Scene or Actor JSON. Foundry requires every document to record the version it was written for, refuses one that does not, and builds a degraded copy in its place: a Scene arrives having lost every level it had, and nothing says so.
 
-The directory has to be inside the vault, because the deploy is what serves the zip and the manifest's own `download` URL points at it. A module whose manifest names its own download URL (a GitHub release, say) is built in place beside that manifest instead, and the directory is ignored.
+Set it to the full version you **exported from**, not the one you run, and quote it. Foundry migrates anything older, which is what you want; claiming to be current skips a migration old data needs.
 
-`module` is only needed if you compile a downloadable module. Anything Foundry accepts in a `module.json` goes in it, and only `packs` is written for you — `title` defaults to your `vault_name` and `compatibility` to v13+/v14. A module with its own scripts, styles or translations wants a real `module.json` at the vault root or in `foundry/` instead, and the compiler prefers that file when both exist.
+A bare generation like `'14'` is worse than leaving it unset: it sorts before every release in that generation, so Foundry runs migrations written for versions your data is already past. `migrateLevels` is one of them, and it replaces a Scene's levels outright.
 
 ## `foundry.player_role`: what your players can read
 

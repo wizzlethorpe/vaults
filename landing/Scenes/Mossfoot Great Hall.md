@@ -6,7 +6,6 @@ foundry:
   # reference this Scene as `Scene.mossfootHall0001` directly, without
   # computing the SHA1 we'd otherwise derive from the page path. Stable
   # across renames and across vault redeploys.
-  id: mossfootHall0001
   source: Scene
   # `@vault/PATH` strings inside foundry.patch are rewritten at sync time
   # to local Foundry cache URLs (worlds/<id>/vaults-cache/<vault-id>/PATH).
@@ -15,6 +14,7 @@ foundry:
   # the centre. Lights / overlay tiles / Levels-module metadata from the
   # original export were stripped to keep the demo legible.
   patch:
+    _id: mossfootHall0001
     name: Mossfoot Great Hall
     navigation: true
     width: 3780

@@ -61,6 +61,8 @@ include_unknown_files: false
 foundry:
   package: compendium
   player_role: ''
+  system: dnd5e
+  core_version: '14.359'
   module: {}
 
 # Public base URL this vault is served from, e.g. 'https://notes.example.com'. Set it and the build emits sitemap.xml and robots.txt so search engines can index the site; leave it empty and neither is written. Only pages in the default (lowest) role are listed — a sitemap naming gated pages would advertise that they exist.
