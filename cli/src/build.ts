@@ -744,8 +744,13 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       const playerDir = collapseToRoot
         ? opts.outputDir
         : join(opts.outputDir, "_variants", playerRole);
+      // Only bodies an entry references: a page kept out of Foundry, or one
+      // whose prose goes nowhere, must not move the hash and prompt a rebuild.
+      const referenced = new Set(
+        [...JSON.stringify(grafts.file.entries).matchAll(/@vaults\/[^/"]+\/((?:[^"\\]|\\.)+?)\.foundry\.html/g)]
+          .map((m) => JSON.parse(`"${m[1]}"`) + ".md"));
       const bodyHashes = new Map<string, string>();
-      await pMap(graftPages, concurrency, async (page) => {
+      await pMap(graftPages.filter((p) => referenced.has(p.path)), concurrency, async (page) => {
         const base = page.path.replace(/\.md$/i, "");
         const body = await readFile(join(variantDir, `${base}.body.html`), "utf8");
         const gm = toFoundryHtml(body, grafts.links, role);

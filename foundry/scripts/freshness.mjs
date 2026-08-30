@@ -32,16 +32,9 @@ async function fetchHash(vault) {
   }
 }
 
-/**
- * Whether to offer a rebuild.
- *
- * Both hashes have to exist: an unreadable deploy is not new content, and a
- * module never built through here defers to graft's own unbuilt prompt rather
- * than asking twice on the same load.
- */
-export function shouldPrompt(fetched, recorded, hasUnbuilt) {
-  if (hasUnbuilt || !fetched) return false;
-  return fetched !== recorded;
+/** Whether the deploy moved past what this world last handled. */
+export function shouldPrompt(fetched, recorded) {
+  return !!fetched && fetched !== recorded;
 }
 
 async function record(moduleId, hash) {
@@ -74,8 +67,13 @@ export async function promptForUpdates() {
       fetched = await fetchHash({ url: marker.vault, token, gated: !!marker.gated });
       if (fetched) break;
     }
-    const hasUnbuilt = (await graft.unbuilt(module.id).catch(() => [])).length > 0;
-    if (!shouldPrompt(fetched, recorded[module.id], hasUnbuilt)) continue;
+    if (!shouldPrompt(fetched, recorded[module.id])) continue;
+    // graft's own prompt covers a module never built; record the hash so
+    // the load after that build does not ask again for the same push.
+    if ((await graft.unbuilt(module.id).catch(() => [])).length > 0) {
+      await record(module.id, fetched);
+      continue;
+    }
 
     const build = await foundry.applications.api.DialogV2.confirm({
       window: { title: game.i18n.format("VAULTS.Fresh.Title", { module: module.title }) },

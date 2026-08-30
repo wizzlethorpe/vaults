@@ -737,6 +737,26 @@ describe("role gating: wikilinks across tiers", () => {
   });
 });
 
+describe("role gating: content hash reach", () => {
+  it("does not move for a prose edit on a page Foundry never sees", async () => {
+    // A rebuild prompt for a change nobody at the table can see is a prompt
+    // people learn to dismiss.
+    const SETTINGS = "---\nimage_quality: 0\nfoundry:\n  player_role: public\n  core_version: '14.359'\n---\n";
+    const files = {
+      "settings.md": SETTINGS, ".vaultrc.json": VAULTRC_3,
+      "Town.md": "---\nrole: public\n---\nThe town.\n",
+      "Scratch.md": "---\nrole: dm\nfoundry:\n  sync: false\n---\nDraft one.\n",
+    };
+    const a = await setupVault(files);
+    const b = await setupVault({ ...files, "Scratch.md": "---\nrole: dm\nfoundry:\n  sync: false\n---\nDraft two.\n" });
+    try {
+      await build(a); await build(b);
+      const hash = async (v: Vault) => (await readJson(join(v.out, VARIANT("dm", "_foundry/version.json"))) as { content: string }).content;
+      assert.equal(await hash(a), await hash(b));
+    } finally { await cleanup(a); await cleanup(b); }
+  });
+});
+
 describe("role gating: dual-variant Foundry bodies", () => {
   // The GM's render of a player-visible page can differ beyond its callouts —
   // a base row for a DM-only page, a link that only resolves for the GM. So

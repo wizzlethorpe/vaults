@@ -39,11 +39,41 @@ describe("vaultKey", () => {
     assert.notEqual(vaultKey("https://a.example.com"), vaultKey("https://b.example.com"));
   });
 
-  test("is stable across paths and ports on the same host", () => {
-    assert.equal(vaultKey("https://a.example.com/x"), vaultKey("https://a.example.com/y"));
+  test("keeps two vaults on one host apart, and ignores the port", () => {
+    // Both would otherwise share one cache and one placed.json, and a file at
+    // the same variant/path in each would overwrite the other's while the
+    // record said it was placed.
+    assert.notEqual(vaultKey("https://a.example.com/x"), vaultKey("https://a.example.com/y"));
+    assert.equal(vaultKey("https://a.example.com:8443/x"), vaultKey("https://a.example.com/x"));
   });
 
   test("produces something usable from a URL it cannot parse", () => {
     assert.equal(vaultKey("not a url"), "vault");
+  });
+});
+
+describe("enqueueFor", () => {
+  // graft runs providers from a queue, and Moulinette runs before this one,
+  // when the entries are still the marker line. Without this, every
+  // @moulinette/ ambience in a vault scene 404s at the table.
+  test("sends Moulinette round again when the entries reference it", async () => {
+    const { __test } = await import("../scripts/provider.mjs");
+    const entries = [{ id: "s1", type: "Scene", pack: "p", patch: {
+      sounds: [{ path: "@moulinette/2307/Ambiences/Basic/Forest/Calm Forest.ogg" }],
+    } }];
+    assert.deepEqual(__test.enqueueFor(entries), ["moulinette"]);
+  });
+
+  test("reaches references nested inside an Adventure", async () => {
+    const { __test } = await import("../scripts/provider.mjs");
+    const entries = [{ id: "a", type: "Adventure", pack: "p", patch: {
+      scenes: [{ _id: "s1", sounds: [{ path: "@moulinette/2697/Ambiences/Basic/Water/Large River.ogg" }] }],
+    } }];
+    assert.deepEqual(__test.enqueueFor(entries), ["moulinette"]);
+  });
+
+  test("enqueues nothing for a vault that uses no Moulinette content", async () => {
+    const { __test } = await import("../scripts/provider.mjs");
+    assert.deepEqual(__test.enqueueFor([{ id: "s1", patch: { sounds: [{ path: "@vaults/DM/a.ogg" }] } }]), []);
   });
 });

@@ -39,10 +39,12 @@ function bar() {
  */
 const isMarker = (entry) => typeof entry?.vault === "string" && !!entry.vault && !entry.id;
 
-/** Stable directory name for a vault's cache, from its origin. */
+/** Stable directory name for a vault's cache: host and path, so two vaults on one host stay apart. */
 function vaultKey(vaultUrl) {
-  try { return new URL(vaultUrl).hostname.replace(/[^a-z0-9]+/gi, "-").toLowerCase(); }
-  catch { return "vault"; }
+  try {
+    const u = new URL(vaultUrl);
+    return `${u.hostname}${u.pathname}`.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+  } catch { return "vault"; }
 }
 
 async function fetchEntries(vault) {
@@ -158,6 +160,17 @@ async function resolveUuids(uuids) {
   return out;
 }
 
+/**
+ * The providers to run again over what this one produced.
+ *
+ * graft runs providers from a queue, not to a fixed point: Moulinette ran
+ * before this provider and saw only the marker line. The one producing the
+ * references is the one that knows to send it round again.
+ */
+function enqueueFor(entries) {
+  return JSON.stringify(entries).includes("@moulinette/") ? ["moulinette"] : [];
+}
+
 export function vaultsProvider() {
   return {
     id: PROVIDER_ID,
@@ -205,9 +218,9 @@ export function vaultsProvider() {
         out.push(...substituteRefs(patched, resolved));
       }
 
-      return { entries: out, warnings };
+      return { entries: out, warnings, enqueue: enqueueFor(out) };
     },
   };
 }
 
-export const __test = { isMarker, vaultKey, fetchEntries, bar, resolveRefs };
+export const __test = { isMarker, vaultKey, fetchEntries, bar, resolveRefs, enqueueFor };

@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 import {
   buildGrafts, contentHash, journalEntries, documentEntries, documentTypeOf, visibility,
-  entryId, pageId, folderOf, pagesFrom, linkIndex, type Page, type GraftOptions,
+  entryId, pageId, instanceId, folderOf, pagesFrom, linkIndex, type Page, type GraftOptions,
 } from "../src/foundry-grafts.js";
 
 const opts: GraftOptions = {
@@ -549,6 +549,59 @@ describe("map-note references", () => {
     };
     const { warnings } = documentEntries([p], sceneOpts);
     assert.ok(warnings.some((w) => w.includes("Nowhere/Gone")), warnings.join("; "));
+  });
+
+  it("fills a token's actorId from the actor page it names, pinned id and all", () => {
+    // Tokens on a title-card scene, actor-linked to premade PCs. The old
+    // sync's ids matched nothing and every click said the actor no longer
+    // exists.
+    const macy: Page = {
+      path: "Actors/Macy Arla.md", title: "Macy Arla", role: "dm",
+      foundry: { source: "Actor:character", patch: { _id: "marloMacyArla000" } },
+    };
+    const scene: Page = {
+      path: "S.md", title: "S", role: "dm",
+      foundry: { source: "Scene", patch: { tokens: [
+        { name: "Macy", actorId: "@vault/Actors/Macy Arla", actorLink: true },
+        { name: "Wolf", actorId: "@vault/Bestiary/Wolf" },
+      ] } },
+    };
+    const { entries } = documentEntries([macy, scene], sceneOpts);
+    const tokens = entries.find((e) => e.type === "Scene")!.patch["tokens"] as Array<Record<string, unknown>>;
+    assert.equal(tokens[0]!["actorId"], "marloMacyArla000", "pinned id wins");
+    assert.equal(tokens[1]!["actorId"], instanceId("marlo", "Bestiary/Wolf.md"), "derived otherwise");
+  });
+
+  it("never writes resolved ids back into the page's own frontmatter", () => {
+    // The patch is shared by every variant's build. Resolved in place by the
+    // player build, the DM build would see no reference left to resolve and
+    // miss the actor's pinned id — a token on the GM's map pointing nowhere.
+    const macy: Page = {
+      path: "Actors/Macy Arla.md", title: "Macy Arla", role: "dm",
+      foundry: { source: "Actor:character", patch: { _id: "marloMacyArla000" } },
+    };
+    const patch = { tokens: [{ name: "Macy", actorId: "@vault/Actors/Macy Arla" }] };
+    const scene: Page = { path: "S.md", title: "S", role: "public", foundry: { source: "Scene", patch } };
+    documentEntries([scene], { ...sceneOpts, buildRole: "public" });          // the player's build, no Macy
+    const dm = documentEntries([macy, scene], { ...sceneOpts, buildRole: "dm" });
+    const tokens = dm.entries.find((e) => e.type === "Scene")!.patch["tokens"] as Array<Record<string, unknown>>;
+    assert.equal(tokens[0]!["actorId"], "marloMacyArla000");
+    assert.equal(patch.tokens[0]!.actorId, "@vault/Actors/Macy Arla", "frontmatter untouched");
+  });
+
+  it("warns when a token names a page that makes no document, or a note a page with no journal page", () => {
+    const prose: Page = { path: "Notes/Lore.md", title: "Lore", role: "dm" };
+    const macro: Page = { path: "Macros/M.md", title: "M", role: "dm", foundry: { source: "Macro", journal: false } };
+    const scene: Page = {
+      path: "S.md", title: "S", role: "dm",
+      foundry: { source: "Scene", patch: {
+        tokens: [{ actorId: "@vault/Notes/Lore" }],
+        notes: [{ entryId: "@vault/Macros/M" }],
+      } },
+    };
+    const { warnings } = documentEntries([prose, macro, scene], { ...sceneOpts, packs: { ...scenePacks, Macro: "marlo-macros" } });
+    assert.ok(warnings.some((w) => w.includes("Notes/Lore.md") && w.includes("no document")), warnings.join("; "));
+    assert.ok(warnings.some((w) => w.includes("Macros/M.md") && w.includes("no journal page")), warnings.join("; "));
   });
 
   it("leaves a note that already carries plain ids alone", () => {

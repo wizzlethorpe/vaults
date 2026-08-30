@@ -12,30 +12,20 @@ const { shouldPrompt, markersOf, fetchHash } = __test;
 
 describe("shouldPrompt", () => {
   test("prompts when the deploy moved past the last build", () => {
-    assert.equal(shouldPrompt("new1", "old0", false), true);
+    assert.equal(shouldPrompt("new1", "old0"), true);
   });
 
-  test("stays quiet when nothing changed", () => {
-    assert.equal(shouldPrompt("same", "same", false), false);
-  });
-
-  test("stays quiet after a decline of this same push", () => {
+  test("stays quiet when nothing changed, and after a decline of this same push", () => {
     // Declining records the hash, so the same value comes back as "same".
-    assert.equal(shouldPrompt("new1", "new1", false), false);
+    assert.equal(shouldPrompt("same", "same"), false);
   });
 
   test("prompts when there is no record yet", () => {
-    // First load after the feature arrives: recorded is undefined, the deploy
-    // is readable, and asking once is how the record gets seeded.
-    assert.equal(shouldPrompt("new1", undefined, false), true);
-  });
-
-  test("defers to graft's own prompt for a module never built", () => {
-    assert.equal(shouldPrompt("new1", undefined, true), false);
+    assert.equal(shouldPrompt("new1", undefined), true);
   });
 
   test("treats an unreadable deploy as not-new, not as changed", () => {
-    assert.equal(shouldPrompt(null, "old0", false), false);
+    assert.equal(shouldPrompt(null, "old0"), false);
   });
 });
 

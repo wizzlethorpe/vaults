@@ -415,6 +415,11 @@ section.journal-page-content pre > code,
   border: none;
   background: transparent;
 }
+/* Foundry adds a Reveal toggle to every secret for owners. Revealing this
+ * one would hand players the whole GM render, so it has no business existing. */
+section.secret.vaults-gm > button.reveal {
+  display: none;
+}
 section.secret.vaults-gm ~ .vaults-player-view {
   display: none;
 }

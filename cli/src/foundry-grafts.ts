@@ -229,35 +229,70 @@ export function visibility(page: Page, opts: GraftOptions): { variant: string; o
 }
 
 
+/** What a page-path reference can land on in this build. */
+interface VaultIdTargets {
+  /** Page path to the id of the document it makes. */
+  docs: Map<string, string>;
+  /** Pages that make a journal page. */
+  journals: Set<string>;
+}
+
 /**
- * Resolve map-note references to journal ids, in place.
+ * Resolve page-path references inside a patch to this build's ids.
  *
- * A note names its target by page path — `"entryId": "@vault/Places/Arlanton"`
- * — because document ids are this build's to assign, and the ids an export
- * carries point at whatever world it came from. Both ids fill from the one
- * path; a stated pageId is replaced.
+ * A map note names its page — `"entryId": "@vault/Places/Arlanton"` — and a
+ * token names its actor's page — `"actorId": "@vault/Actors/Macy Arla"` —
+ * because document ids are this build's to assign, and the ids an export
+ * carries point at whatever world it came from. Returns a new value: the
+ * patch is the page's own frontmatter, shared by every variant's build.
  */
-export function resolveNoteRefs(
-  patch: Record<string, unknown> | undefined, opts: GraftOptions,
-  known?: Set<string>, warnings?: string[], path?: string,
-): void {
-  const walk = (value: unknown): void => {
-    if (Array.isArray(value)) { for (const v of value) walk(v); return; }
-    if (!value || typeof value !== "object") return;
-    const node = value as Record<string, unknown>;
-    const ref = node["entryId"];
-    if (typeof ref === "string" && ref.startsWith("@vault/")) {
-      const target = ref.slice("@vault/".length).replace(/^\/+/, "");
-      const page = /\.md$/i.test(target) ? target : `${target}.md`;
-      if (known && !known.has(page)) {
-        warnings?.push(`${path}: a map note points at "${target}", which is not a page in this build`);
-      }
-      node["entryId"] = entryId(opts.vaultId, folderOf(page));
-      node["pageId"] = pageId(opts.vaultId, page);
-    }
-    for (const v of Object.values(node)) walk(v);
+export function resolveVaultIds<T>(
+  value: T, opts: GraftOptions, targets: VaultIdTargets, warnings: string[], path: string,
+): T {
+  const pageOf = (ref: string): string => {
+    const target = ref.slice("@vault/".length).replace(/^\/+/, "");
+    return /\.md$/i.test(target) ? target : `${target}.md`;
   };
-  if (patch) walk(patch);
+  const walk = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (!v || typeof v !== "object") return v;
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) out[k] = walk(x);
+    const entry = out["entryId"];
+    if (typeof entry === "string" && entry.startsWith("@vault/")) {
+      const page = pageOf(entry);
+      if (!targets.journals.has(page)) {
+        warnings.push(`${path}: a map note points at "${page}", which makes no journal page in this build`);
+      }
+      out["entryId"] = entryId(opts.vaultId, folderOf(page));
+      out["pageId"] = pageId(opts.vaultId, page);
+    }
+    const actor = out["actorId"];
+    if (typeof actor === "string" && actor.startsWith("@vault/")) {
+      const page = pageOf(actor);
+      const id = targets.docs.get(page);
+      if (!id) warnings.push(`${path}: a token points at "${page}", which makes no document in this build`);
+      out["actorId"] = id ?? instanceId(opts.vaultId, page);
+    }
+    return out;
+  };
+  return walk(value) as T;
+}
+
+/** Which of these pages make a document, and which a journal page. */
+function vaultIdTargets(pages: Page[], opts: GraftOptions): VaultIdTargets {
+  const docs = new Map<string, string>();
+  const journals = new Set<string>();
+  for (const p of pages) {
+    if (p.foundry?.sync === false) continue;
+    if (p.foundry?.journal !== false) journals.add(p.path);
+    const base = firstBase(p.foundry?.source);
+    const type = base ? documentTypeOf(base) : null;
+    if (type && opts.packs[type]) {
+      docs.set(p.path, pinnedIdOf(p.foundry?.patch) ?? instanceId(opts.vaultId, p.path));
+    }
+  }
+  return { docs, journals };
 }
 
 /** `"Characters/Nobles/Marlo.md"` to `"Characters/Nobles"`, or undefined at the root. */
@@ -334,7 +369,7 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 export function documentEntries(pages: Page[], opts: GraftOptions): { entries: GraftEntry[]; warnings: string[] } {
   const entries: GraftEntry[] = [];
   const warnings: string[] = [];
-  const paths = new Set(pages.map((p) => p.path));
+  const targets = vaultIdTargets(pages, opts);
 
   for (const page of pages) {
     const spec = page.foundry;
@@ -359,12 +394,15 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
 
     const { variant, ownership } = visibility(page, opts);
     const subtype = subtypeOf(base);
-    resolveNoteRefs(spec.patch, opts, paths, warnings, page.path);
-    resolveNoteRefs(page.sidecar, opts, paths, warnings, page.path);
+    const resolved = {
+      ...page,
+      sidecar: resolveVaultIds(page.sidecar, opts, targets, warnings, page.path),
+    };
     const patch: Record<string, unknown> = rewriteVaultRefs({
       name: page.title,
       ...(subtype ? { type: subtype } : {}),
-      ...defaulted(spec.patch ?? {}, type, page, variant, opts.system ?? "dnd5e"),
+      ...defaulted(resolveVaultIds(spec.patch ?? {}, opts, targets, warnings, page.path),
+        type, resolved, variant, opts.system ?? "dnd5e"),
       // Over the patch, not under it: ownership is role gating, and a page that
       // could overrule its own would be a page that could publish itself.
       ownership: { default: ownership },

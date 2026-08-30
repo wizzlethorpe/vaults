@@ -34,7 +34,7 @@ const RENAMES: Record<string, string> = {
 export function rewriteFoundryKeys(text: string): string | null {
   const fm = frontmatter(text);
   if (!fm) return null;
-  const { lines, end } = fm;
+  const { lines, start, end } = fm;
   let changed = false;
 
   for (const { i, line } of foundryChildren(lines)) {
@@ -45,7 +45,7 @@ export function rewriteFoundryKeys(text: string): string | null {
     changed = true;
   }
 
-  return changed ? withFrontmatter(text, lines, end) : null;
+  return changed ? withFrontmatter(text, lines, start, end) : null;
 }
 
 export const foundryPatchKeysMigration: Migration = {

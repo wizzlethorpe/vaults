@@ -22,7 +22,7 @@ import { listMarkdownFiles, frontmatter, withFrontmatter, foundryChildren } from
 export function movePinnedId(text: string): string | null {
   const fm = frontmatter(text);
   if (!fm) return null;
-  const { lines, end } = fm;
+  const { lines, start, end } = fm;
   let childIndent: number | null = null;
   let idAt: number | null = null;
   let patchAt: number | null = null;
@@ -54,7 +54,7 @@ export function movePinnedId(text: string): string | null {
     lines.splice(at + 1, 0, `${" ".repeat(inner)}_id: ${value}`);
   }
 
-  return withFrontmatter(text, lines, end);
+  return withFrontmatter(text, lines, start, end);
 }
 
 export const foundryPinnedIdMigration: Migration = {

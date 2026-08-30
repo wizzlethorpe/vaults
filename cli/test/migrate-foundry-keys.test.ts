@@ -111,3 +111,15 @@ foundry:
     assert.equal(rewriteFoundryKeys("---\nfoundry:\n  base: X\n"), null);
   });
 });
+
+describe("CRLF files", () => {
+  it("migrates a Windows-edited page and keeps its line endings", () => {
+    // Missed, the file is recorded as settled with its old keys intact, and
+    // the emitter then silently ignores its source.
+    const text = "---\r\nfoundry:\r\n  base: Scene\r\n  data:\r\n    name: X\r\n---\r\n\r\nBody.\r\n";
+    const out = rewriteFoundryKeys(text);
+    assert.ok(out, "recognised");
+    assert.match(out!, /^---\r\nfoundry:\r\n  source: Scene\r\n  patch:\r\n    name: X\r\n---\r\n/);
+    assert.ok(out!.endsWith("Body.\r\n"));
+  });
+});

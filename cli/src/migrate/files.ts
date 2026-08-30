@@ -17,17 +17,23 @@ export async function listMarkdownFiles(dir: string): Promise<string[]> {
   return out;
 }
 
-/** A file's frontmatter as lines, with what is needed to splice it back. */
-export function frontmatter(text: string): { lines: string[]; end: number } | null {
-  if (!text.startsWith("---\n")) return null;
-  const end = text.indexOf("\n---", 3);
-  if (end < 0) return null;
-  return { lines: text.slice(4, end + 1).split("\n"), end };
+/**
+ * A file's frontmatter as lines, with what is needed to splice it back.
+ * CRLF files keep their `\r` on each line and get it back unchanged.
+ */
+export function frontmatter(text: string): { lines: string[]; start: number; end: number } | null {
+  const open = /^---\r?\n/.exec(text);
+  if (!open) return null;
+  const close = /\r?\n---/.exec(text.slice(open[0].length));
+  if (!close) return null;
+  const start = open[0].length;
+  const end = start + close.index;
+  return { lines: text.slice(start, end).split("\n"), start, end };
 }
 
 /** The edited frontmatter lines spliced back into the file. */
-export function withFrontmatter(text: string, lines: string[], end: number): string {
-  return text.slice(0, 4) + lines.join("\n") + text.slice(end + 1);
+export function withFrontmatter(text: string, lines: string[], start: number, end: number): string {
+  return text.slice(0, start) + lines.join("\n") + text.slice(end);
 }
 
 /**

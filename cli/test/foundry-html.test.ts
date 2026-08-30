@@ -242,6 +242,13 @@ describe("stripWebOnly", () => {
     assert.equal(stripWebOnly(html), html);
   });
 
+  it("drops a marked void or self-closing element without losing its place", () => {
+    // No closing tag to find; leaving it would also skip every marked
+    // element after it on the page.
+    const html = '<img class="vaults-web-only" src="x.png"><p>a</p><br class="vaults-web-only"/><div class="vaults-web-only"><p>b</p></div><p>c</p>';
+    assert.equal(stripWebOnly(html), "<p>a</p><p>c</p>");
+  });
+
   it("runs inside toFoundryHtml, before anything else sees the element", () => {
     const html = '<div class="vaults-web-only"><a class="internal-link" href="/Characters/Marlo">m</a></div><p>t</p>';
     assert.equal(toFoundryHtml(html, index(), "dm"), "<p>t</p>");

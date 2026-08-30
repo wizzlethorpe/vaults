@@ -217,14 +217,18 @@ export function stripWebOnly(html: string): string {
   let m: RegExpExecArray | null;
   while ((m = open.exec(html)) !== null) {
     if (m.index < at) continue;   // nested inside something already dropped
-    const end = elementEnd(html, m.index, m[1]!);
-    if (end < 0) break;
+    const end = VOID_TAGS.has(m[1]!.toLowerCase()) || m[0].endsWith("/>")
+      ? m.index + m[0].length
+      : elementEnd(html, m.index, m[1]!);
+    if (end < 0) continue;        // unclosed: leave it, keep looking
     out += html.slice(at, m.index);
     at = end;
     open.lastIndex = end;
   }
   return out + html.slice(at);
 }
+
+const VOID_TAGS = new Set(["img", "br", "hr", "input", "source", "track", "wbr", "embed", "area", "col", "link", "meta"]);
 
 export function toFoundryHtml(html: string, index: LinkIndex, variant: string): string {
   return rewriteAssets(rewriteLinks(stripWebOnly(html), index), variant);
