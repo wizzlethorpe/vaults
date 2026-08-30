@@ -43,7 +43,7 @@ import { bundleHandlerAssets } from "./render/handlers/assets.js";
 import { runMigrations } from "./migrate/run.js";
 import { cacheDir } from "./paths.js";
 import { formatDuration, pMap, Progress } from "./util.js";
-import { buildGrafts, contentHash, moduleManifest, moduleGrafts, packsFor, pagesFrom } from "./foundry-grafts.js";
+import { buildGrafts, contentHash, moduleManifest, moduleGrafts, packsFor, pagesFrom, withFolderIndexes } from "./foundry-grafts.js";
 import { toFoundryHtml, dualVariantBody } from "./foundry-html.js";
 import { zip } from "./zip.js";
 import { moduleVersion } from "./foundry-version.js";
@@ -715,7 +715,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     // auth middleware gates it: a role only ever receives the pages it may
     // read, and the GM's variant is the one that lists everything.
     if (foundryEnabled) {
-      const graftPages = pagesFrom(allPageMetas, visibleRoles, foundryPatches);
+      const graftPages = withFolderIndexes(pagesFrom(allPageMetas, visibleRoles, foundryPatches), roles);
       const grafts = buildGrafts(
         graftPages,
         {

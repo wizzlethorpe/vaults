@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 import {
   buildGrafts, contentHash, journalEntries, documentEntries, documentTypeOf, visibility,
-  entryId, pageId, instanceId, folderOf, pagesFrom, linkIndex, type Page, type GraftOptions,
+  entryId, pageId, instanceId, folderOf, pagesFrom, linkIndex, withFolderIndexes, type Page, type GraftOptions,
 } from "../src/foundry-grafts.js";
 
 const opts: GraftOptions = {
@@ -809,5 +809,42 @@ describe("what packs a module declares", () => {
     const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({ moduleId: "v", title: "V", vaultUrl: "https://x" });
     assert.ok(!(m["packs"] as Array<any>).some((p) => p.type === "Adventure"));
+  });
+});
+
+describe("withFolderIndexes", () => {
+  const roles = ["public", "dm"];
+
+  it("gives a folder without an index the page the wiki would have synthesized", () => {
+    const out = withFolderIndexes([page("Places/Arlanton.md", { role: "public" })], roles);
+    const idx = out.find((p) => p.path === "Places/index.md");
+    assert.ok(idx, "synthesized");
+    assert.equal(idx!.title, "Places");
+    assert.equal(idx!.role, "public");
+  });
+
+  it("takes the lowest role among the folder's pages", () => {
+    // A folder with any player-visible page gets a player-visible index; a
+    // DM-only folder stays DM-only.
+    const out = withFolderIndexes([
+      page("Places/Arlanton.md", { role: "public" }),
+      page("Places/Lair.md", { role: "dm" }),
+      page("DM Notes/Plans.md", { role: "dm" }),
+    ], roles);
+    assert.equal(out.find((p) => p.path === "Places/index.md")!.role, "public");
+    assert.equal(out.find((p) => p.path === "DM Notes/index.md")!.role, "dm");
+  });
+
+  it("never shadows a real index page", () => {
+    const out = withFolderIndexes([
+      page("Actors/index.md"), page("Actors/Bixby.md"),
+    ], roles);
+    assert.equal(out.filter((p) => p.path === "Actors/index.md").length, 1);
+  });
+
+  it("covers ancestor folders too", () => {
+    const out = withFolderIndexes([page("DM Notes/Scenes/Home.md")], roles);
+    assert.ok(out.some((p) => p.path === "DM Notes/index.md"));
+    assert.ok(out.some((p) => p.path === "DM Notes/Scenes/index.md"));
   });
 });

@@ -661,7 +661,37 @@ export function moduleGrafts(vaultUrl: string, gated: boolean): unknown[] {
   return [{ vault: vaultUrl.replace(/\/+$/, ""), gated }];
 }
 
-/** Pages a role may see, in the shape the emitter wants. */
+/**
+ * The folder-index pages the wiki synthesizes, as graft pages.
+ *
+ * The wiki gives every folder without an index.md a generated one, and its
+ * body is on disk per variant; without these the journal has no page for a
+ * folder to open at, and a note pointing at "Places/index" lands nowhere.
+ * Each takes the lowest role among the folder's pages, so a folder with any
+ * player-visible content gets a player-visible index.
+ */
+export function withFolderIndexes(pages: Page[], roles: string[]): Page[] {
+  const rank = (r: string) => { const i = roles.indexOf(r); return i < 0 ? roles.length : i; };
+  const real = new Set(pages.map((p) => p.path));
+  const lowest = new Map<string, string>();
+  for (const page of pages) {
+    const parts = page.path.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const folder = parts.slice(0, i).join("/");
+      const held = lowest.get(folder);
+      if (held === undefined || rank(page.role) < rank(held)) lowest.set(folder, page.role);
+    }
+  }
+  const synthetic: Page[] = [];
+  for (const [folder, role] of lowest) {
+    const path = `${folder}/index.md`;
+    if (real.has(path)) continue;
+    synthetic.push({ path, title: folder.split("/").pop()!, role });
+  }
+  return [...pages, ...synthetic];
+}
+
+/** Pages a role may see, in the shape the emitter wants. *//** Pages a role may see, in the shape the emitter wants. */
 export function pagesFrom(
   metas: Array<{
     path: string; title: string; role: string;

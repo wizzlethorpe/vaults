@@ -420,6 +420,16 @@ section.journal-page-content pre > code,
 section.secret.vaults-gm > button.reveal {
   display: none;
 }
+/* The enricher wraps every secret in a <secret-block> element, so the section
+ * is no longer the player view's sibling; the wrapper is. The bare-section
+ * rule stays for contexts that skip the wrap (content embeds). */
+secret-block:has(> section.vaults-gm) ~ .vaults-player-view,
 section.secret.vaults-gm ~ .vaults-player-view {
   display: none;
+}
+secret-block:has(> section.vaults-gm) {
+  padding: 0;
+  border: none;
+  background: transparent;
+  margin: 0;
 }
