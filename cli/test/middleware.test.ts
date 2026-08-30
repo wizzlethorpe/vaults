@@ -216,24 +216,77 @@ describe("generated auth middleware", () => {
   it("serves the caller's own variant when none is asked for", async () => {
     // The batch handler passes ASSETS a URL string rather than a Request.
     const res = await call(mw, "https://v.example/_batch", {
-      method: "POST", headers: { Cookie: dmCookie }, body: "a.body.html",
-    },
+        method: "POST", headers: { Cookie: dmCookie }, body: "a.body.html",
+      },
       { ASSETS: { fetch: (r: Request | string) =>
-          new Response(new URL(typeof r === "string" ? r : r.url).pathname) } },
+            new Response(new URL(typeof r === "string" ? r : r.url).pathname) } },
     );
     const body = await res.json() as { files: Record<string, string> };
-    assert.equal(body.files["a.body.html"], "/_variants/dm/a.body.html");
+    assert.equal(body.files["a.body.html"], "/_variants/dm/a.body");
   });
 
   it("serves a lower variant when asked, which is the whole fix", async () => {
     const res = await call(mw, "https://v.example/_batch?role=public", {
-      method: "POST", headers: { Cookie: dmCookie }, body: "a.body.html",
-    },
+        method: "POST", headers: { Cookie: dmCookie }, body: "a.body.html",
+      },
       { ASSETS: { fetch: (r: Request | string) =>
-          new Response(new URL(typeof r === "string" ? r : r.url).pathname) } },
+            new Response(new URL(typeof r === "string" ? r : r.url).pathname) } },
     );
     const body = await res.json() as { files: Record<string, string> };
-    assert.equal(body.files["a.body.html"], "/_variants/public/a.body.html");
+    assert.equal(body.files["a.body.html"], "/_variants/public/a.body");
+  });
+
+  it("fetches canonical HTML asset URLs while preserving response keys", async () => {
+    const requested: string[] = [];
+    const paths = Array.from({ length: 20 }, (_, i) => `folder/page-${i}.body.html`);
+    const res = await call(mw, "https://v.example/_batch?role=public", {
+      method: "POST",
+      headers: { Cookie: dmCookie },
+      body: paths.join("\n"),
+    }, {
+      ASSETS: { fetch: (r: Request | string) => {
+          const pathname = new URL(typeof r === "string" ? r : r.url).pathname;
+          requested.push(pathname);
+          return new Response(pathname);
+        } },
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(requested.length, paths.length);
+    assert.ok(requested.every((path) => path.endsWith(".body")));
+    const body = await res.json() as { files: Record<string, string> };
+    assert.equal(body.files[paths[19]!], "/_variants/public/folder/page-19.body");
+  });
+
+  it("rejects text batches above the Worker-safe cap", async () => {
+    let fetches = 0;
+    const paths = Array.from({ length: 21 }, (_, i) => `page-${i}.body.html`);
+    const res = await call(mw, "https://v.example/_batch", {
+      method: "POST",
+      headers: { Cookie: dmCookie },
+      body: paths.join("\n"),
+    }, {
+      ASSETS: { fetch: () => { fetches++; return new Response("unexpected"); } },
+    });
+
+    assert.equal(res.status, 400);
+    assert.equal(fetches, 0);
+    assert.deepEqual(await res.json(), { error: "Too many paths (max 20)." });
+  });
+
+  it("returns batch failures as JSON with CORS headers", async () => {
+    const res = await call(mw, "https://v.example/_batch", {
+      method: "POST",
+      headers: { Cookie: dmCookie, Origin: "https://foundry.example" },
+      body: "a.body.html",
+    }, {
+      ASSETS: { fetch: () => { throw new Error("subrequest limit"); } },
+    });
+
+    assert.equal(res.status, 500);
+    assert.equal(res.headers.get("Access-Control-Allow-Origin"), "*");
+    assert.match(res.headers.get("Access-Control-Allow-Methods") ?? "", /POST/);
+    assert.deepEqual(await res.json(), { error: "Batch request failed." });
   });
 
   it("refuses a variant above the caller's tier", async () => {
@@ -357,8 +410,8 @@ describe("generated auth middleware", () => {
       "https://v.example/releases/module.json?_token=" + link,
       {},
       { ASSETS: { fetch: () => new Response(JSON.stringify({
-        id: "x", download: "https://v.example/releases/mod.zip",
-      })) } },
+            id: "x", download: "https://v.example/releases/mod.zip",
+          })) } },
     );
     const body = await res.json() as { download: string };
     const signed = new URL(body.download);
@@ -380,8 +433,8 @@ describe("generated auth middleware", () => {
       "https://custom.example/downloads/module.json?_token=" + link,
       {},
       { ASSETS: { fetch: () => new Response(JSON.stringify({
-        id: "x", download: "/downloads/mod.zip",
-      })) } },
+            id: "x", download: "/downloads/mod.zip",
+          })) } },
     );
     const body = await res.json() as { download: string };
     const signed = new URL(body.download);
@@ -399,8 +452,8 @@ describe("generated auth middleware", () => {
       "https://custom.example/downloads/module.json?_token=" + link,
       {},
       { ASSETS: { fetch: () => new Response(JSON.stringify({
-        id: "x", download: "https://project.pages.dev/downloads/mod.zip",
-      })) } },
+            id: "x", download: "https://project.pages.dev/downloads/mod.zip",
+          })) } },
     );
     const body = await res.json() as { download: string };
     assert.equal(body.download, "https://project.pages.dev/downloads/mod.zip");
@@ -413,8 +466,8 @@ describe("generated auth middleware", () => {
       "https://v.example/releases/module.json?_token=" + link,
       {},
       { ASSETS: { fetch: () => new Response(JSON.stringify({
-        id: "x", download: "https://evil.example/mod.zip",
-      })) } },
+            id: "x", download: "https://evil.example/mod.zip",
+          })) } },
     );
     const body = await res.json() as { download: string };
     assert.equal(body.download, "https://evil.example/mod.zip", "left exactly as authored");

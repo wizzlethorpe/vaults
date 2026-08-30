@@ -208,7 +208,7 @@ const handleRequest = async (ctx) => {
   // simple (no preflight per file → no OPTIONS rate-limit). Response is
   // JSON: { files: { path: content }, missing: [path, ...] }.
   if (FOUNDRY && url.pathname === "/_batch" && request.method === "POST") {
-    return withCors(await handleBatch(request, env), request);
+    return withCors(await handleBatchSafely(() => handleBatch(request, env)), request);
   }
 
   // /_batch-images; bulk *binary* fetch (images, etc). Same input shape as
@@ -216,7 +216,7 @@ const handleRequest = async (ctx) => {
   // the Foundry image cache so a 300-image sync is a handful of HTTP calls
   // instead of 300 GETs that hit Cloudflare's per-IP rate limit.
   if (FOUNDRY && url.pathname === "/_batch-images" && request.method === "POST") {
-    return withCors(await handleBatchBinary(request, env), request);
+    return withCors(await handleBatchSafely(() => handleBatchBinary(request, env)), request);
   }
 
   // Skip rewriting for static-asset paths that don't have a per-role variant.
@@ -281,7 +281,7 @@ const handleRequest = async (ctx) => {
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
@@ -357,17 +357,24 @@ function loginRedirect(next, error) {
 // single JSON response.
 //
 // Caps:
-//   - max 200 paths per call (cap concurrent ASSETS reads inside the worker)
+//   - max 20 text paths per call (stay below Cloudflare's free-plan
+//     subrequest limit even if the platform performs additional work)
 //   - paths must not contain '..' or query/fragment, must not start with '_'
 //     (would escape the variant or hit metadata files)
 
-const BATCH_MAX_PATHS = 200;
+const BATCH_MAX_PATHS = 20;
 // Smaller cap for binary; base64 inflates ~4/3x and we don't want to
 // blow the worker response budget. ~30 images at 200KB avg ≈ 8MB JSON.
 const BATCH_BINARY_MAX_PATHS = 30;
 
 async function handleBatch(request, env) {
-  return handleBatchInner(request, env, BATCH_MAX_PATHS, async (res) => res.text());
+  return handleBatchInner(
+    request,
+    env,
+    BATCH_MAX_PATHS,
+    async (res) => res.text(),
+    canonicalAssetPath,
+  );
 }
 
 async function handleBatchBinary(request, env) {
@@ -376,7 +383,16 @@ async function handleBatchBinary(request, env) {
   });
 }
 
-async function handleBatchInner(request, env, maxPaths, encode) {
+async function handleBatchSafely(run) {
+  try {
+    return await run();
+  } catch (err) {
+    console.error("Batch request failed:", err);
+    return batchError(500, "Batch request failed.");
+  }
+}
+
+async function handleBatchInner(request, env, maxPaths, encode, assetPath = (p) => p) {
   const role = await readRole(request, env);
   if (!ROLES.includes(role)) return batchError(401, "Unauthorized");
 
@@ -415,7 +431,7 @@ async function handleBatchInner(request, env, maxPaths, encode) {
 
   // ASSETS.fetch is internal to the worker, so fan-out is cheap.
   const entries = await Promise.all(paths.map(async (p) => {
-    const target = new URL("/_variants/" + variant + "/" + encodeVariantPath(p), url.origin).toString();
+    const target = new URL("/_variants/" + variant + "/" + encodeVariantPath(assetPath(p)), url.origin).toString();
     const res = await env.ASSETS.fetch(target);
     if (!res.ok) return [p, null];
     return [p, await encode(res)];
@@ -430,6 +446,13 @@ async function handleBatchInner(request, env, maxPaths, encode) {
   return new Response(JSON.stringify({ files, missing }), {
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// Pages redirects .html URLs to extensionless routes. Fetch the canonical URL
+// directly so one source file costs one ASSETS subrequest rather than a
+// redirect chain, while the batch response remains keyed by the original path.
+function canonicalAssetPath(p) {
+  return p.endsWith(".html") ? p.slice(0, -".html".length) : p;
 }
 
 function batchError(status, message) {
@@ -1325,9 +1348,9 @@ export function renderLoginPage(opts: {
     const rolePicker = passwordRoles.length === 1
       ? `    <input type="hidden" name="role" value="${htmlAttr(passwordRoles[0]!)}">`
       : `    <label for="role">Role</label>\n`
-        + `    <select id="role" name="role">`
-        + passwordRoles.map((r) => `<option value="${htmlAttr(r)}">${htmlEscape(r)}</option>`).join("")
-        + `</select>`;
+      + `    <select id="role" name="role">`
+      + passwordRoles.map((r) => `<option value="${htmlAttr(r)}">${htmlEscape(r)}</option>`).join("")
+      + `</select>`;
     form = `  <form id="login-form" method="POST" action="/login">\n`
       + `${rolePicker}\n`
       + `    <label for="password">Password</label>\n`

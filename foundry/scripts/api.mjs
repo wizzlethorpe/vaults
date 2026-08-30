@@ -46,7 +46,7 @@ export async function fetchTextOrNull(vault, path) {
   }
 }
 
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 10;
 const BATCH_CONCURRENCY = 4;
 // Per-file concurrency for the public-vault direct-GET fallback. Higher than
 // BATCH_CONCURRENCY because each request is much smaller; lower than what the
@@ -77,8 +77,14 @@ export function batchEndpoint(vault, role) {
 }
 
 export async function fetchSourceBatch(vault, paths, role) {
-  if (paths.length === 0) return new Map();
-  if (vault.public) return fetchSourceDirect(vault, paths);
+
+  if (paths.length === 0) {
+    return new Map();
+  }
+
+  if (vault.public) {
+    return fetchSourceDirect(vault, paths);
+  }
 
   // `role` asks for a specific rendering. A page is fetched in the variant
   // matching its *own* role, not the syncing user's: a page marked readable by
@@ -89,9 +95,14 @@ export async function fetchSourceBatch(vault, paths, role) {
   // *token's* value. The token then failed to verify and the request fell back
   // to the lowest role, while `role` was never a parameter at all — so every
   // page above that tier came back missing and nothing reported an error.
+
   const endpoint = batchEndpoint(vault, role);
+
   const chunks = [];
-  for (let i = 0; i < paths.length; i += BATCH_SIZE) chunks.push(paths.slice(i, i + BATCH_SIZE));
+
+  for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+    chunks.push(paths.slice(i, i + BATCH_SIZE));
+  }
 
   const out = new Map();
   let next = 0;

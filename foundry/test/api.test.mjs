@@ -11,7 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { batchEndpoint } from "../scripts/api.mjs";
+import { batchEndpoint, fetchSourceBatch } from "../scripts/api.mjs";
 
 const VAULT = { url: "https://vault.example", token: "TOKEN123" };
 
@@ -48,6 +48,29 @@ test("a public vault carries a role but no token", () => {
   const u = batchEndpoint({ url: "https://vault.example" }, "public");
   assert.equal(u.searchParams.get("_token"), null);
   assert.equal(u.searchParams.get("role"), "public");
+});
+
+test("protected source fetches are split into batches of at most ten paths", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (_url, init) => {
+    const paths = String(init.body).split("\n");
+    requests.push(paths);
+    return new Response(JSON.stringify({
+      files: Object.fromEntries(paths.map((path) => [path, `content:${path}`])),
+    }), { headers: { "Content-Type": "application/json" } });
+  };
+
+  try {
+    const paths = Array.from({ length: 25 }, (_, i) => `page-${i}.body.html`);
+    const result = await fetchSourceBatch(VAULT, paths, "public");
+
+    assert.deepEqual(requests.map((batch) => batch.length), [10, 10, 5]);
+    assert.equal(result.size, paths.length);
+    assert.equal(result.get(paths[24]), `content:${paths[24]}`);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 // ── what the media cache should and should not pull ──────────────────────────
