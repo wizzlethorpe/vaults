@@ -26,12 +26,13 @@
 import { htmlAttr } from "./escape.js";
 
 /**
- * Where a page ended up. Every page becomes a journal page, so that is what a
- * link resolves to, including for a page that also instantiates an Actor or a
- * Scene: the prose is what somebody following a link is after, and nothing in
- * the frontmatter says otherwise.
+ * Where a page ended up. Most pages become a journal page and a link lands on
+ * the prose, even when the page also instantiates an Actor or a Scene. A page
+ * with `journal: false` has only its document, so a link carries that instead.
  */
-export interface LinkTarget { entry: string; page: string }
+export type LinkTarget =
+  | { entry: string; page: string; doc?: never }
+  | { entry?: never; page?: never; doc: { type: string; pack: string; id: string } };
 
 export interface LinkIndex {
   /** Vault path (`"Characters/Marlo.md"`) to where it went. */
@@ -72,6 +73,12 @@ export function uuidFor(path: string, index: LinkIndex): string | null {
   const target = index.targets.get(path);
   if (!target) return null;
 
+  if (target.doc) {
+    const { type, pack, id } = target.doc;
+    return index.packaging === "adventure"
+      ? `${type}.${id}`
+      : `Compendium.${index.moduleId}.${pack}.${type}.${id}`;
+  }
   const { entry, page } = target;
   return index.packaging === "adventure"
     ? `JournalEntry.${entry}.JournalEntryPage.${page}`

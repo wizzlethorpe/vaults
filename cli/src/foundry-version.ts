@@ -41,9 +41,13 @@ export function moduleVersion(
   if (previous && previous.hash === hash) return previous;
 
   const today = `${now.getFullYear()}.${now.getMonth() + 1}.${now.getDate()}`;
-  if (!previous || !previous.version.startsWith(today)) return { version: today, hash };
+  // Segment-exact, not a prefix test: "2026.8.29" starts with "2026.8.2", and
+  // a clock that went backwards would read its counter out of the day field.
+  const sameDay = previous
+    && (previous.version === today || previous.version.startsWith(`${today}.`));
+  if (!sameDay) return { version: today, hash };
 
   // Same day, changed again: 2026.8.29 → 2026.8.29.1 → 2026.8.29.2
-  const nth = Number(previous.version.slice(today.length).replace(/^\./, "")) || 0;
+  const nth = Number(previous!.version.slice(today.length).replace(/^\./, "")) || 0;
   return { version: `${today}.${nth + 1}`, hash };
 }

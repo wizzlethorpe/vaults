@@ -81,7 +81,7 @@ async function fetchEntries(vault) {
  */
 const MAX_PASSES = 8;
 
-async function resolveRefs(vault, vaultId, entries, assets) {
+async function resolveRefs(vault, vaultId, entries, assets, io = { fetchSourceBatch, placeAssets }) {
   const resolved = new Map();
   const warnings = [];
   const attempted = new Set();
@@ -102,7 +102,7 @@ async function resolveRefs(vault, vaultId, entries, assets) {
       break;
     }
     for (const raw of pending.keys()) attempted.add(raw);
-    await resolveRound(vault, vaultId, pending, resolved, warnings, assets);
+    await resolveRound(vault, vaultId, pending, resolved, warnings, assets, io);
     fold(resolved);
   }
   return { resolved, warnings };
@@ -124,7 +124,7 @@ function fold(resolved) {
   }
 }
 
-async function resolveRound(vault, vaultId, refs, resolved, warnings, assets) {
+async function resolveRound(vault, vaultId, refs, resolved, warnings, assets, io) {
   const bodies = new Map();
   const files = new Map();
   for (const [raw, ref] of refs) (isBody(ref.path) ? bodies : files).set(raw, ref);
@@ -135,7 +135,7 @@ async function resolveRound(vault, vaultId, refs, resolved, warnings, assets) {
     const list = [...paths];
     let fetched;
     try {
-      fetched = await fetchSourceBatch(vault, list, vault.gated ? variant : null);
+      fetched = await io.fetchSourceBatch(vault, list, vault.gated ? variant : null);
     } catch (err) {
       warnings.push({ id: variant, reason: `could not read page bodies (${err.message})` });
       continue;
@@ -152,7 +152,7 @@ async function resolveRound(vault, vaultId, refs, resolved, warnings, assets) {
 
   if (files.size > 0) {
     ui.phase("Downloading assets", files.size);
-    const { placed, failed } = await placeAssets(
+    const { placed, failed } = await io.placeAssets(
       vault, vaultId, byVariant(files), (name) => ui.step(name), assets);
     for (const [raw, ref] of files) {
       const local = placed.get(`${ref.variant}/${ref.path}`);
@@ -227,4 +227,4 @@ export function vaultsProvider() {
   };
 }
 
-export const __test = { isMarker, vaultKey, fetchEntries, bar };
+export const __test = { isMarker, vaultKey, fetchEntries, bar, resolveRefs };

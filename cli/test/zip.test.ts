@@ -1,15 +1,17 @@
 // The module archive.
 //
 // Written by hand because the module is two small JSON files and the
-// alternative was shelling out to the `zip` binary, which is missing on Windows
-// and on many CI images. A zip that is subtly wrong installs as a corrupt
-// module, so these tests check the bytes against a real unzip rather than
-// against this file's own idea of the format.
+// alternative was shelling out to the `zip` binary, which is missing on
+// Windows and on many CI images. That is also why these tests cannot lean on
+// an `unzip` binary: it is missing on exactly the machines zip.ts exists for.
+// Extraction here goes through node's zlib — an implementation zip.ts does
+// not share — and the one test that wants a real unzip skips without it.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, writeFile, readFile } from "node:fs/promises";
+import { crc32, inflateRawSync } from "node:zlib";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -17,41 +19,56 @@ import { promisify } from "node:util";
 import { zip } from "../src/zip.js";
 
 const run = promisify(execFile);
+const haveUnzip = await run("unzip", ["-v"]).then(() => true, () => false);
 
-async function unzipped(entries: { name: string; data: Buffer }[]) {
-  const dir = await mkdtemp(join(tmpdir(), "vault-zip-"));
-  const archive = join(dir, "m.zip");
-  await writeFile(archive, zip(entries));
-  await run("unzip", ["-q", archive, "-d", dir]);
-  return { dir, archive };
+/** Extract via zlib, verifying each entry's CRC against an independent one. */
+function extract(archive: Buffer): Map<string, Buffer> {
+  const out = new Map<string, Buffer>();
+  let i = 0;
+  while (archive.readUInt32LE(i) === 0x04034b50) {
+    const method = archive.readUInt16LE(i + 8);
+    const crc = archive.readUInt32LE(i + 14);
+    const compressed = archive.readUInt32LE(i + 18);
+    const nameLen = archive.readUInt16LE(i + 26);
+    const extraLen = archive.readUInt16LE(i + 28);
+    const name = archive.subarray(i + 30, i + 30 + nameLen).toString("utf8");
+    const body = archive.subarray(i + 30 + nameLen + extraLen, i + 30 + nameLen + extraLen + compressed);
+    const data = method === 8 ? inflateRawSync(body) : Buffer.from(body);
+    assert.equal(crc32(data) >>> 0, crc, `CRC of ${name}`);
+    out.set(name, data);
+    i += 30 + nameLen + extraLen + compressed;
+  }
+  return out;
 }
 
 describe("zip", () => {
-  it("round-trips content through a real unzip", async () => {
+  it("round-trips content, with every CRC checked independently", () => {
     const entries = [
       { name: "mod/module.json", data: Buffer.from('{"id":"mod"}') },
       { name: "mod/grafts.json", data: Buffer.from('[{"vault":"https://x"}]') },
+      { name: "mod/big.json", data: Buffer.from("x".repeat(5000)) },
     ];
-    const { dir } = await unzipped(entries);
+    const files = extract(zip(entries));
     for (const e of entries) {
-      assert.equal(await readFile(join(dir, e.name), "utf8"), e.data.toString());
+      assert.deepEqual(files.get(e.name), e.data);
     }
   });
 
-  it("passes an integrity check, so the CRCs are right", async () => {
-    // A wrong CRC still extracts on some tools and fails on others, which is
-    // the worst version of this bug: it works on the machine that built it.
-    const { archive } = await unzipped([{ name: "a/b.json", data: Buffer.from("x".repeat(5000)) }]);
+  it("handles an empty file", () => {
+    assert.equal(extract(zip([{ name: "mod/empty.json", data: Buffer.alloc(0) }])).get("mod/empty.json")!.length, 0);
+  });
+
+  it("passes a real unzip's integrity check", { skip: !haveUnzip }, async () => {
+    // The independent reader above shares no code with unzip; this one run
+    // against the real tool catches a structural mistake both might make.
+    const dir = await mkdtemp(join(tmpdir(), "vault-zip-"));
+    const archive = join(dir, "m.zip");
+    await writeFile(archive, zip([{ name: "a/b.json", data: Buffer.from("x".repeat(5000)) }]));
     const { stdout } = await run("unzip", ["-t", archive]);
     assert.match(stdout, /No errors detected/);
   });
 
-  it("handles an empty file", async () => {
-    const { dir } = await unzipped([{ name: "mod/empty.json", data: Buffer.alloc(0) }]);
-    assert.equal((await readFile(join(dir, "mod/empty.json"))).length, 0);
-  });
-
-  it("declares its names as UTF-8", async () => {
+  it("declares its names as UTF-8", () => {
     // Asserted on the bytes rather than by extracting: Info-ZIP's `unzip`
     // ignores this flag and decodes names as CP437 regardless, so a round trip
     // through it would fail on a correct archive. Readers that do honour it
@@ -63,7 +80,7 @@ describe("zip", () => {
     assert.equal(archive.readUInt16LE(central + 8) & 0x0800, 0x0800, "central directory");
   });
 
-  it("is byte-identical for identical content", async () => {
+  it("is byte-identical for identical content", () => {
     // The archive's hash is what tells a reader the module changed. A clock in
     // the header would announce a new version on every rebuild.
     const entries = [{ name: "a.json", data: Buffer.from("{}") }];

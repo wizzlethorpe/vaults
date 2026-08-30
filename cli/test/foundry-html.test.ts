@@ -66,6 +66,20 @@ describe("uuidFor", () => {
       "Compendium.my-vault.my-vault-journals.JournalEntry.ent0.JournalEntryPage.pg0");
   });
 
+  it("sends a link to a journal-less page to its document", () => {
+    // `journal: false` means the page's prose never becomes a journal page,
+    // so the document is the only thing a reader can be sent to.
+    const idx = index();
+    idx.targets.set("DM Notes/Scenes/Home.md",
+      { doc: { type: "Scene", pack: "my-vault-scenes", id: "homeScene0000000" } });
+    assert.equal(uuidFor("DM Notes/Scenes/Home.md", idx),
+      "Compendium.my-vault.my-vault-scenes.Scene.homeScene0000000");
+    const adv = index("adventure");
+    adv.targets.set("DM Notes/Scenes/Home.md",
+      { doc: { type: "Scene", pack: "my-vault-scenes", id: "homeScene0000000" } });
+    assert.equal(uuidFor("DM Notes/Scenes/Home.md", adv), "Scene.homeScene0000000");
+  });
+
   it("sends a page that also instantiates a document to its prose all the same", () => {
     assert.equal(
       uuidFor("Bestiary/Wolf.md", index()),

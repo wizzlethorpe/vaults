@@ -42,15 +42,32 @@ describe("moduleVersion", () => {
   });
 
   it("orders the way Foundry compares versions", () => {
-    // Each component numeric and non-decreasing, so isNewerVersion agrees with
-    // the order they were issued in.
-    const seq = ["2026.8.29", "2026.8.29.1", "2026.9.14", "2027.1.2"];
-    const parts = (v: string) => v.split(".").map(Number);
-    for (let i = 1; i < seq.length; i++) {
-      const [a, b] = [parts(seq[i - 1]!), parts(seq[i]!)];
-      const newer = a.some((n, j) => (b[j] ?? 0) > n) || b.length > a.length;
-      assert.ok(newer, `${seq[i]} should be newer than ${seq[i - 1]}`);
+    // Each issued version numeric and increasing per segment, so
+    // isNewerVersion agrees with the order they were issued in.
+    let v = moduleVersion(manifest(), undefined, day(2026, 8, 29));
+    const issued = [v.version];
+    for (const [m, when] of [
+      [manifest({ title: "B" }), day(2026, 8, 29)],
+      [manifest({ title: "C" }), day(2026, 9, 14)],
+      [manifest({ title: "D" }), day(2027, 1, 2)],
+    ] as const) {
+      v = moduleVersion(m, v, when);
+      issued.push(v.version);
     }
+    const parts = (x: string) => x.split(".").map(Number);
+    for (let i = 1; i < issued.length; i++) {
+      const [a, b] = [parts(issued[i - 1]!), parts(issued[i]!)];
+      const newer = a.some((n, j) => (b[j] ?? 0) > n) || b.length > a.length;
+      assert.ok(newer, `${issued[i]} should be newer than ${issued[i - 1]}`);
+    }
+  });
+
+  it("does not mistake a different day for the same one", () => {
+    // "2026.8.29" starts with "2026.8.2": a prefix test would read the day
+    // field as a same-day counter and issue 2026.8.2.10.
+    const before = { version: "2026.8.29", hash: "aaaaaaaaaaaa" };
+    const v = moduleVersion(manifest(), before, day(2026, 8, 2));
+    assert.equal(v.version, "2026.8.2");
   });
 
   it("ignores the version already on the manifest when fingerprinting", () => {

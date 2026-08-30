@@ -10,7 +10,7 @@ import test, { describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { url } from "../scripts/api.mjs";
-import { collectRefs, substituteRefs } from "../scripts/refs.mjs";
+import { substituteRefs } from "../scripts/refs.mjs";
 
 describe("vault URLs carry the bearer", () => {
   test("a token rides as a query param, so cross-origin GETs stay preflight-free", () => {
@@ -90,103 +90,87 @@ describe("fetchEntries", () => {
 
 describe("resolving to a fixed point", () => {
   // References nest: a body is a reference, and its images are named inside
-  // the HTML it resolves to. Counting the levels of that ("bodies, then their
-  // images") is the thing this replaces — the loop runs until a pass finds
-  // nothing new, so a deeper nesting would just take another pass.
-  /** The shape of the real loop, over a fixture instead of the network. */
-  function resolveAll(entries, serve, maxPasses = 8) {
-    const resolved = new Map();
-    const attempted = new Set();
+  // the HTML it resolves to. These drive the real resolveRefs with its IO
+  // injected: `serve` maps raw references to what fetching them returns, and
+  // `passes` counts the rounds the loop actually took.
+  async function resolveAll(entries, serve) {
+    const { __test } = await import("../scripts/provider.mjs");
+    const lookup = new Map(Object.entries(serve).map(([raw, value]) => {
+      const rest = raw.slice("@vaults/".length);
+      const slash = rest.indexOf("/");
+      return [`${rest.slice(0, slash)}\u0000${decodeURIComponent(rest.slice(slash + 1))}`, value];
+    }));
     let passes = 0;
-    for (let pass = 1; ; pass++) {
-      const pending = [...collectRefs([entries, [...resolved.values()]]).keys()]
-        .filter((raw) => !attempted.has(raw));
-      if (pending.length === 0 || pass > maxPasses) break;
-      passes = pass;
-      for (const raw of pending) {
-        attempted.add(raw);
-        if (raw in serve) resolved.set(raw, serve[raw]);
-      }
-      for (const [raw, value] of resolved) {
-        if (typeof value !== "string" || !value.includes("@vaults/")) continue;
-        const others = new Map(resolved);
-        others.delete(raw);
-        resolved.set(raw, substituteRefs(value, others));
-      }
-    }
-    return { out: substituteRefs(entries, resolved), passes };
+    const io = {
+      fetchSourceBatch: async (_vault, list, variant) => {
+        passes++;
+        return new Map(list
+          .filter((path) => lookup.has(`${variant ?? "dm"}\u0000${path}`))
+          .map((path) => [path, lookup.get(`${variant ?? "dm"}\u0000${path}`)]));
+      },
+      placeAssets: async (_vault, _vaultId, wanted) => {
+        passes++;
+        const placed = new Map();
+        const failed = [];
+        for (const [variant, paths] of wanted) {
+          for (const path of paths) {
+            const hit = lookup.get(`${variant}\u0000${path}`);
+            if (hit) placed.set(`${variant}/${path}`, hit);
+            else failed.push({ id: `${variant}/${path}`, reason: "not served by the vault" });
+          }
+        }
+        return { placed, failed };
+      },
+    };
+    const { resolved, warnings } = await __test.resolveRefs(
+      { url: "https://v.example.com", gated: true }, "v", entries, {}, io);
+    return { out: substituteRefs(entries, resolved), passes, warnings };
   }
 
   const BODY = "@vaults/dm/Actors/Cassius Marlo.foundry.html";
   const IMG = "@vaults/dm/attachments/Cassius%20Marlo.webp";
 
-  test("reaches an image named inside a body", () => {
-    const { out } = resolveAll([{ text: { content: BODY } }], {
+  test("reaches an image named inside a body, leaving no marker behind", async () => {
+    const { out } = await resolveAll([{ text: { content: BODY } }], {
       [BODY]: `<p><img src="${IMG}"></p>`,
       [IMG]: "/worlds/w/cache/Cassius%20Marlo.webp",
     });
     assert.equal(out[0].text.content, '<p><img src="/worlds/w/cache/Cassius%20Marlo.webp"></p>');
   });
 
-  test("takes exactly the passes the nesting needs", () => {
-    const flat = resolveAll([{ img: IMG }], { [IMG]: "/local.webp" });
+  test("takes exactly the passes the nesting needs", async () => {
+    const flat = await resolveAll([{ img: IMG }], { [IMG]: "/local.webp" });
     assert.equal(flat.passes, 1);
-    const nested = resolveAll([{ text: { content: BODY } }], {
+    const nested = await resolveAll([{ text: { content: BODY } }], {
       [BODY]: `<img src="${IMG}">`, [IMG]: "/local.webp",
     });
     assert.equal(nested.passes, 2);
   });
 
-  test("would follow a deeper nesting without being told to", () => {
+  test("would follow a deeper nesting without being told to", async () => {
     const A = "@vaults/dm/a.foundry.html", B = "@vaults/dm/b.foundry.html";
-    const { out, passes } = resolveAll([{ text: { content: A } }], {
+    const { out, passes } = await resolveAll([{ text: { content: A } }], {
       [A]: `<p>${B}</p>`, [B]: `<img src="${IMG}">`, [IMG]: "/local.webp",
     });
     assert.equal(out[0].text.content, '<p><img src="/local.webp"></p>');
     assert.equal(passes, 3);
   });
 
-  test("settles when something cannot be fetched, rather than asking again", () => {
+  test("settles when something cannot be fetched, rather than asking again", async () => {
     // Asked for once. Otherwise a missing file is requested every pass and the
     // loop never ends.
-    const { out, passes } = resolveAll([{ img: "@vaults/dm/missing.webp" }], {});
+    const { out, passes, warnings } = await resolveAll([{ img: "@vaults/dm/missing.webp" }], {});
     assert.equal(out[0].img, "@vaults/dm/missing.webp", "left legible");
     assert.equal(passes, 1);
+    assert.ok(warnings.some((w) => /not served/.test(w.reason)), "and says so");
   });
 
-  test("does not grow a body that references itself", () => {
-    const { out, passes } = resolveAll([{ text: { content: BODY } }], {
+  test("does not grow a body that references itself", async () => {
+    const { out, passes } = await resolveAll([{ text: { content: BODY } }], {
       [BODY]: `<p>see ${BODY}</p>`,
     });
     assert.equal(out[0].text.content, `<p>see ${BODY}</p>`);
     assert.ok(passes <= 2, `settled in ${passes} passes`);
-  });
-});
-
-describe("a body's own images", () => {
-  // A page body is fetched as a reference and its images are named inside the
-  // HTML that comes back, so they are only discoverable after the body is. The
-  // trap is the last step: substituting the body into the document as fetched
-  // puts the markers on the page. The images downloaded fine; every <img> just
-  // still pointed at `@vaults/...`.
-  test("are substituted into the body before it reaches the document", () => {
-    const bodyRef = "@vaults/public/Actors/Cassius Marlo.foundry.html";
-    const imgRef = "@vaults/public/attachments/npcs/images/Cassius%20Marlo.webp";
-    const resolved = new Map([
-      [bodyRef, `<p><img src="${imgRef}"></p>`],
-      [imgRef, "/worlds/w/vaults-cache/v/public/attachments/npcs/images/Cassius%20Marlo.webp"],
-    ]);
-
-    // What resolveRefs does before handing the map back.
-    for (const [raw, value] of resolved) {
-      if (typeof value === "string" && value.includes("@vaults/")) {
-        resolved.set(raw, substituteRefs(value, resolved));
-      }
-    }
-
-    const page = substituteRefs({ text: { content: bodyRef } }, resolved);
-    assert.match(page.text.content, /src="\/worlds\/w\/vaults-cache\//);
-    assert.doesNotMatch(page.text.content, /@vaults\//);
   });
 });
 

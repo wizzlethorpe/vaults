@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 import {
   buildGrafts, journalEntries, documentEntries, documentTypeOf, visibility,
-  entryId, pageId, folderOf, pagesFrom, type Page, type GraftOptions,
+  entryId, pageId, folderOf, pagesFrom, linkIndex, type Page, type GraftOptions,
 } from "../src/foundry-grafts.js";
 
 const opts: GraftOptions = {
@@ -40,6 +40,15 @@ describe("visibility", () => {
 
   it("treats a role at the ceiling as visible", () => {
     assert.equal(visibility(page("x.md", { role: "player" }), opts).ownership, 2);
+  });
+
+  it("never names a variant above the file's own build role", () => {
+    // The public variant's grafts.json is read by a public-tier token, which
+    // cannot fetch @vaults/player/... bodies. Unclamped, every observable
+    // page's reference in that file would be unfetchable.
+    const v = visibility(page("Characters/Marlo.md", { role: "public" }),
+      { ...opts, buildRole: "public" });
+    assert.deepEqual(v, { variant: "public", ownership: 2 });
   });
 
   it("treats an unknown role as privileged, not public", () => {
@@ -160,9 +169,15 @@ describe("documentTypeOf", () => {
   it("accepts a bare type for a page with no source", () => {
     assert.equal(documentTypeOf("Scene"), "Scene");
   });
+  it("folds a bare type's case, which Foundry's UUID lookup will not", () => {
+    // `source: actor:npc` is supported; "actor" passed through as a distinct
+    // type once split a mixed-case list and dropped the whole source.
+    assert.equal(documentTypeOf("actor:npc"), "Actor");
+    assert.equal(documentTypeOf("rolltable"), "RollTable");
+  });
   it("refuses anything else", () => {
     assert.equal(documentTypeOf("Compendium.too.short"), null);
-    assert.equal(documentTypeOf("lowercase"), null);
+    assert.equal(documentTypeOf("NotADocType"), null);
     assert.equal(documentTypeOf(""), null);
   });
 });
@@ -494,6 +509,49 @@ describe("_stats.coreVersion", () => {
   it("records the version in the file, so a reader can see what it was built from", () => {
     assert.equal(buildGrafts([doc()], opts2).file.coreVersion, "14");
     assert.equal(buildGrafts([doc()], opts).file.coreVersion, undefined);
+  });
+});
+
+describe("the page keys sync, journal, embed and folder", () => {
+  const scenePacks = { ...opts.packs, Scene: "marlo-scenes" };
+  const sceneOpts = { ...opts, packs: scenePacks };
+  const doc = (foundry: Page["foundry"], path = "DM Notes/Scenes/Home.md"): Page =>
+    ({ path, title: "Home", role: "dm", foundry });
+
+  it("sync: false keeps the page out of Foundry entirely", () => {
+    const p = doc({ source: "Scene", sync: false });
+    assert.deepEqual(documentEntries([p], sceneOpts).entries, []);
+    assert.equal(journalEntries([p], sceneOpts).length, 0);
+    assert.equal(linkIndex([p], sceneOpts).targets.has(p.path), false);
+  });
+
+  it("journal: false makes the document but no journal page", () => {
+    const p = doc({ source: "Scene", journal: false });
+    assert.equal(documentEntries([p], sceneOpts).entries.length, 1);
+    assert.equal(journalEntries([p], sceneOpts).length, 0);
+  });
+
+  it("journal: false points links at the document instead", () => {
+    // The journal page a link would name does not exist, and the page still
+    // has something a reader can be sent to.
+    const p = doc({ source: "Scene", journal: false, patch: { _id: "marloHomeScene00" } });
+    const target = linkIndex([p], sceneOpts).targets.get(p.path)!;
+    assert.deepEqual(target, { doc: { type: "Scene", pack: "marlo-scenes", id: "marloHomeScene00" } });
+  });
+
+  it("embed: false keeps the page's prose out of the description", () => {
+    const p: Page = {
+      path: "Bestiary/Wolf.md", title: "Wolf", role: "dm",
+      image: "/a/wolf.webp", foundry: { source: "Actor:npc", embed: false },
+    };
+    const patch = documentEntries([p], opts).entries[0]!.patch;
+    assert.equal((patch as any).system?.details?.biography, undefined);
+    assert.match(String(patch["img"]), /wolf/, "the art default still applies");
+  });
+
+  it("folder places the document where the page says, not where it lives", () => {
+    const p = doc({ source: "Scene", folder: "Shopping Districts" });
+    assert.equal(documentEntries([p], sceneOpts).entries[0]!.folder, "Shopping Districts");
   });
 });
 

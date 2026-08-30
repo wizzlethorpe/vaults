@@ -16,7 +16,7 @@ import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadSettings } from "../src/settings.js";
+import { loadSettings, writeSettings } from "../src/settings.js";
 
 async function vaultWith(frontmatter: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
@@ -44,17 +44,17 @@ describe("default_frontmatter round trip", () => {
     assert.deepEqual(roles, ["DM"]);
   });
 
-  it("does not rewrite a vault that was already canonical", async () => {
-    // `changed` is what makes the build write settings.md back. A valid value
-    // reported as changed is how the substituted default reaches the disk.
+  it("settles: a canonical write reloads unchanged, with the value intact", async () => {
+    // `changed` is what makes the build write settings.md back. A canonical
+    // file still reporting changed would rewrite on every build, and a
+    // substituted default reaching the rewriter is how a private baseline
+    // lands on disk as public.
     const dir = await vaultWith(PRIVATE_BASELINE);
-    const before = await readFile(join(dir, "settings.md"), "utf8");
-    const { changed } = await loadSettings(dir);
-    if (changed) {
-      // Canonicalisation is allowed to reformat, but not to alter this value.
-      const { values } = await loadSettings(dir);
-      assert.equal(values.default_frontmatter[0]!.data["role"], "DM", before);
-    }
+    const first = await loadSettings(dir);
+    await writeSettings(dir, first.values);
+    const second = await loadSettings(dir);
+    assert.equal(second.changed, false, await readFile(join(dir, "settings.md"), "utf8"));
+    assert.equal(second.values.default_frontmatter[0]!.data["role"], "DM");
   });
 
   it("carries several rules in order, since later ones merge over earlier", async () => {

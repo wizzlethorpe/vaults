@@ -9,14 +9,13 @@
 // the rest created. Our ids come from the page's path or from `patch._id`, so
 // a second import updates in place rather than making a second everything.
 
+import { DOC_TYPES } from "./foundry-types.js";
 import type { GraftEntry } from "./foundry-grafts.js";
 
-/** Adventure schema field per document type, from Adventure.contentFields. */
-const CONTENT_FIELD: Record<string, string> = {
-  Actor: "actors", Item: "items", JournalEntry: "journal", Scene: "scenes",
-  RollTable: "tables", Macro: "macros", Cards: "cards", Playlist: "playlists",
-  Combat: "combats",
-};
+/** Adventure schema field per document type. */
+const CONTENT_FIELD: Record<string, string | undefined> = Object.fromEntries(
+  Object.entries(DOC_TYPES).map(([type, info]) => [type, info.adventureField]),
+);
 
 export interface AdventureOptions {
   /** Document id for the Adventure itself. */

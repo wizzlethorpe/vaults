@@ -11,6 +11,7 @@
 
 import { createHash } from "node:crypto";
 
+import { DOC_TYPES, canonicalType } from "./foundry-types.js";
 import { rewriteVaultRefs } from "./foundry-html.js";
 import { defaultsFor, resolvePageRefs } from "./foundry-defaults.js";
 import { asAdventure } from "./foundry-adventure.js";
@@ -58,8 +59,17 @@ export interface Page {
   path: string;                    // "Characters/Nobles/Marlo.md"
   title: string;
   role: string;
-  /** The `foundry:` frontmatter block, if any. `source` may be a priority list. */
-  foundry?: { source?: unknown; patch?: Record<string, unknown> } | null;
+  /**
+   * The `foundry:` frontmatter block, if any. `source` may be a priority list.
+   * `sync: false` keeps the page out of Foundry entirely; `journal: false`
+   * makes its document but no journal page; `embed: false` keeps the page's
+   * prose out of the document's description; `folder` overrides where the
+   * document files, independent of where the page lives.
+   */
+  foundry?: {
+    source?: unknown; patch?: Record<string, unknown>;
+    sync?: boolean; journal?: boolean; embed?: boolean; folder?: string;
+  } | null;
   /** The page's representative image, as a served URL ("/attachments/x.webp"). */
   image?: string | null;
   /**
@@ -81,7 +91,12 @@ export interface Page {
 function defaulted(
   patch: Record<string, unknown>, type: string, page: Page, variant: string, system: string,
 ): Record<string, unknown> {
-  const body = `@vaults/${variant}/${page.path.replace(/\.md$/i, "")}.foundry.html`;
+  // `embed: false` opts the page's prose out of the document's description.
+  // An unsatisfied `@page/body` reference takes its key with it, so nothing
+  // else is needed to suppress the default.
+  const body = page.foundry?.embed === false
+    ? undefined
+    : `@vaults/${variant}/${page.path.replace(/\.md$/i, "")}.foundry.html`;
   const out = structuredClone(patch);
   // Most specific first: each merge fills only what is still unsaid, so the
   // earlier a layer is applied the more it wins.
@@ -117,9 +132,16 @@ function pinnedId(patch: Record<string, unknown> | undefined, warnings: string[]
   // just assigned, so a rejected `_id` would arrive anyway and Foundry would
   // refuse the document the warning claims to have saved.
   if (id === undefined || id === null) return null;
-  if (typeof id === "string" && /^[A-Za-z0-9]{16}$/.test(id)) return id;
+  const pinned = pinnedIdOf(patch);
+  if (pinned) return pinned;
   warnings.push(`${path}: foundry.patch._id must be 16 letters or digits, got ${JSON.stringify(id)}; using the derived id`);
   return null;
+}
+
+/** `patch._id` when it is a well-formed pin, with no warning: the emitter warns once. */
+function pinnedIdOf(patch: Record<string, unknown> | undefined): string | null {
+  const id = patch?.["_id"];
+  return typeof id === "string" && /^[A-Za-z0-9]{16}$/.test(id) ? id : null;
 }
 
 /** Every usable UUID in a `foundry.source`, which may be a list, in order. */
@@ -202,9 +224,11 @@ export function visibility(page: Page, opts: GraftOptions): { variant: string; o
   const rank = (role: string) => opts.roles.indexOf(role);
   const ceiling = rank(opts.playerRole);
   const observable = ceiling >= 0 && rank(page.role) >= 0 && rank(page.role) <= ceiling;
-  return observable
-    ? { variant: opts.playerRole, ownership: OBSERVER }
-    : { variant: opts.buildRole, ownership: NONE };
+  // Clamped to the build role: this file's reader cannot fetch above their own
+  // tier, so a lower variant's entries reference the lower rendering even for
+  // pages a player could see.
+  const variant = observable && rank(opts.buildRole) > ceiling ? opts.playerRole : opts.buildRole;
+  return { variant, ownership: observable ? OBSERVER : NONE };
 }
 
 /** `"Characters/Nobles/Marlo.md"` to `"Characters/Nobles"`, or undefined at the root. */
@@ -227,6 +251,7 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 
   const byFolder = new Map<string, Page[]>();
   for (const page of pages) {
+    if (page.foundry?.sync === false || page.foundry?.journal === false) continue;
     const folder = folderOf(page.path);
     if (!byFolder.has(folder)) byFolder.set(folder, []);
     byFolder.get(folder)!.push(page);
@@ -280,7 +305,7 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
 
   for (const page of pages) {
     const spec = page.foundry;
-    if (!spec?.source) continue;
+    if (!spec?.source || spec.sync === false) continue;
 
     const bases = basesOf(spec.source);
     const base = bases[0];
@@ -311,11 +336,14 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
       // could overrule its own would be a page that could publish itself.
       ownership: { default: ownership },
     }, variant);
+    const folder = typeof spec.folder === "string" && spec.folder.trim()
+      ? spec.folder.trim().replace(/^\/+|\/+$/g, "")
+      : folderOf(page.path);
     entries.push({
       id: pinnedId(spec.patch, warnings, page.path) ?? instanceId(opts.vaultId, page.path),
       type,
       pack,
-      ...(graftFolder(folderOf(page.path)) ? { folder: folderOf(page.path) } : {}),
+      ...(graftFolder(folder) ? { folder } : {}),
       // A list travels whole: graft tries each in order and takes the first
       // that resolves, so a page can prefer better content without demanding
       // the reader own it.
@@ -339,8 +367,7 @@ export function documentTypeOf(base: string): string | null {
     const parts = base.split(".");
     return parts.length >= 5 ? parts[parts.length - 2]! : null;
   }
-  const [type] = base.split(":");
-  return /^[A-Z][A-Za-z]+$/.test(type ?? "") ? type! : null;
+  return canonicalType(base.split(":")[0]);
 }
 
 /**
@@ -366,6 +393,23 @@ export function subtypeOf(base: string): string | null {
 export function linkIndex(pages: Page[], opts: GraftOptions): LinkIndex {
   const targets = new Map<string, LinkTarget>();
   for (const page of pages) {
+    if (page.foundry?.sync === false) continue;
+    // A page with no journal page still has a document; a link to it lands
+    // there instead of on a journal page that does not exist.
+    if (page.foundry?.journal === false) {
+      const base = firstBase(page.foundry.source);
+      const type = base ? documentTypeOf(base) : null;
+      const pack = type ? opts.packs[type] : undefined;
+      if (type && pack) {
+        targets.set(page.path, {
+          doc: {
+            type, pack,
+            id: pinnedIdOf(page.foundry.patch) ?? instanceId(opts.vaultId, page.path),
+          },
+        });
+      }
+      continue;
+    }
     targets.set(page.path, {
       entry: entryId(opts.vaultId, folderOf(page.path)),
       page: pageId(opts.vaultId, page.path),
@@ -451,15 +495,9 @@ export function buildGrafts(
 // it. That is the whole reason the provider lives in a shared module instead.
 
 /** One pack per document type, declared up front. */
-export const PACK_SUFFIX: Record<string, string> = {
-  JournalEntry: "journals", Actor: "actors", Item: "items", Scene: "scenes",
-  RollTable: "tables", Macro: "macros", Playlist: "playlists", Cards: "cards",
-  // Where a vault delivered as one Adventure puts it. Declared alongside the
-  // rest whatever the packaging, because packs are read when the server starts
-  // and a vault that changes how it is delivered would otherwise need the
-  // module reinstalled and Foundry restarted before it could build.
-  Adventure: "adventure",
-};
+export const PACK_SUFFIX: Record<string, string> = Object.fromEntries(
+  Object.entries(DOC_TYPES).map(([type, info]) => [type, info.packSuffix]),
+);
 
 export function packsFor(moduleId: string): Record<string, string> {
   return Object.fromEntries(
