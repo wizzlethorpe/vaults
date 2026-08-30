@@ -1,12 +1,5 @@
-// The /_batch endpoint URL.
-//
-// This shipped broken, and the way it failed is the reason these tests exist:
-// nothing raised an error. `url()` puts the bearer in the query string, and the
-// role was appended with a second "?", so the role became part of the token's
-// value. The token then failed to verify, the request fell back to the lowest
-// role, and every page above that tier came back in `missing` — which the batch
-// endpoint reports as a 200. The sync logged "no content" per page and carried
-// on. A vault's entire DM tier stopped syncing without a single failed request.
+// The /_batch endpoint URL. It shipped broken once, silently — the whole
+// story is on batchEndpoint's docblock; these tests pin the repair.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -50,4 +43,3 @@ test("a public vault carries a role but no token", () => {
   assert.equal(u.searchParams.get("role"), "public");
 });
 
-// ── what the media cache should and should not pull ──────────────────────────

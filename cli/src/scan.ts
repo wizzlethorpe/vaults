@@ -17,13 +17,7 @@ export interface ScannedFile {
 }
 
 const IGNORED_DIRS = new Set([".git", ".obsidian", ".trash", "node_modules", ".vaults"]);
-// `module.json` at the vault ROOT is build configuration for `--module`, the
-// same way settings.md and .vaultrc.json are: it is the source the compiler
-// merges its `packs` array into, not content to publish. The generated copy
-// lands in the output directory and ships from there. A module.json anywhere
-// else in the vault is an ordinary file and is left alone.
 const IGNORED_FILES = new Set([".DS_Store", ".vaultrc.json"]);
-const IGNORED_ROOT_FILES = new Set(["module.json"]);
 
 export async function scanVault(root: string): Promise<ScannedFile[]> {
   const out: ScannedFile[] = [];
@@ -43,7 +37,6 @@ async function walk(root: string, dir: string, out: ScannedFile[]): Promise<void
     }
     if (!entry.isFile()) continue;
     if (IGNORED_FILES.has(entry.name)) continue;
-    if (dir === root && IGNORED_ROOT_FILES.has(entry.name)) continue;
     if (entry.name.startsWith(".")) continue;
 
     const body = await readFile(abs);

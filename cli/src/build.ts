@@ -557,16 +557,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     .digest("hex")
     .slice(0, 10);
 
-  // Foundry importer bundle: one ESM file the Foundry module fetches at
-  // sync time. Skipped entirely when the vault has opted out of the Foundry
-  // integration — it is ~60KB shipped to every deploy, and a course site or
-  // research wiki will never fetch it.
   const foundryEnabled = settings.values.foundry.package !== "none";
-  // Foundry-import bundles are written per-variant inside the role loop
-  // below (instead of at the root) so the middleware role-gates them. A
-  // public visitor can't fetch the dm-tier handler bundle even if it
-  // contains different content. The path stays `/_handlers.foundry.{js,css}`
-  // — the middleware rewrites root requests to the matching variant.
 
   // Favicon; either user-supplied via settings.favicon, or a generated
   // default with the vault's first letter in accent on the theme background.
@@ -720,25 +711,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       katexCopied = true;
     }
 
-    // Foundry-import opt-in bundles, emitted INSIDE the variant directory
-    // (not at the deploy root) so the auth middleware role-gates them.
-    // Single-role builds collapse variantDir to outputDir, so the file
-    // ends up at root automatically. The Foundry module fetches by the
-    // canonical `/_handlers.foundry.{js,css}` path; the middleware
-    // rewrites that to the matching `_variants/<role>/...` per the
-    // requesting bearer token's role.
-    // Foundry-import subset bundles. The Foundry module fetches these by
-    // their canonical `/_handlers.foundry.{js,css}` paths; the middleware
-    // role-gates per the requesting bearer's variant.
-    if (foundryEnabled && handlerAssets.foundry) {
-      if (handlerAssets.foundry.js.length > 0) {
-        await writeFile(join(variantDir, "_handlers.foundry.js"), handlerAssets.foundry.js);
-      }
-      if (handlerAssets.foundry.css.length > 0) {
-        await writeFile(join(variantDir, "_handlers.foundry.css"), handlerAssets.foundry.css);
-      }
-    }
-
     // The entry list graft builds from, inside the variant directory so the
     // auth middleware gates it: a role only ever receives the pages it may
     // read, and the GM's variant is the one that lists everything.
@@ -752,7 +724,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
           playerRole: settings.values.foundry.player_role,
           buildRole: role,
           packs: packsFor(foundryModuleId),
-          version: assetVersion,
           coreVersion: settings.values.foundry.core_version,
           system: settings.values.foundry.system,
           packaging: settings.values.foundry.package === "adventure" ? "adventure" : "compendium",
@@ -776,14 +747,14 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       // A second body per page, with links resolved to UUIDs and media pointed
       // at markers the provider fills in. Foundry gets this one; the wiki keeps
       // the plain `.body.html`, since the same HTML cannot serve both.
-      for (const page of graftPages) {
+      await pMap(graftPages, concurrency, async (page) => {
         const base = page.path.replace(/\.md$/i, "");
         const body = await readFile(join(variantDir, `${base}.body.html`), "utf8");
         await writeFile(
           join(variantDir, `${base}.foundry.html`),
           toFoundryHtml(body, grafts.links, role),
         );
-      }
+      });
     }
 
   }
@@ -801,7 +772,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       moduleId: foundryModuleId,
       title: opts.vaultName,
       vaultUrl: opts.siteUrl,
-      version: "",
       systemId: settings.values.foundry.system,
       packaging: settings.values.foundry.package === "adventure" ? "adventure" : "compendium",
       extra: settings.values.foundry.module as Record<string, unknown>,

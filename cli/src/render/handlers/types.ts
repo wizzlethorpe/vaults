@@ -65,19 +65,12 @@ export type HandlerOutput =
  * Declared script files concatenate into one `_handlers.js` at the deploy
  * root; styles into `_handlers.css`. Each unique source is included
  * exactly once across all handlers.
- *
- * The optional `foundry` block opts the handler's assets into the
- * Foundry-VTT companion module's import bundle (the GM still has to
- * approve import on the Foundry side).
  */
 export interface HandlerAssets {
   /** Browser-side JS source files. Wrap your code in an IIFE to avoid global pollution. */
   scripts?: string[];
   /** Stylesheet source files. */
   styles?: string[];
-  /** Opt the handler's scripts / styles into the Foundry import bundle.
-   *  Default empty: nothing reaches Foundry without explicit opt-in. */
-  foundry?: { scripts?: boolean; styles?: boolean };
 }
 
 export interface InlineHandler {

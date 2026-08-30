@@ -7,7 +7,7 @@ foundry:
   # computing the SHA1 we'd otherwise derive from the page path. Stable
   # across renames and across vault redeploys.
   source: Scene
-  # `@vault/PATH` strings inside foundry.patch are rewritten at sync time
+  # `@vault/PATH` strings inside foundry.patch are rewritten at build time
   # to local Foundry cache URLs (worlds/<id>/vaults-cache/<vault-id>/PATH).
   # Lets the scene reference vault-shipped assets without hardcoding the
   # deploy URL. Walls trace the outer room; one ambient sound plays at
@@ -153,7 +153,7 @@ cache via the `@vault/...` paths in the scene's `tiles[]` and
 > - [[Toggle lights]]: flip scene darkness 0 ↔ 1
 > - [[Toggle ambient noise]]: mute / unmute the ambient sound (`mossfootHallAmb1`)
 >
-> Each macro reaches the scene by its pinned `foundry.id`
+> Each macro reaches the scene by its pinned `patch._id`
 > (`mossfootHall0001`) and the placeable by its pinned `_id`, with no
 > SHA1 lookups or name-search.
 

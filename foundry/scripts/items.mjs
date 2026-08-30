@@ -7,25 +7,11 @@
 //     - uuid: "Compendium.dnd5e.items.Item.rQ6sO7HDWzqMhSI3"
 //       system: { price: { value: 50, denomination: gp }, quantity: 2 }
 //
-// Inlining is the alternative and it is a bad one: one spell scroll is ~3KB of
-// JSON carrying its own activities, uses and damage, so a dozen wares are
-// unreadable in frontmatter and a hand-trimmed copy ships mechanics that do
-// not work. Here the compendium supplies the item and the page supplies only
-// what differs.
-//
-// `uuid` alone does not mark one of these. It appears all through dnd5e data —
-// an advancement's `configuration.items[].uuid` is a *grant*, naming an item a
-// character may later gain, and resolving those would rewrite the class rather
-// than the character.
-//
-// What separates them is `_id`. A reference carries the id of the item we are
-// placing, because the vault assigned it; a grant names something that is not
-// in the vault at all and has none. Across this vault's own data that split is
-// exact: 123 references, all with an id, and 137 grants, none with one.
-//
-// Which means nothing here needs to know where in a document it is looking.
-// Wherever an entry puts its documents — a pack entry's own `items`, or an
-// Actor nested two levels inside an Adventure — a reference looks the same.
+// `uuid` alone does not mark one of these: an advancement's
+// `configuration.items[].uuid` is a *grant*, naming an item a character may
+// later gain, and resolving those would rewrite the class rather than the
+// character. `_id` is the discriminator — a reference carries the id the
+// vault assigned; a grant has none.
 
 /** Deep-merge `patch` over `target`, in place. Arrays replace. */
 function merge(target, patch) {

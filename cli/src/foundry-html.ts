@@ -1,27 +1,11 @@
-// Turn a page's rendered article HTML into what a Foundry journal wants.
+// Turn a page's rendered article HTML into what a Foundry journal wants:
+// links become Foundry UUIDs, media becomes `@vaults/<variant>/<path>`
+// references the provider resolves on the reader's machine.
 //
-// This ran in Foundry at sync time, against ids the module derived for itself.
-// It runs here now, because the emitter already knows every id it will write:
-// a link can be resolved while the page is being built rather than rediscovered
-// on every reader's machine, which makes it deterministic and testable without
-// a world.
-//
-// Two rewrites live here. Links become Foundry UUIDs. Media becomes a vault
-// reference the provider resolves, since where a downloaded file lands is a
-// runtime fact the CLI cannot know and should not guess.
-//
-// One reference form covers both a page body and a piece of media:
-//
-//   @vaults/<variant>/<path>
-//
-// The variant is not decoration. A vault deploys each role its own directory,
-// and a file is only in it if a page that role can see refers to it, so a DM
-// creature's token exists under `DM/` and nowhere else. A reference without a
-// variant names a file that exists for some readers and not others and says
-// nothing about which — the provider would have to guess, and guessing upward
-// hands a player something their role was built to withhold. What the
-// consumer does with the file (inline the text, or save the bytes and use the
-// path) follows from the `.foundry.html` suffix, which only bodies carry.
+// The variant segment is load-bearing: each role's deploy holds only the
+// files its pages reference, so resolving without it means guessing, and
+// guessing upward hands a player a file their role was built to withhold.
+// A `.foundry.html` suffix marks a body to inline; anything else is a file.
 
 import { htmlAttr } from "./escape.js";
 

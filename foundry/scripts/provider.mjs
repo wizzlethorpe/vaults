@@ -18,20 +18,15 @@ import { tokenFor, promptForToken } from "./token.mjs";
 export const PROVIDER_ID = "vaults";
 
 /**
- * graft's progress bar, or a no-op when it is not there.
- *
- * Fetching a vault is the slow part of a build — a hundred images over a
- * network — and it all happens before graft has an entry to count, so the bar
- * sat at 0% for the whole of it with nothing to say a slow build from a stuck
- * one. Reported into graft's own bar rather than a second notification beside
- * it: there is one build happening, and it should look like one.
+ * graft's progress bar, or a no-op when it is not there. Fetching happens
+ * before graft has an entry to count, so without this the bar sits at 0%
+ * for the slowest part of the build.
  */
 function bar() {
   const p = globalThis.game?.modules?.get("graft")?.api?.progress;
   return {
     phase: (name, count) => { try { p?.phase?.(name, count); } catch { /* never fatal */ } },
     step: (message) => { try { p?.step?.(message); } catch { /* never fatal */ } },
-    note: (message) => { try { p?.note?.(message); } catch { /* never fatal */ } },
   };
 }
 
@@ -64,20 +59,10 @@ async function fetchEntries(vault) {
 }
 
 /**
- * Resolve every reference the entries carry, and every reference those turn
- * out to carry, until none are left.
- *
- * References nest: a page body is a reference, and the images it uses are
- * named inside the HTML it resolves to, so they cannot be known until it has
- * been fetched. Rather than count the levels of that — one for bodies, one for
- * their images — this runs to a fixed point. Each pass asks for whatever is
- * referenced and not yet accounted for, then folds what it learned into what
- * it holds, so a body stops being a reference and starts being HTML with real
- * paths in it. When a pass finds nothing new, everything resolvable is
- * resolved.
- *
- * A reference that cannot be fetched is asked for once. Otherwise a missing
- * file would be requested on every pass, and the loop would never settle.
+ * Resolve references to a fixed point: a body is a reference, and its images
+ * are named inside the HTML it resolves to, so each pass fetches what the
+ * last one uncovered until a pass finds nothing new. A reference that cannot
+ * be fetched is asked for once, or the loop would never settle.
  */
 const MAX_PASSES = 8;
 
@@ -160,8 +145,6 @@ async function resolveRound(vault, vaultId, refs, resolved, warnings, assets, io
     }
     warnings.push(...failed);
   }
-
-  return { resolved, warnings };
 }
 
 /** Look each uuid up in the reader's world, skipping what is not an Item. */

@@ -1,21 +1,9 @@
 // Default patches: what a document gets before its page says anything.
 //
-// Layered by how specific they are, least first, with the page's own patch last
-// and winning:
-//
-//   Actor            → every Actor in any system
-//   dnd5e/Actor      → every Actor in a vault targeting dnd5e
-//   the page's patch → this one
-//
-// Data rather than code, which is what makes this small. "Only use the page's
-// portrait if the page did not name its own" is not a condition anyone writes
-// here — it is what merging in this order already means. So is turning one off:
-// a page that says `img: null` has stated a value, the default does not reach
-// past it, and null is how a patch spells "no value" everywhere else too.
-//
-// `@page/…` is a value only the page can supply. It resolves during the build,
-// and a reference that resolves to nothing takes its key with it, so a page
-// with no portrait simply has no `img` rather than an empty one.
+// Layered least specific first — `Actor`, then `dnd5e/Actor`, then the page's
+// own patch, which wins at every depth including with an explicit `null`.
+// `@page/…` resolves during the build, and a reference that resolves to
+// nothing takes its key with it.
 
 /** Values a page can lend to its own default patch. */
 export interface PageValues {
@@ -35,7 +23,6 @@ export const DEFAULT_PATCHES: Record<string, Record<string, unknown>> = {
     prototypeToken: { texture: { src: "@page/image" } },
   },
   Item: { img: "@page/image" },
-  JournalEntry: {},
 
   // The page's article becomes the document's description, so a statblock
   // opened in Foundry carries the writing that explains it. As a reference, in

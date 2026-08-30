@@ -38,16 +38,12 @@ export interface Settings {
 type SettingType = "string" | "number" | "boolean" | "string[]" | "rules" | "object";
 
 /**
- * How a vault's content is packaged for Foundry, which decides both what a
- * sync produces and what `build --module` compiles.
+ * How a vault's content is packaged for Foundry.
  *
- * The two are different products, and the difference is not cosmetic: an
- * adventure's internal links must resolve to the copies the GM imported, so
- * they are world UUIDs and Foundry's Adventure import remaps nothing (it
- * creates with keepId and updates what already exists). A compendium's links
- * name the packs, because nothing is ever imported as a unit and the pack copy
- * is the copy. Baking one shape and using it the other way is what leaves a
- * page pointing at a second copy of the thing beside it.
+ * The difference is not cosmetic: an adventure's links must name the copies
+ * the GM imported (world UUIDs; import creates with keepId), a compendium's
+ * must name the packs. One shape's links used the other way point a reader at
+ * a second copy of the thing beside it.
  */
 export type FoundryPackage = "none" | "compendium" | "adventure";
 

@@ -1,10 +1,6 @@
-// A minimal zip writer, for the module a vault ships.
-//
-// The module is two small JSON files, so there is nothing here to compress and
-// entries are stored rather than deflated. That keeps this to one well-specified
-// format with no dependency: the alternative was shelling out to the `zip`
-// binary, which is absent on Windows and on plenty of CI images, and which
-// failed by producing no module at all.
+// A minimal zip writer, for the module a vault ships: two small JSON files,
+// stored uncompressed. The `zip` binary is absent on Windows and many CI
+// images, which is why this exists.
 
 // Added in Node 22.2.0, which is why package.json asks for it rather than
 // bare 22: on 22.0 this throws after the whole render has already run.

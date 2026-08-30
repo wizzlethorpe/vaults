@@ -17,7 +17,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import type { Migration } from "./types.js";
-import { listMarkdownFiles } from "./files.js";
+import { listMarkdownFiles, frontmatter, withFrontmatter, foundryChildren } from "./files.js";
 
 const RENAMES: Record<string, string> = {
   base: "source",
@@ -28,39 +28,16 @@ const RENAMES: Record<string, string> = {
 /**
  * Rewrite the frontmatter's `foundry:` block, or return null if untouched.
  *
- * Scoped three ways, because `data:` is an ordinary word that means something
- * else almost everywhere: only inside the leading `---` frontmatter, only
- * under a top-level `foundry:` key, and only at that block's own child indent.
- * A `data:` nested deeper is somebody's actual document field and keeps its
- * name.
+ * Only at the block's own child indent: `data:` nested deeper is somebody's
+ * actual document field and keeps its name.
  */
 export function rewriteFoundryKeys(text: string): string | null {
-  if (!text.startsWith("---\n")) return null;
-  const end = text.indexOf("\n---", 3);
-  if (end < 0) return null;
-
-  const lines = text.slice(4, end + 1).split("\n");
-  let inBlock = false;
-  let childIndent: number | null = null;
+  const fm = frontmatter(text);
+  if (!fm) return null;
+  const { lines, end } = fm;
   let changed = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    if (!line.trim() || line.trimStart().startsWith("#")) continue;
-    const indent = line.length - line.trimStart().length;
-
-    if (!inBlock) {
-      if (indent === 0 && /^foundry:\s*$/.test(line)) inBlock = true;
-      continue;
-    }
-    // Any other top-level key ends the block. A `foundry: {}` on one line
-    // never opens one, so there is nothing to close.
-    if (indent === 0) break;
-
-    // The first child sets the level the renamed keys must sit at.
-    if (childIndent === null) childIndent = indent;
-    if (indent !== childIndent) continue;
-
+  for (const { i, line } of foundryChildren(lines)) {
     const match = /^(\s*)([A-Za-z_][\w-]*)(\s*:)/.exec(line);
     const key = match?.[2];
     if (!key || !(key in RENAMES)) continue;
@@ -68,7 +45,7 @@ export function rewriteFoundryKeys(text: string): string | null {
     changed = true;
   }
 
-  return changed ? text.slice(0, 4) + lines.join("\n") + text.slice(end + 1) : null;
+  return changed ? withFrontmatter(text, lines, end) : null;
 }
 
 export const foundryPatchKeysMigration: Migration = {

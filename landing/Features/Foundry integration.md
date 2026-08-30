@@ -30,10 +30,10 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 | `foundry.embed: false` | Skip auto-embedding the page article into the doc's description field |
 | `foundry.journal: false` | Instantiate the derived doc but keep the article out of the journal sidebar. An Actor or Scene that needs no wiki entry of its own |
 | `foundry.link` | `journal` (default) or `doc`: where wikilinks to this page point. `doc` sends them at the instantiated document instead of its journal page. Implied by `journal: false` |
-| `foundry.folder` | A `/`-separated folder path the instantiated doc is filed under inside its pack. Absent means the page's own vault directory |
+| `foundry.folder` | A `/`-separated folder path the document is filed under, independent of where the page lives |
 | `foundry.patch` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); `"@moulinette/<pack_ref>/<filepath>"` strings resolve against the reader's own Moulinette library (see below) |
 | `foundry.patch_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.patch` (use for exported sheets / community-shared dumps) |
-| `foundry.id` | 16-char `[A-Za-z0-9]` Foundry id pinned for this page's `JournalEntryPage` and (if `foundry.source` is set) its instantiated doc |
+| `foundry.patch._id` | 16-char `[A-Za-z0-9]` Foundry id pinned for the page's document, instead of the derived one |
 
 ## Actor / Item cloning via `foundry.source`
 
@@ -119,7 +119,7 @@ In this vault:
   one ambient sound, both assets pulled into the vault cache via `@vault/`
 - [[Toggle feast]], [[Toggle lights]], and [[Toggle ambient noise]] are
   `script`-type `Macro`s that target the Mossfoot Hall scene by its
-  pinned `foundry.id`, and reach individual placeables (the dinner tile,
+  pinned `patch._id`, and reach individual placeables (the dinner tile,
   the ambient sound) by their pinned `_id`. End-to-end demo of pinned
   UUIDs, cross-page doc references, and `@vault/`-cached scene assets
   working together.
@@ -173,34 +173,26 @@ page's `foundry.patch` block on top.
 
 ---
 
-### Pinning an explicit Foundry id with `foundry.id`
+### Pinning an explicit Foundry id with `patch._id`
 
-By default the module derives each page's `JournalEntryPage` id (and, if
-`foundry.source` is set, the instantiated doc's id) from a SHA1 of
+By default each page's document id derives from a SHA1 of
 `vaultId + path`. That's stable but opaque, which is awkward when you
-want to reference the page or doc from somewhere outside the vault: a
-hotbar macro, a scene flag, another module's data, a hardcoded
-`@UUID[...]` enricher.
+want to reference the doc from outside the vault: a hotbar macro, a
+scene flag, another module's data, a hardcoded `@UUID[...]` enricher.
 
-Set `foundry.id` to a 16-char `[A-Za-z0-9]` string and the module pins
-that id instead:
+Set `_id` in the page's patch and the build pins that id instead — it is
+a field of the document, so it lives in the document's own data:
 
 ```yaml
 ---
 title: Mossfoot Great Hall
 foundry:
-  id: mossfootHall0001
   source: Scene
   patch:
+    _id: mossfootHall0001
     name: Mossfoot Great Hall
 ---
 ```
-
-The same id is used for the JournalEntryPage and the Scene, since
-Foundry namespaces ids per collection (no collision risk).
-Cross-page wikilinks `[[Mossfoot Great Hall]]` re-resolve through the
-override automatically — they'll point at `mossfootHall0001` rather
-than the SHA1.
 
 [[Mossfoot Great Hall]] is the live demo. Once the scene has been imported with "Keep Document IDs", a hotbar macro can run:
 
@@ -216,10 +208,9 @@ game.scenes.get("mossfootHall0001").view();
 
 The parent `JournalEntry` id (folder-shared, since one entry covers
 every page in a directory) is intentionally *not* overridable per page:
-two siblings can't both claim it. If you change a page's `foundry.id`
-between syncs, the previously-created doc with the old id is left behind in
-the pack under the old id, and anything you had already imported keeps the
-old id too. Neither is auto-deleted. Drop them by hand if you need to.
+two siblings can't both claim it. If you change a page's pinned id
+between builds, anything already imported keeps the old id and is not
+auto-deleted. Drop it by hand if you need to.
 
 ---
 

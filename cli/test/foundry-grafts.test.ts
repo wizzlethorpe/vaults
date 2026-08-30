@@ -19,7 +19,6 @@ const opts: GraftOptions = {
   playerRole: "player",
   buildRole: "dm",
   packs: { JournalEntry: "marlo-journals", Actor: "marlo-actors", Item: "marlo-items" },
-  version: "1.4.0",
 };
 
 const page = (path: string, over: Partial<Page> = {}): Page =>
@@ -183,12 +182,9 @@ describe("documentTypeOf", () => {
 });
 
 describe("the whole file", () => {
-  it("declares its format and the vault version", () => {
-    // The format lets a newer vault refuse an older graft rather than be
-    // half-read; the version is what the freshness prompt compares.
+  it("declares its format, which lets a newer vault refuse an older graft", () => {
     const { file } = buildGrafts([page("A/B.md")], opts);
     assert.equal(file.format, 1);
-    assert.equal(file.version, "1.4.0");
     assert.equal(file.entries.length, 1);
   });
 });
@@ -198,7 +194,7 @@ describe("the module a vault ships", () => {
     // Packs are read when the server starts, so a vault that later gains its
     // first Scene would otherwise need reinstalling and a restart.
     const { moduleManifest, packTypesFor } = await import("../src/foundry-grafts.js");
-    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com/", version: "1.4.0" });
+    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com/" });
     const packs = m["packs"] as Array<Record<string, any>>;
     // Every type a compendium can hold. Adventure is not one of them: it is
     // the other way of delivering the same vault, not a pack alongside these.
@@ -209,7 +205,7 @@ describe("the module a vault ships", () => {
 
   it("requires graft and the provider, so a missing one is Foundry's error", async () => {
     const { moduleManifest } = await import("../src/foundry-grafts.js");
-    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com", version: "1.4.0" });
+    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com" });
     const ids = ((m["relationships"] as any).requires as Array<any>).map((r) => r.id);
     // The provider module's id is "vaults". Naming it anything else gives a
     // dependency Foundry cannot resolve, and the module installs but never
@@ -222,7 +218,7 @@ describe("the module a vault ships", () => {
     // graft reads `flags.graft.entries` to find anything at all. Without it the
     // module is a manifest and a set of empty packs.
     const { moduleManifest } = await import("../src/foundry-grafts.js");
-    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://x.example.com", version: "1.4.0" });
+    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://x.example.com" });
     assert.deepEqual((m["flags"] as any).graft.entries, ["grafts.json"]);
   });
 
@@ -729,7 +725,7 @@ describe("what packs a module declares", () => {
     // Packs are read when the server starts, so a vault gaining its first
     // Scene would otherwise need a reinstall and a restart before it builds.
     const { moduleManifest } = await import("../src/foundry-grafts.js");
-    const m = moduleManifest({ moduleId: "v", title: "V", vaultUrl: "https://x", version: "1" });
+    const m = moduleManifest({ moduleId: "v", title: "V", vaultUrl: "https://x" });
     const packs = m["packs"] as Array<{ type: string }>;
     assert.ok(packs.length > 5, `${packs.length} packs`);
     assert.ok(packs.some((p) => p.type === "JournalEntry"));
@@ -740,7 +736,7 @@ describe("what packs a module declares", () => {
     // nothing to declare, and empty packs beside it are just noise.
     const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({
-      moduleId: "v", title: "V", vaultUrl: "https://x", version: "1", packaging: "adventure",
+      moduleId: "v", title: "V", vaultUrl: "https://x", packaging: "adventure",
     });
     assert.deepEqual((m["packs"] as Array<any>).map((p) => [p.name, p.type]),
       [["v-adventure", "Adventure"]]);
@@ -752,7 +748,7 @@ describe("what packs a module declares", () => {
     // and every read of it arrives incomplete, with nothing saying so.
     const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({
-      moduleId: "v", title: "V", vaultUrl: "https://x", version: "1",
+      moduleId: "v", title: "V", vaultUrl: "https://x",
       packaging: "adventure", systemId: "dnd5e",
     });
     assert.equal((m["packs"] as Array<any>)[0].system, "dnd5e");
@@ -761,14 +757,14 @@ describe("what packs a module declares", () => {
   it("files only the packs it declared", async () => {
     const { moduleManifest } = await import("../src/foundry-grafts.js");
     const m = moduleManifest({
-      moduleId: "v", title: "V", vaultUrl: "https://x", version: "1", packaging: "adventure",
+      moduleId: "v", title: "V", vaultUrl: "https://x", packaging: "adventure",
     });
     assert.deepEqual((m["packFolders"] as Array<any>)[0].packs, ["v-adventure"]);
   });
 
   it("keeps the Adventure pack out of a compendium module", async () => {
     const { moduleManifest } = await import("../src/foundry-grafts.js");
-    const m = moduleManifest({ moduleId: "v", title: "V", vaultUrl: "https://x", version: "1" });
+    const m = moduleManifest({ moduleId: "v", title: "V", vaultUrl: "https://x" });
     assert.ok(!(m["packs"] as Array<any>).some((p) => p.type === "Adventure"));
   });
 });

@@ -16,34 +16,20 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import type { Migration } from "./types.js";
-import { listMarkdownFiles } from "./files.js";
+import { listMarkdownFiles, frontmatter, withFrontmatter, foundryChildren } from "./files.js";
 
 /** Rewrite one file's frontmatter, or return null if it has nothing to move. */
 export function movePinnedId(text: string): string | null {
-  if (!text.startsWith("---\n")) return null;
-  const end = text.indexOf("\n---", 3);
-  if (end < 0) return null;
-
-  const lines = text.slice(4, end + 1).split("\n");
-  let inBlock = false;
+  const fm = frontmatter(text);
+  if (!fm) return null;
+  const { lines, end } = fm;
   let childIndent: number | null = null;
   let idAt: number | null = null;
   let patchAt: number | null = null;
   let value = "";
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    if (!line.trim() || line.trimStart().startsWith("#")) continue;
-    const indent = line.length - line.trimStart().length;
-
-    if (!inBlock) {
-      if (indent === 0 && /^foundry:\s*$/.test(line)) inBlock = true;
-      continue;
-    }
-    if (indent === 0) break;
-    if (childIndent === null) childIndent = indent;
-    if (indent !== childIndent) continue;
-
+  for (const { i, line } of foundryChildren(lines)) {
+    if (childIndent === null) childIndent = line.length - line.trimStart().length;
     const id = /^\s*id:\s*(.+?)\s*$/.exec(line);
     if (id) { idAt = i; value = id[1]!; continue; }
     // An inline `patch: {…}` has no lines to insert between. Rare, and
@@ -68,7 +54,7 @@ export function movePinnedId(text: string): string | null {
     lines.splice(at + 1, 0, `${" ".repeat(inner)}_id: ${value}`);
   }
 
-  return text.slice(0, 4) + lines.join("\n") + text.slice(end + 1);
+  return withFrontmatter(text, lines, end);
 }
 
 export const foundryPinnedIdMigration: Migration = {

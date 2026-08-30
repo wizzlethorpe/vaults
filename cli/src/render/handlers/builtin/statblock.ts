@@ -545,8 +545,4 @@ const STATBLOCK_CSS = `
 
 registerBuiltinAssets(statblockHandler, {
   styles: [{ source: "builtin/statblock.css", content: STATBLOCK_CSS }],
-  // Styles ride into the Foundry-import bundle so synced statblocks
-  // render identically. Scripts intentionally omitted: dice runtime is
-  // replaced by Foundry's [[/r]] enricher in links.mjs.
-  foundry: { styles: true },
 });

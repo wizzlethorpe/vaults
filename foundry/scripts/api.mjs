@@ -8,9 +8,8 @@
 
 /**
  * Build a fully-qualified URL for a vault endpoint, appending the bearer
- * token as `?_token=` when one is set on the vault entry. Exported so other
- * modules (media.mjs, etc.) construct vault URLs the same way — keeps the
- * trailing-slash and token rules in one place.
+ * token as `?_token=` when one is set. The one place that knows the
+ * trailing-slash and token rules.
  */
 export function url(vault, path) {
   if (!vault?.url) throw new Error("Vault URL is not configured.");
@@ -55,15 +54,8 @@ export async function fetchSourceBatch(vault, paths, role) {
   if (paths.length === 0) return new Map();
   if (!vault.gated) return fetchSourceDirect(vault, paths);
 
-  // `role` asks for a specific rendering. A page is fetched in the variant
-  // matching its *own* role, not the syncing user's: a page marked readable by
-  // players must hold the players' version of itself, and a base view filtered
-  // by role renders differently for each tier.
-  // Set as a search param rather than appended as a string: url() has already
-  // put the bearer in the query, so a second "?" made the role part of the
-  // *token's* value. The token then failed to verify and the request fell back
-  // to the lowest role, while `role` was never a parameter at all — so every
-  // page above that tier came back missing and nothing reported an error.
+  // `role` asks for the variant matching the page's *own* role, not the
+  // reader's; see batchEndpoint for why it must be a real search param.
   const endpoint = batchEndpoint(vault, role);
   const chunks = [];
   for (let i = 0; i < paths.length; i += BATCH_SIZE) chunks.push(paths.slice(i, i + BATCH_SIZE));

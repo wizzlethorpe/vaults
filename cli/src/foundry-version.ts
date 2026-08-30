@@ -1,15 +1,7 @@
-// The version a vault's Foundry module carries.
-//
-// It used to be the deploy's asset hash, which is unreadable in Foundry's
-// module list and — worse — cannot be ordered. Foundry decides whether an
-// update is available with `isNewerVersion`, so a hash means "check for
-// updates" can never say yes.
-//
-// The module is inert: a manifest, a set of pack declarations, and one line
-// naming the vault. Pushing content does not change it, so its version should
-// not move on every push either. It moves when the module itself changes —
-// gaining a pack, being renamed, moving to a new URL — and it reads as the day
-// that happened.
+// The version a vault's Foundry module carries: the date the module itself
+// last changed. Foundry decides "update available" with isNewerVersion, so it
+// has to be orderable (a hash can never say yes), and pushing content does
+// not touch it, so an update offer always contains one.
 
 import { createHash } from "node:crypto";
 
@@ -27,12 +19,8 @@ function fingerprint(manifest: Record<string, unknown>): string {
 }
 
 /**
- * The version this manifest should carry, given the last one it was assigned.
- *
- * Unchanged manifest, unchanged version: a module that offers an update
- * containing nothing is a module people learn to ignore. When it has changed,
- * today's date, with a counter only if that collides with the version already
- * in use — which keeps it ordered on the one day it could go backwards.
+ * The version this manifest should carry: unchanged while the manifest is,
+ * today's date when it moved, with a same-day counter so it stays ordered.
  */
 export function moduleVersion(
   manifest: Record<string, unknown>, previous: ModuleVersion | undefined, now = new Date(),

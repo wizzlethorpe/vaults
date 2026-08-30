@@ -1,19 +1,10 @@
-// Vault references: `@vaults/<variant>/<path>`.
+// Vault references: `@vaults/<variant>/<path>`, resolved on the reader's
+// machine because only the reader knows where a downloaded file lands.
 //
-// The CLI writes these wherever a value has to come from the deployed vault
-// rather than from the entry itself — a journal page's body, a scene's
-// background, a token's art. They are resolved here, on the reader's machine,
-// because only the reader knows where a downloaded file lands.
-//
-// The variant is the role whose rendering to read, and it is load-bearing. A
-// vault deploys each role its own directory and puts a file in it only if a
-// page that role can see refers to it, so the same path can exist for the GM
-// and not for a player. Resolving a reference means asking for that variant
-// specifically; dropping the segment and asking for "the file" would serve
-// whatever the reader's own token reaches, which for a GM is everything.
-//
-// Nothing here touches Foundry or the network. Collecting what an entry needs
-// is separable from fetching it, and it is the half worth testing.
+// The variant is the role whose rendering to fetch, and must be asked for
+// specifically: fetching without it serves whatever the reader's own token
+// reaches, which for a GM is everything, including what a player-visible
+// document must not carry. Nothing here touches Foundry or the network.
 
 const PREFIX = "@vaults/";
 

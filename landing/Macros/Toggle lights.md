@@ -16,7 +16,7 @@ foundry:
 
 Flips the [[Mossfoot Great Hall]] scene's darkness between `0` (fully
 lit) and `1` (full dark). Operates on the scene by its pinned
-`foundry.id` (`mossfootHall0001`), so it works whether or not the
+`patch._id` (`mossfootHall0001`), so it works whether or not the
 scene is the active canvas.
 
 > [!quote] Macro body

@@ -1277,12 +1277,6 @@ function isSharedAsset(pathname) {
   //                                  — build.ts (the installable module)
   //   - functions/_middleware.js     — build.ts (multi-role only; not served)
   // If you add another, add it both here AND in build.ts.
-  //
-  // _handlers.foundry.{js,css} is *deliberately not* listed: it lives in
-  // each variant directory so the middleware rewrites root requests to
-  // /_variants/<role>/_handlers.foundry.* per the requester's role,
-  // gating higher-tier handler assets behind authentication the same way
-  // page bodies are.
   if (pathname === "/styles.css") return true;
   if (pathname === "/user.css") return true;
   if (pathname === "/_handlers.js") return true;

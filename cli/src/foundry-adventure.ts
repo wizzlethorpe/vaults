@@ -1,13 +1,8 @@
 // Packaging a vault as one Adventure instead of a shelf of packs.
 //
-// The two are different products, not two spellings of one. A compendium is
-// browsable and nothing is imported as a unit, so the pack copy *is* the copy
-// and a link names it. An Adventure is imported once and becomes real documents
-// in the world, so a link has to name the copy the GM ended up with.
-//
 // Foundry's import partitions by `_id`: what the world already has is updated,
-// the rest created. Our ids come from the page's path or from `patch._id`, so
-// a second import updates in place rather than making a second everything.
+// the rest created. Our ids are deterministic, so a second import updates in
+// place rather than making a second everything.
 
 import { DOC_TYPES } from "./foundry-types.js";
 import type { GraftEntry } from "./foundry-grafts.js";
@@ -61,14 +56,9 @@ function folderDocs(
 /**
  * Fold typed entries into a single Adventure entry.
  *
- * An entry that names a source keeps it, in the shape graft already resolves
- * inside a keyed array: `{ _id, source, patch }`. That matters — an Actor here
- * is usually a patch over a compendium statblock, and flattening it would put
- * a name and a portrait in the Adventure with no statblock under them.
- * Resolution still happens on the reader's machine, where the compendium is.
- *
- * Nothing is dropped silently. A type the Adventure schema has no home for is
- * reported and left out, because an Adventure cannot hold it at all.
+ * A sourced entry stays `{ _id, source, patch }` — the shape graft resolves
+ * inside a keyed array — so an Actor keeps naming its statblock and is still
+ * resolved on the reader's machine, where the compendium is.
  */
 export function asAdventure(
   entries: GraftEntry[], opts: AdventureOptions,

@@ -1,13 +1,6 @@
 // Compile a vault into a grafts.json: the entry list graft builds from.
-//
-// This replaces both halves of the old Foundry integration. The module used to
-// fetch a manifest, diff it, pull bodies, rewrite links and write packs at
-// runtime, while the compiler did much the same work again to produce an
-// installable module. Both become one artifact emitted here, and the Foundry
-// side becomes "fetch this list and hand it to graft".
-//
-// Nothing in this file touches Foundry or the filesystem, so the whole mapping
-// is testable on its own — which is where the old design had no coverage at all.
+// Nothing here touches Foundry or the filesystem, so the whole mapping is
+// testable on its own.
 
 import { createHash } from "node:crypto";
 
@@ -31,7 +24,6 @@ export interface GraftEntry {
 
 export interface GraftsFile {
   format: 1;
-  version: string;
   /**
    * The Foundry version these documents were authored at, when the vault says.
    * Recorded so a reader can see what a build was made from; the value that
@@ -126,11 +118,6 @@ function defaulted(
  */
 function pinnedId(patch: Record<string, unknown> | undefined, warnings: string[], path: string): string | null {
   const id = patch?.["_id"];
-  // Read here and dropped below, in `defaulted`. A patch that keeps its `_id`
-  // is a patch that can disagree with the entry carrying it: graft overwrites
-  // it for a pack document, but an Adventure spreads the patch over the id it
-  // just assigned, so a rejected `_id` would arrive anyway and Foundry would
-  // refuse the document the warning claims to have saved.
   if (id === undefined || id === null) return null;
   const pinned = pinnedIdOf(patch);
   if (pinned) return pinned;
@@ -175,7 +162,6 @@ export interface GraftOptions {
   buildRole: string;
   /** Pack name per document type, e.g. `{ JournalEntry: "marlo-journals" }`. */
   packs: Record<string, string>;
-  version: string;
   /** Foundry version the vault's document data was authored at, e.g. "14". */
   coreVersion?: string;
   /** Game system the vault targets, for system-specific enrichers. */
@@ -476,7 +462,6 @@ export function buildGrafts(
   return {
     file: {
       format: 1,
-      version: opts.version,
       ...(opts.coreVersion ? { coreVersion: opts.coreVersion } : {}),
       ...(assets ? { assets } : {}),
       contentHash: createHash("md5")
@@ -525,7 +510,6 @@ export interface ManifestOptions {
   moduleId: string;
   title: string;
   vaultUrl: string;
-  version: string;
   /** The game system whose Actor and Item packs this vault targets. */
   systemId?: string;
   /** Extra manifest keys from `foundry.module` in settings.md. */
@@ -550,7 +534,6 @@ export function moduleManifest(opts: ManifestOptions): Record<string, unknown> {
     id: opts.moduleId,
     title: opts.title,
     description: `Content from ${url}, built on your machine from what you are entitled to read.`,
-    version: opts.version,
     compatibility: { minimum: "14", verified: "14" },
     url,
     manifest: `${url}/_foundry/module.json`,
