@@ -2,7 +2,7 @@
   "id": "vaults",
   "title": "Wizzlethorpe Vaults",
   "description": "Read an Obsidian vault published with Wizzlethorpe Vaults into Foundry VTT. Registers a Graft provider, so a vault's documents are built from its deployment and stay updatable without reinstalling anything.",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "compatibility": {
     "minimum": "14",
     "verified": "14"
