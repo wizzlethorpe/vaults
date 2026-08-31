@@ -21,7 +21,9 @@ import { slugify } from "./render/slug.js";
 import type { ImageEntry, PageMeta } from "./render/types.js";
 import { loadDataJson } from "./foundry-meta.js";
 
-const EMBED_RE = /!\[\[([^\[\]|#\n]+?)(?:\|[^\[\]#\n]*)?\]\]/g;
+// The optional backslash matters: a table cell has to escape the size hint's
+// pipe, and keeping that backslash in the name misses the index silently.
+const EMBED_RE = /!\[\[([^\[\]|#\n]+?)\\?(?:\|[^\[\]#\n]*)?\]\]/g;
 
 // A ```gallery code block. Its body lists images by name (one per line,
 // optional `| caption`), which the gallery handler renders but the source
@@ -35,7 +37,7 @@ const GALLERY_BLOCK_RE = /^```gallery[^\n]*\n([\s\S]*?)^```/gm;
 const MD_LINK_RE = /\[[^\]]*\]\(([^)\s]+\.[a-z0-9]+)(?:\s+["'][^"']*["'])?\)/gi;
 
 // `[[file.ext]]` and `![[file.ext]]` — Obsidian-flavoured wikilinks/embeds.
-const WIKI_LINK_RE = /!?\[\[([^\[\]|#\n]+\.[a-z0-9]+)(?:\|[^\[\]#\n]*)?(?:#[^\[\]\n]*)?\]\]/gi;
+const WIKI_LINK_RE = /!?\[\[([^\[\]|#\n]+\.[a-z0-9]+)\\?(?:\|[^\[\]#\n]*)?(?:#[^\[\]\n]*)?\]\]/gi;
 
 /** Image basenames referenced inside a page's ```gallery blocks. */
 function galleryImageNames(source: string): string[] {
