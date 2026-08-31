@@ -101,14 +101,29 @@ export async function promptForUpdates() {
       modal: false,
     }).catch(() => false);
 
+    // The build records through the graftBuilt hook, whoever started it.
     if (build) await graft.buildPacks(module.id);
-    // Re-read after a build: the token it obtained may make the hash readable
-    // for the first time, and a push can land while a long one runs.
-    if (build) await record(module.id, await fetchVaultHash(markers));
     // Declining an update means "not this push", so it records. Declining
     // setup records nothing, or the offer would never come back.
     else if (!setup) await record(module.id, fetched);
   }
+}
+
+/**
+ * Note what a module just built, on graft's hook rather than after our own
+ * call, so a build started from graft's own controls records too.
+ *
+ * Read after the build, not before: the token that build obtained may make the
+ * hash readable for the first time, and a push can land while a long one runs.
+ */
+export async function recordBuilt(moduleId) {
+  const graft = game.modules.get("graft")?.api;
+  if (!graft) return;
+  let markers;
+  try { markers = markersOf(await graft.readGrafts(moduleId)); }
+  catch { return; }
+  if (markers.length === 0) return;
+  await record(moduleId, await fetchVaultHash(markers));
 }
 
 export const __test = { shouldPrompt, promptKind, markersOf, fetchHash, fetchVaultHash };

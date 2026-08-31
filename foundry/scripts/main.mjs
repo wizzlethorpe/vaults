@@ -3,7 +3,7 @@
 
 import { vaultsProvider } from "./provider.mjs";
 import { registerTokenSetting, forgetToken, tokenFor } from "./token.mjs";
-import { registerBuiltSetting, promptForUpdates } from "./freshness.mjs";
+import { registerBuiltSetting, promptForUpdates, recordBuilt } from "./freshness.mjs";
 
 const MODULE_ID = "vaults";
 
@@ -18,6 +18,10 @@ Hooks.once("init", () => {
 Hooks.on("graftRegisterProviders", ({ registerProvider }) => {
   registerProvider(vaultsProvider());
 });
+
+// Whoever started the build: the world-load prompt, graft's compendium header,
+// or its pack control. Only graft sees them all.
+Hooks.on("graftBuilt", (moduleId) => { recordBuilt(moduleId); });
 
 Hooks.once("ready", async () => {
   if (!game.modules.get("graft")?.active) {

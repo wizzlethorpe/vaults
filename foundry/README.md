@@ -13,7 +13,7 @@ Module ID: `vaults`. Requires Foundry V14 or newer, and graft.
 
 That first offer is worded here rather than by graft, because only this module knows a role-gated vault needs connecting to first. Whether anything has been built is graft's own `anyBuilt`: this module's `grafts.json` names a vault to fetch rather than the entries themselves, so until a build has run there are no ids for graft's usual check to look up. The offer returns each world load until a build is attempted, since an unbuilt vault is empty packs and nothing else.
 
-On later world loads, the module compares the deploy's content hash against the last build and offers a rebuild when the vault has moved. Declining records the answer, so one push asks once. Downloads are cached by content hash: a rebuild fetches only bytes that changed.
+On later world loads, the module compares the deploy's content hash against the last build and offers a rebuild when the vault has moved. Declining records the answer, so one push asks once. What was built is recorded on graft's `graftBuilt` hook, so a build started from graft's own controls counts the same as one started from the prompt. Downloads are cached by content hash: a rebuild fetches only bytes that changed.
 
 ## What lands in Foundry
 

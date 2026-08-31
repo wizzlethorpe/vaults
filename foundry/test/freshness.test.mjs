@@ -7,7 +7,7 @@
 import { describe, test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { __test } from "../scripts/freshness.mjs";
+import { __test, recordBuilt } from "../scripts/freshness.mjs";
 const { shouldPrompt, promptKind, markersOf, fetchHash, fetchVaultHash } = __test;
 
 describe("shouldPrompt", () => {
@@ -113,5 +113,50 @@ describe("fetchVaultHash", () => {
     withTokens({});
     globalThis.fetch = async () => ({ ok: true, json: async () => ({ content: "open1" }) });
     assert.equal(await fetchVaultHash([{ vault: "https://v.example.com" }]), "open1");
+  });
+});
+
+describe("recordBuilt", () => {
+  const savedFetch = globalThis.fetch;
+  const savedGame = globalThis.game;
+  afterEach(() => { globalThis.fetch = savedFetch; globalThis.game = savedGame; });
+
+  /** A world where graft answers with one marker and the GM holds a token. */
+  function installWorld({ readGrafts, stored = {} }) {
+    const settings = { "vaults.tokens": { "https://v.example.com": "tok" }, "vaults.builtHashes": stored };
+    globalThis.game = {
+      modules: { get: (id) => id === "graft" ? { api: { readGrafts } } : null },
+      settings: {
+        get: (m, k) => settings[`${m}.${k}`],
+        set: async (m, k, v) => { settings[`${m}.${k}`] = v; },
+      },
+    };
+    return settings;
+  }
+
+  test("notes the hash of what was just built", async () => {
+    // Fired from graft's hook, so a build started from its own controls
+    // records too; before this only a prompted build ever did.
+    const settings = installWorld({ readGrafts: async () => [{ vault: "https://v.example.com", gated: true }] });
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ content: "after01" }) });
+    await recordBuilt("southaven");
+    assert.deepEqual(settings["vaults.builtHashes"], { southaven: "after01" });
+  });
+
+  test("leaves other modules' records alone", async () => {
+    const settings = installWorld({
+      readGrafts: async () => [{ vault: "https://v.example.com", gated: true }],
+      stored: { other: "keep0" },
+    });
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ content: "after01" }) });
+    await recordBuilt("southaven");
+    assert.deepEqual(settings["vaults.builtHashes"], { other: "keep0", southaven: "after01" });
+  });
+
+  test("ignores a graft module that is not a vault", async () => {
+    const settings = installWorld({ readGrafts: async () => [{ id: "abcdefghijklmnop", pack: "p", patch: {} }] });
+    globalThis.fetch = async () => { throw new Error("should not be fetched"); };
+    await recordBuilt("some-other-module");
+    assert.deepEqual(settings["vaults.builtHashes"], {});
   });
 });
