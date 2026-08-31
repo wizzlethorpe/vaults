@@ -9,7 +9,7 @@
 
 import { createHash } from "node:crypto";
 
-import { htmlAttr } from "./escape.js";
+import { htmlAttr, htmlUnescape } from "./escape.js";
 
 /**
  * Where a page ended up: its journal page, its document, or both. A wikilink
@@ -48,8 +48,11 @@ const TAG_RE = /<[^>]+>/g;
 
 /** `"/Characters/Marlo"` back to `"Characters/Marlo.md"`. */
 export function pathFromHref(href: string): string | null {
-  if (!href.startsWith("/")) return null;
-  const clean = href.split("#")[0]!.split("?")[0]!;
+  // The entity pass comes first because it is the parser layer: the serializer
+  // wrote `'` as `&#x27;`, and only what it produces is percent-encoded.
+  const unescaped = htmlUnescape(href);
+  if (!unescaped.startsWith("/")) return null;
+  const clean = unescaped.split("#")[0]!.split("?")[0]!;
   let decoded: string;
   try { decoded = decodeURIComponent(clean); } catch { decoded = clean; }
   const trimmed = decoded.replace(/^\/+/, "").replace(/\.html$/i, "");

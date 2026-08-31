@@ -35,6 +35,14 @@ describe("pathFromHref", () => {
     assert.equal(pathFromHref("/Characters/Marlo%20Vex"), "Characters/Marlo Vex.md");
   });
 
+  it("decodes the entities the serializer wrote, so an apostrophe resolves", () => {
+    // rehype escapes ' in an attribute; percent-decoding alone leaves the
+    // entity mid-path and the link silently stays a raw href in Foundry.
+    assert.equal(pathFromHref("/Places/Aramond&#x27;s%20Lookout"), "Places/Aramond's Lookout.md");
+    assert.equal(pathFromHref("/Places/Aramond&#39;s%20Lookout"), "Places/Aramond's Lookout.md");
+    assert.equal(pathFromHref("/Items/Cloak%20&amp;%20Dagger"), "Items/Cloak & Dagger.md");
+  });
+
   it("drops the fragment and query, which name a spot on a page, not a page", () => {
     assert.equal(pathFromHref("/Characters/Marlo#gear"), "Characters/Marlo.md");
     assert.equal(pathFromHref("/Characters/Marlo?v=2"), "Characters/Marlo.md");
