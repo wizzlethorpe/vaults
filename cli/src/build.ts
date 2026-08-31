@@ -613,6 +613,16 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     );
   }
 
+  // The module is only emitted when there is a URL to fetch the vault from,
+  // so without one the deploy carries content Foundry has no way to install.
+  if (foundryEnabled && !opts.siteUrl) {
+    console.warn(
+      "  site_url is not set, so no Foundry module is written."
+      + " The vault deploys, but there is nothing to install in Foundry."
+      + " Set it to the URL this vault is served from, e.g. https://notes.example.com.",
+    );
+  }
+
   // Read each page's `foundry.patch_json` once, before any variant is
   // rendered: the file is the same whoever is reading, and a Scene sidecar is
   // the largest thing in the vault to be re-parsing per role. It stays separate

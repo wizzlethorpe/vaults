@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 import {
   buildGrafts, contentHash, journalEntries, documentEntries, documentTypeOf, observable, basesOf, moduleGrafts, moduleManifest, subtypeOf,
-  entryId, pageId, instanceId, folderOf, pagesFrom, linkIndex, withFolderIndexes, type Page, type GraftOptions,
+  entryId, pageId, instanceId, itemId, withItemIds, folderOf, pagesFrom, linkIndex, withFolderIndexes, type Page, type GraftOptions,
 } from "../src/foundry-grafts.js";
 import { DOC_TYPES } from "../src/foundry-types.js";
 
@@ -133,6 +133,40 @@ describe("documents from foundry.source", () => {
     assert.deepEqual(entries, []);
     assert.match(warnings[0]!, /no pack declared for Scene/);
     assert.match(warnings[1]!, /cannot tell what kind/);
+  });
+});
+
+describe("grafting onto a sibling entry", () => {
+  const sibling = (id: string) => `Compendium.marlo.marlo-actors.Actor.${id}`;
+
+  it("is quiet when the sibling is in this build", () => {
+    const { entries, warnings } = documentEntries([
+      page("Bestiary/Wight.md", {
+        foundry: { source: "Compendium.some-bestiary.actors.Actor.mmWight00000000",
+                   patch: { _id: "344a28ac1128a1d5" } },
+      }),
+      page("NPCs/Brynn.md", { foundry: { source: sibling("344a28ac1128a1d5") } }),
+    ], opts);
+    assert.equal(entries.length, 2);
+    assert.deepEqual(warnings, []);
+  });
+
+  it("names the page whose sibling this variant filtered out", () => {
+    // Role gating decides membership per variant, so a public page grafting
+    // onto a dm-only one builds for the GM and skips for everyone else.
+    const { warnings } = documentEntries([
+      page("NPCs/Brynn.md", { foundry: { source: sibling("344a28ac1128a1d5") } }),
+    ], opts);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /NPCs\/Brynn\.md/);
+    assert.match(warnings[0]!, /which this build does not make/);
+  });
+
+  it("says nothing about a source outside this vault", () => {
+    const { warnings } = documentEntries([
+      page("NPCs/Guard.md", { foundry: { source: "Compendium.some-bestiary.actors.Actor.mmGuard000000000" } }),
+    ], opts);
+    assert.deepEqual(warnings, []);
   });
 });
 
@@ -818,5 +852,49 @@ describe("withFolderIndexes", () => {
     const out = withFolderIndexes([page("DM Notes/Scenes/Home.md")], roles);
     assert.ok(out.some((p) => p.path === "DM Notes/index.md"));
     assert.ok(out.some((p) => p.path === "DM Notes/Scenes/index.md"));
+  });
+});
+
+describe("withItemIds", () => {
+  const stamp = (patch: Record<string, unknown>) => withItemIds(patch, "southaven", "NPCs/Baldrin.md");
+
+  it("gives a uuid reference the id graft needs to key the array", () => {
+    // Without one, isKeyedArray is false and the whole items array replaces
+    // the source's items instead of merging into them.
+    const out = stamp({ items: [{ uuid: "Compendium.kctg.p.Item.abc", system: { quantity: 40 } }] });
+    const items = out["items"] as Record<string, unknown>[];
+    assert.equal(items[0]!["_id"], itemId("southaven", "NPCs/Baldrin.md", "Compendium.kctg.p.Item.abc:0"));
+    assert.deepEqual(items[0]!["system"], { quantity: 40 });
+  });
+
+  it("leaves an id the page pinned itself alone", () => {
+    const out = stamp({ items: [{ _id: "uXeL0cGWqRTReue0", flags: { hidden: true } }] });
+    assert.equal((out["items"] as Record<string, unknown>[])[0]!["_id"], "uXeL0cGWqRTReue0");
+  });
+
+  it("makes a mixed array wholly keyed, which is the case that broke", () => {
+    const out = stamp({ items: [
+      { uuid: "Compendium.kctg.p.Item.abc", system: { quantity: 40 } },
+      { _id: "uXeL0cGWqRTReue0" },
+    ] });
+    const items = out["items"] as Record<string, unknown>[];
+    assert.ok(items.every((i) => typeof i["_id"] === "string"));
+  });
+
+  it("keys by uuid, so reordering the list moves no id", () => {
+    const a = stamp({ items: [{ uuid: "Item.a" }, { uuid: "Item.b" }] })["items"] as Record<string, unknown>[];
+    const b = stamp({ items: [{ uuid: "Item.b" }, { uuid: "Item.a" }] })["items"] as Record<string, unknown>[];
+    assert.equal(a[0]!["_id"], b[1]!["_id"]);
+    assert.equal(a[1]!["_id"], b[0]!["_id"]);
+  });
+
+  it("separates two stacks of the same item", () => {
+    const items = stamp({ items: [{ uuid: "Item.a" }, { uuid: "Item.a" }] })["items"] as Record<string, unknown>[];
+    assert.notEqual(items[0]!["_id"], items[1]!["_id"]);
+  });
+
+  it("ignores a patch with no items array", () => {
+    const patch = { name: "Baldrin" };
+    assert.equal(stamp(patch), patch);
   });
 });

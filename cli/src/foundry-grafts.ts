@@ -198,6 +198,37 @@ const det = (kind: string, key: string): string =>
 export const entryId = (vaultId: string, folder: string) => det("entry", `${vaultId}:${folder}`);
 export const pageId = (vaultId: string, path: string) => det("page", `${vaultId}:${path}`);
 export const instanceId = (vaultId: string, path: string) => det("instance", `${vaultId}:${path}`);
+export const itemId = (vaultId: string, path: string, key: string) =>
+  det("item", `${vaultId}:${path}:${key}`);
+
+/**
+ * Give every `uuid` item in a patch an `_id`.
+ *
+ * graft merges an items array by `_id` only when every member carries one, so
+ * one reference without one makes the array replace the source's items instead
+ * — taking the entries that only patch a source item down with it. The id is
+ * also what marks a reference as an item to place rather than a grant to leave
+ * alone. Keyed by uuid, not position, so reordering the list moves nothing.
+ */
+export function withItemIds(
+  patch: Record<string, unknown>, vaultId: string, path: string,
+): Record<string, unknown> {
+  const items = patch["items"];
+  if (!Array.isArray(items)) return patch;
+  const seen = new Map<string, number>();
+  return {
+    ...patch,
+    items: items.map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+      const row = item as Record<string, unknown>;
+      if (typeof row["uuid"] !== "string" || typeof row["_id"] === "string") return item;
+      const uuid = row["uuid"];
+      const n = seen.get(uuid) ?? 0;
+      seen.set(uuid, n + 1);
+      return { _id: itemId(vaultId, path, `${uuid}:${n}`), ...row };
+    }),
+  };
+}
 
 export const folderOf = (path: string): string => {
   const i = path.lastIndexOf("/");
@@ -365,6 +396,7 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 export function documentEntries(pages: Page[], opts: GraftOptions): { entries: GraftEntry[]; warnings: string[] } {
   const entries: GraftEntry[] = [];
   const warnings: string[] = [];
+  const sourcedBy = new Map<string, { path: string; bases: string[] }>();
   const targets = vaultIdTargets(pages, opts);
 
   for (const page of pages) {
@@ -397,7 +429,9 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
     const patch: Record<string, unknown> = rewriteVaultRefs({
       name: page.title,
       ...(subtype ? { type: subtype } : {}),
-      ...defaulted(resolveVaultIds(spec.patch ?? {}, opts, targets, warnings, page.path),
+      ...defaulted(
+        withItemIds(resolveVaultIds(spec.patch ?? {}, opts, targets, warnings, page.path),
+          opts.vaultId, page.path),
         type, resolved, opts.buildRole, opts.system ?? "dnd5e"),
       // Over the patch, not under it: ownership is role gating, and a page that
       // could overrule its own would be a page that could publish itself.
@@ -417,8 +451,39 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
         : {}),
       patch,
     });
+    sourcedBy.set(entries[entries.length - 1]!.id, { path: page.path, bases });
   }
+  warnMissingSiblings(entries, sourcedBy, opts, warnings);
   return { entries, warnings };
+}
+
+/**
+ * A source naming another entry of this vault that this variant does not build.
+ *
+ * graft orders siblings so one can graft onto another, but role gating decides
+ * membership per variant: a public page grafting onto a dm-only one resolves
+ * for the GM and silently skips for everyone else.
+ */
+function warnMissingSiblings(
+  entries: GraftEntry[],
+  sourcedBy: Map<string, { path: string; bases: string[] }>,
+  opts: GraftOptions,
+  warnings: string[],
+): void {
+  const built = new Set(entries.map((e) => e.id));
+  const mine = `Compendium.${opts.vaultId}.`;
+  for (const [id, { path, bases }] of sourcedBy) {
+    if (!built.has(id)) continue;
+    for (const base of bases) {
+      if (!base.startsWith(mine)) continue;
+      const target = base.split(".").pop()!;
+      if (built.has(target)) continue;
+      warnings.push(
+        `${path}: grafts onto "${base}", which this build does not make`
+        + ` — check the page it names is visible at this role`,
+      );
+    }
+  }
 }
 
 /**

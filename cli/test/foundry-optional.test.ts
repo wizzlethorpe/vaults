@@ -133,3 +133,42 @@ describe("the foundry block", () => {
     assert.ok(values.foundry.module["relationships"], "nested structure survives the round trip");
   });
 });
+
+describe("site_url with the Foundry integration on", () => {
+  /** Build and return the warnings, since that is what is under test here. */
+  async function warningsFrom(settings: string): Promise<{ out: string; warnings: string[] }> {
+    const dir = await mkdtemp(join(tmpdir(), "vault-su-"));
+    const out = join(dir, "_out");
+    await writeFile(join(dir, "settings.md"), `---\nimage_quality: 0\n${settings}---\n`);
+    await writeFile(join(dir, "index.md"), "---\ntitle: Home\n---\nBody.\n");
+    const warnings: string[] = [];
+    const origLog = console.log, origWarn = console.warn;
+    console.log = () => {};
+    console.warn = (...a: unknown[]) => { warnings.push(a.map(String).join(" ")); };
+    try { await buildSite({ vaultPath: dir, outputDir: out }); }
+    finally { console.log = origLog; console.warn = origWarn; }
+    return { out, warnings };
+  }
+
+  it("says so when there is no URL to install the module from", async () => {
+    // The module is only written when a URL exists to fetch the vault from, so
+    // without one the deploy succeeds and Foundry has nothing to install.
+    const { out, warnings } = await warningsFrom("site_url: \"\"\n");
+    assert.match(warnings.join("\n"), /site_url is not set, so no Foundry module is written/);
+    assert.equal(await exists(join(out, "_foundry/module.json")), false);
+    await rm(out, { recursive: true, force: true });
+  });
+
+  it("is quiet, and writes the module, once one is set", async () => {
+    const { out, warnings } = await warningsFrom("site_url: \"https://notes.example.com\"\n");
+    assert.doesNotMatch(warnings.join("\n"), /site_url is not set/);
+    assert.equal(await exists(join(out, "_foundry/module.json")), true);
+    await rm(out, { recursive: true, force: true });
+  });
+
+  it("stays quiet when the integration is off", async () => {
+    const { out, warnings } = await warningsFrom("site_url: \"\"\nfoundry:\n  package: none\n");
+    assert.doesNotMatch(warnings.join("\n"), /site_url is not set/);
+    await rm(out, { recursive: true, force: true });
+  });
+});
