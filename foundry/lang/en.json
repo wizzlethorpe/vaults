@@ -13,7 +13,7 @@
   "VAULTS.Reconnect.BuildNow": "Build it again now?",
   "VAULTS.Reconnect.Cancel": "Cancel",
   "VAULTS.Reconnect.Confirm": "Forget",
-  "VAULTS.Reconnect.Control": "Reconnect",
+  "VAULTS.Reconnect.Control": "Reconnect Vault",
   "VAULTS.Reconnect.Done": "{module} forgotten.",
   "VAULTS.Reconnect.Title": "{module}: reconnect",
   "VAULTS.Setup.Body": "{module} is installed but its packs are empty. Build it now to pull the vault's content in? A role-gated vault will ask you to connect first.",
