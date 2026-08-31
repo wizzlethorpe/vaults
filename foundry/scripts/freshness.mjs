@@ -59,6 +59,31 @@ function markersOf(entries) {
   return entries.filter((e) => typeof e?.vault === "string" && e.vault && !e.id);
 }
 
+/**
+ * Which enabled modules are vaults, and what each one points at.
+ *
+ * Read once at load because deciding it means reading a file, and anything on
+ * screen has to answer synchronously.
+ */
+const known = new Map();
+
+export async function indexVaults() {
+  const graft = game.modules.get("graft")?.api;
+  known.clear();
+  if (!graft) return known;
+  for (const module of game.modules) {
+    if (!module.active || !module.flags?.graft?.entries) continue;
+    let markers;
+    try { markers = markersOf(await graft.readGrafts(module.id)); }
+    catch { continue; }
+    if (markers.length > 0) known.set(module.id, markers);
+  }
+  return known;
+}
+
+/** The vaults a module reads from, or null when it is not one. */
+export const vaultsIn = (moduleId) => known.get(moduleId) ?? null;
+
 /** The first hash any marker will answer with, or null when none will. */
 async function fetchVaultHash(markers) {
   for (const marker of markers) {
@@ -76,21 +101,14 @@ export async function promptForUpdates() {
   if (!graft) return;
   const recorded = game.settings.get(MODULE_ID, BUILT);
 
-  for (const module of game.modules) {
-    if (!module.active || !module.flags?.graft?.entries) continue;
-    let markers;
-    try { markers = markersOf(await graft.readGrafts(module.id)); }
-    catch { continue; }
-    // Without this a graft module that is not a vault would take the setup
-    // prompt below on the strength of its empty packs alone.
-    if (markers.length === 0) continue;
-
+  for (const [moduleId, markers] of await indexVaults()) {
+    const module = game.modules.get(moduleId);
     // A build attempt settles setup even when it fills nothing: a vault that
     // renders no entries would otherwise be asked about on every load forever.
-    const attempted = Object.hasOwn(recorded, module.id);
-    const setup = !attempted && !(await graft.anyBuilt(module.id));
+    const attempted = Object.hasOwn(recorded, moduleId);
+    const setup = !attempted && !(await graft.anyBuilt(moduleId));
     const fetched = setup ? null : await fetchVaultHash(markers);
-    const kind = promptKind({ setup, fetched, recorded: recorded[module.id] });
+    const kind = promptKind({ setup, fetched, recorded: recorded[moduleId] });
     if (!kind) continue;
 
     const build = await foundry.applications.api.DialogV2.confirm({
@@ -102,10 +120,10 @@ export async function promptForUpdates() {
     }).catch(() => false);
 
     // The build records through the graftBuilt hook, whoever started it.
-    if (build) await graft.buildPacks(module.id);
+    if (build) await graft.buildPacks(moduleId);
     // Declining an update means "not this push", so it records. Declining
     // setup records nothing, or the offer would never come back.
-    else if (!setup) await record(module.id, fetched);
+    else if (!setup) await record(moduleId, fetched);
   }
 }
 
@@ -124,6 +142,13 @@ export async function recordBuilt(moduleId) {
   catch { return; }
   if (markers.length === 0) return;
   await record(moduleId, await fetchVaultHash(markers));
+}
+
+/** Forget what a module last built, so the next load offers it again. */
+export async function forgetBuilt(moduleId) {
+  const all = { ...game.settings.get(MODULE_ID, BUILT) };
+  delete all[moduleId];
+  await game.settings.set(MODULE_ID, BUILT, all);
 }
 
 export const __test = { shouldPrompt, promptKind, markersOf, fetchHash, fetchVaultHash };

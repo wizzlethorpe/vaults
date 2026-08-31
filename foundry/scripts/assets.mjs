@@ -63,6 +63,16 @@ async function writePlaced(vaultId, record) {
   catch (err) { console.warn("Vaults | could not record what was cached:", err); }
 }
 
+/**
+ * Forget what was cached, so everything downloads again over the top.
+ *
+ * The bytes stay: core's FilePicker uploads and makes directories and has no
+ * remove. Re-fetching overwrites them, which is what the reader is asking for.
+ */
+export async function forgetPlaced(vaultId) {
+  await writePlaced(vaultId, {});
+}
+
 function base64ToBlob(b64, type) {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);

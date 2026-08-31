@@ -3,7 +3,8 @@
 
 import { vaultsProvider } from "./provider.mjs";
 import { registerTokenSetting, forgetToken, tokenFor } from "./token.mjs";
-import { registerBuiltSetting, promptForUpdates, recordBuilt } from "./freshness.mjs";
+import { registerBuiltSetting, promptForUpdates, recordBuilt, indexVaults } from "./freshness.mjs";
+import { addReconnectControl } from "./reconnect.mjs";
 
 const MODULE_ID = "vaults";
 
@@ -23,11 +24,16 @@ Hooks.on("graftRegisterProviders", ({ registerProvider }) => {
 // or its pack control. Only graft sees them all.
 Hooks.on("graftBuilt", (moduleId) => { recordBuilt(moduleId); });
 
+// Which packs belong to a vault is read from a file, and a header control has
+// to answer without waiting, so the answer is worked out once here.
+Hooks.on("getHeaderControlsCompendium", addReconnectControl);
+
 Hooks.once("ready", async () => {
   if (!game.modules.get("graft")?.active) {
     ui.notifications.warn(game.i18n.localize("VAULTS.Warn.NoGraft"));
     return;
   }
+  await indexVaults();
   await promptForUpdates();
 });
 

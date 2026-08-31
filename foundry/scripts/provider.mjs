@@ -34,7 +34,7 @@ function bar() {
 const isMarker = (entry) => typeof entry?.vault === "string" && !!entry.vault && !entry.id;
 
 /** Stable directory name for a vault's cache: host and path, so two vaults on one host stay apart. */
-function vaultKey(vaultUrl) {
+export function vaultKey(vaultUrl) {
   try {
     const u = new URL(vaultUrl);
     return `${u.hostname}${u.pathname}`.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
