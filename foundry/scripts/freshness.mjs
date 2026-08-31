@@ -1,4 +1,4 @@
-// "Your vault has new content" on world load.
+// "Build your vault" and "your vault has new content", on world load.
 //
 // The vault writes a content hash beside its entry list; this compares that
 // hash against the one recorded at the last build and offers to rebuild when
@@ -33,8 +33,19 @@ async function fetchHash(vault) {
 }
 
 /** Whether the deploy moved past what this world last handled. */
-export function shouldPrompt(fetched, recorded) {
+function shouldPrompt(fetched, recorded) {
   return !!fetched && fetched !== recorded;
+}
+
+/**
+ * Which dialog a module needs, or null for none.
+ *
+ * `setup` is its own answer because a gated vault reports no hash until the GM
+ * connects, and connecting only happens inside a build.
+ */
+export function promptKind({ setup, fetched, recorded }) {
+  if (setup) return "Setup";
+  return shouldPrompt(fetched, recorded) ? "Fresh" : null;
 }
 
 async function record(moduleId, hash) {
@@ -48,6 +59,17 @@ function markersOf(entries) {
   return entries.filter((e) => typeof e?.vault === "string" && e.vault && !e.id);
 }
 
+/** The first hash any marker will answer with, or null when none will. */
+async function fetchVaultHash(markers) {
+  for (const marker of markers) {
+    const token = marker.gated ? tokenFor(marker.vault) : null;
+    if (marker.gated && !token) continue;
+    const hash = await fetchHash({ url: marker.vault, token, gated: !!marker.gated });
+    if (hash) return hash;
+  }
+  return null;
+}
+
 export async function promptForUpdates() {
   if (!game.user.isGM) return;
   const graft = game.modules.get("graft")?.api;
@@ -59,35 +81,34 @@ export async function promptForUpdates() {
     let markers;
     try { markers = markersOf(await graft.readGrafts(module.id)); }
     catch { continue; }
-    // One vault per module today; the hash recorded is the first that answers.
-    let fetched = null;
-    for (const marker of markers) {
-      const token = marker.gated ? tokenFor(marker.vault) : null;
-      if (marker.gated && !token) continue;
-      fetched = await fetchHash({ url: marker.vault, token, gated: !!marker.gated });
-      if (fetched) break;
-    }
-    if (!shouldPrompt(fetched, recorded[module.id])) continue;
-    // graft's own prompt covers a module never built; record the hash so
-    // the load after that build does not ask again for the same push.
-    if ((await graft.unbuilt(module.id).catch(() => [])).length > 0) {
-      await record(module.id, fetched);
-      continue;
-    }
+    // Without this a graft module that is not a vault would take the setup
+    // prompt below on the strength of its empty packs alone.
+    if (markers.length === 0) continue;
+
+    // A build attempt settles setup even when it fills nothing: a vault that
+    // renders no entries would otherwise be asked about on every load forever.
+    const attempted = Object.hasOwn(recorded, module.id);
+    const setup = !attempted && !(await graft.anyBuilt(module.id));
+    const fetched = setup ? null : await fetchVaultHash(markers);
+    const kind = promptKind({ setup, fetched, recorded: recorded[module.id] });
+    if (!kind) continue;
 
     const build = await foundry.applications.api.DialogV2.confirm({
-      window: { title: game.i18n.format("VAULTS.Fresh.Title", { module: module.title }) },
-      content: `<p>${game.i18n.format("VAULTS.Fresh.Body", { module: module.title })}</p>`,
-      yes: { label: game.i18n.localize("VAULTS.Fresh.Build") },
-      no: { label: game.i18n.localize("VAULTS.Fresh.Later") },
+      window: { title: game.i18n.format(`VAULTS.${kind}.Title`, { module: module.title }) },
+      content: `<p>${game.i18n.format(`VAULTS.${kind}.Body`, { module: module.title })}</p>`,
+      yes: { label: game.i18n.localize(`VAULTS.${kind}.Build`) },
+      no: { label: game.i18n.localize(`VAULTS.${kind}.Later`) },
       modal: false,
     }).catch(() => false);
 
     if (build) await graft.buildPacks(module.id);
-    // Recorded either way: a decline means "not this push", not "ask again on
-    // every load until I give in".
-    await record(module.id, fetched);
+    // Re-read after a build: the token it obtained may make the hash readable
+    // for the first time, and a push can land while a long one runs.
+    if (build) await record(module.id, await fetchVaultHash(markers));
+    // Declining an update means "not this push", so it records. Declining
+    // setup records nothing, or the offer would never come back.
+    else if (!setup) await record(module.id, fetched);
   }
 }
 
-export const __test = { shouldPrompt, markersOf, fetchHash };
+export const __test = { shouldPrompt, promptKind, markersOf, fetchHash, fetchVaultHash };

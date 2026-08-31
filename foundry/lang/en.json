@@ -9,5 +9,9 @@
   "VAULTS.Fresh.Title": "{module}: new content",
   "VAULTS.Fresh.Body": "The vault behind {module} has been updated since it was last built. Rebuild now?",
   "VAULTS.Fresh.Build": "Rebuild",
-  "VAULTS.Fresh.Later": "Not now"
+  "VAULTS.Fresh.Later": "Not now",
+  "VAULTS.Setup.Title": "{module}: not built yet",
+  "VAULTS.Setup.Body": "{module} is installed but its packs are empty. Build it now to pull the vault's content in? A role-gated vault will ask you to connect first.",
+  "VAULTS.Setup.Build": "Build",
+  "VAULTS.Setup.Later": "Not now"
 }

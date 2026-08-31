@@ -9,7 +9,9 @@ Module ID: `vaults`. Requires Foundry V14 or newer, and graft.
 1. Deploy a vault with `vaults push`.
 2. Install this module and graft.
 3. Install the vault's own module from its deploy, `<vault>/_foundry/module.json`, and enable all three. That module holds no code: a manifest, its packs, and one line naming the vault.
-4. Graft prompts to build. A role-gated vault asks once for a token (open the vault, sign in, paste it back); each reader gets only the pages their role may read.
+4. This module offers to build it. A role-gated vault asks once for a token (open the vault, sign in, paste it back); each reader gets only the pages their role may read.
+
+That first offer is worded here rather than by graft, because only this module knows a role-gated vault needs connecting to first. Whether anything has been built is graft's own `anyBuilt`: this module's `grafts.json` names a vault to fetch rather than the entries themselves, so until a build has run there are no ids for graft's usual check to look up. The offer returns each world load until a build is attempted, since an unbuilt vault is empty packs and nothing else.
 
 On later world loads, the module compares the deploy's content hash against the last build and offers a rebuild when the vault has moved. Declining records the answer, so one push asks once. Downloads are cached by content hash: a rebuild fetches only bytes that changed.
 

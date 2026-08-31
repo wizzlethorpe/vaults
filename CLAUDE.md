@@ -150,8 +150,9 @@ module *code* on reload. Two things need more than a reload:
 
 A change to what the CLI emits (`grafts.json`, `.foundry.html` bodies) reaches
 Foundry through a vault rebuild + `vaults push`, then the in-world rebuild
-prompt (or graft's Build button — the prompt only fires when the content hash
-moved).
+prompt (or graft's Build button — the rebuild prompt only fires when the
+content hash moved, and a vault that has built nothing is offered its first
+build instead, since a gated deploy reports no hash until the GM connects).
 
 ## Self-check before reporting done
 
