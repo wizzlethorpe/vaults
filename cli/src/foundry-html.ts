@@ -1,6 +1,6 @@
 // Turn a page's rendered article HTML into what a Foundry journal wants:
 // links become Foundry UUIDs, media becomes `@vaults/<variant>/<path>`
-// references the provider resolves on the reader's machine.
+// references the Foundry module resolves on the reader's machine.
 //
 // The variant segment is load-bearing: each role's deploy holds only the
 // files its pages reference, so resolving without it means guessing, and
@@ -117,7 +117,7 @@ export function rewriteLinks(html: string, index: LinkIndex): string {
 }
 
 /**
- * Point media at the variant-scoped file the provider should fetch.
+ * Point media at the variant-scoped file the Foundry module should fetch.
  *
  * Where a file lands is a runtime fact — it depends on the world it is being
  * built into — so the CLI names what it wants rather than guessing a path.

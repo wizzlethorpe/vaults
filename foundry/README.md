@@ -2,7 +2,7 @@
 
 Read an Obsidian vault published with [vaults-cli](https://github.com/wizzlethorpe/vaults) into Foundry VTT. The vault is compiled to a graft entry list at build time; this module registers the [graft](https://github.com/wizzlethorpe/graft) pre-build transform that fetches that list, resolves what it references, and hands it to graft to build. Pushing new content never means reinstalling anything.
 
-Module ID: `vaults`. Requires Foundry V14 or newer, and graft.
+Module ID: `vaults`. Requires Foundry V14 or newer, and graft 0.7.0 or newer.
 
 ## Quick start
 
@@ -13,7 +13,7 @@ Module ID: `vaults`. Requires Foundry V14 or newer, and graft.
 
 That first offer is worded here rather than by graft, because only this module knows a role-gated vault needs connecting to first. Whether anything has been built is graft's own `anyBuilt`: this module's `grafts.json` names a vault to fetch rather than the entries themselves, so until a build has run there are no ids for graft's usual check to look up. The offer returns each world load until a build is attempted, since an unbuilt vault is empty packs and nothing else.
 
-**Reconnect** sits in the header of a vault's own compendium windows. It forgets the sign-in, everything downloaded from that vault, and what was last built, then offers to build again — which is how you read a vault at a different role, since nothing else clears the token. Cached files are overwritten rather than deleted: core's FilePicker has no remove.
+**Reconnect** sits in the header of a vault's own compendium windows. It forgets the sign-in, everything downloaded from that vault, and what was last built, then offers to build again: which is how you read a vault at a different role, since nothing else clears the token. Cached files are overwritten rather than deleted: core's FilePicker has no remove.
 
 On later world loads, the module compares the deploy's content hash against the last build and offers a rebuild when the vault has moved. Declining records the answer, so one push asks once. What was built is recorded on graft's `graftBuilt` hook, so a build started from graft's own controls counts the same as one started from the prompt. Downloads are cached by content hash: a rebuild fetches only bytes that changed.
 
@@ -21,8 +21,8 @@ On later world loads, the module compares the deploy's content hash against the 
 
 How content is delivered is the vault's `foundry.package` setting:
 
-- **`adventure`** — the whole vault becomes one Adventure document. Import it once and every internal link resolves to the copies you imported; a second import updates them in place, since ids are deterministic. Folders travel with it.
-- **`compendium`** — browsable packs, one per document type, for a reference library nobody imports as a unit.
+- **`adventure`**: the whole vault becomes one Adventure document. Import it once and every internal link resolves to the copies you imported; a second import updates them in place, since ids are deterministic. Folders travel with it.
+- **`compendium`**: browsable packs, one per document type, for a reference library nobody imports as a unit.
 
 Either way:
 
@@ -52,16 +52,16 @@ foundry:
 
 Optional keys, all default on/off as noted:
 
-- `sync: false` — the page stays out of Foundry entirely.
-- `journal: false` — the document is made but no journal page; links to the page open the document.
-- `embed: false` — the page's prose stays out of the document's description.
-- `folder: Some/Path` — files the document there instead of where the page lives.
+- `sync: false`: the page stays out of Foundry entirely.
+- `journal: false`: the document is made but no journal page; links to the page open the document.
+- `embed: false`: the page's prose stays out of the document's description.
+- `folder: Some/Path`: files the document there instead of where the page lives.
 
-A player-visible page's journal body carries two renders: the GM's full page inside a Foundry secret section (stripped for anyone below owner), and the player variant's render in the open. Players see exactly what the public site would show them — DM callouts, base rows for DM-only pages, and every other difference included — and the GM reads their own full page.
+A player-visible page's journal body carries two renders: the GM's full page inside a Foundry secret section (stripped for anyone below owner), and the player variant's render in the open. Players see exactly what the public site would show them: DM callouts, base rows for DM-only pages, and every other difference included: and the GM reads their own full page.
 
-A wikilink always opens the page (its journal page, or its document when `journal: false`). To link a page's *document* while its journal page exists — a statblock, a scene, a macro — use the inline handler: `` `fvtt-link: Toggle Feast` `` (with `` |label `` for custom text). On the wiki it is an ordinary page link.
+A wikilink always opens the page (its journal page, or its document when `journal: false`). To link a page's *document* while its journal page exists: a statblock, a scene, a macro: use the inline handler: `` `fvtt-link: Toggle Feast` `` (with `` |label `` for custom text). On the wiki it is an ordinary page link.
 
-Any HTML element with the `vaults-web-only` class is stripped from journal bodies — for blocks that belong on the wiki but not in Foundry, like the battlemap viewer on a scene page. Handlers set it on their wrapper; a page can use it on raw HTML of its own.
+Any HTML element with the `vaults-web-only` class is stripped from journal bodies: for blocks that belong on the wiki but not in Foundry, like the battlemap viewer on a scene page. Handlers set it on their wrapper; a page can use it on raw HTML of its own.
 
 ## License
 

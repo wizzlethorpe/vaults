@@ -134,7 +134,7 @@ describe("rewriteLinks", () => {
 });
 
 describe("rewriteAssets", () => {
-  it("marks media so the provider can place it wherever it lands", () => {
+  it("marks media so the Foundry module can place it wherever it lands", () => {
     assert.equal(
       rewriteAssetsV(`<img src="/attachments/map.webp">`),
       `<img src="@vaults/public/attachments/map.webp">`);

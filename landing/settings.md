@@ -1,5 +1,5 @@
 ---
-# Display name for the wiki (shown in header and page titles).
+# Display name for the wiki. Shown in the header and in page titles.
 vault_name: Wizzlethorpe Vaults
 
 # WebP quality 1–100 for image compression. Set 0 to disable.
@@ -8,56 +8,56 @@ image_quality: 85
 # Hard cap (in bytes) on a single file. Larger files are skipped.
 max_file_bytes: 26214400
 
-# Frontmatter applied to pages that match a glob, before anything else reads them. An ordered list of { match, data }: later rules merge over earlier ones, and a page's own frontmatter always wins. Use it to set a baseline without editing every file — e.g. role for a whole vault, or 'foundry: { journal: false }' for a folder whose pages exist to make compendium documents rather than articles. Applied once, where frontmatter is read, so the wiki, the Foundry sync and the module compiler all see the same page.
+# Frontmatter applied to pages matching a glob, as an ordered list of { match, data }. Later rules merge over earlier ones, and a page's own frontmatter beats all of them. Use it to set a baseline without editing every file, such as a role for the whole vault.
 default_frontmatter:
   - match: '**'
     data:
       role: public
 
-# Glob patterns of files to skip when rendering and syncing. Examples: 'Templates/**', '*.draft.md', 'Private/**'. Wildcards cross hidden segments, so 'tools/**' also covers 'tools/.venv/**'.
+# Glob patterns of files to skip, e.g. 'Templates/**' or '*.draft.md'. Wildcards cross hidden segments, so 'tools/**' also covers 'tools/.venv/**'.
 ignore:
   - README.md
 
-# Inject the page title as an <h1> at the top. Set false if your notes already start with a '# Title' heading and you don't want the duplicate.
+# Inject the page title as an <h1>. Set false if your notes already start with their own '# Title'.
 inline_title: true
 
-# CSS width applied to images embedded without an explicit '|N' size hint. Any valid CSS dimension works (300px, 50vw, 100%, etc). Set empty string to leave images at natural size.
+# CSS width for images embedded without a '|N' size hint (300px, 50vw, 100%). Empty leaves them at natural size.
 default_image_width: 50vw
 
 # Center images in the article body. Set false to leave them flush left.
 center_images: true
 
-# Internal-link preview behavior on pointer (desktop) devices: 'normal' (the default) hovers a preview popover and navigates on click; 'sticky' hovers a preview and pins it open on click (with a 'Go to page' link) instead of navigating; 'none' disables previews entirely so links just navigate.
+# Link previews on desktop: 'normal' hovers a preview and navigates on click, 'sticky' pins the preview open on click instead, 'none' disables them.
 preview_mode: normal
 
-# Internal-link preview behavior on touch (mobile) devices, where there is no hover: 'sticky' (the default) shows a preview on tap with a 'Go to page' link instead of navigating; 'none' disables previews so taps just navigate. ('normal' has no hover to trigger it on touch and behaves like 'none'.)
+# Link previews on touch, where there is no hover: 'sticky' shows a preview on tap with a 'Go to page' link, 'none' disables them. 'normal' behaves like 'none' here.
 preview_mode_mobile: sticky
 
-# Override the accent color (links, headings, highlights). Any CSS color works: '#a8201a', 'crimson', 'rgb(168 32 26)'. Empty = use the built-in scarlet.
+# Accent color for links, headings and highlights. Any CSS color. Empty uses the built-in scarlet.
 accent_color: ""
 
-# Override the background color for the light palette. Any CSS color works: '#f4ecd8', 'wheat', 'rgb(244 236 216)'. Empty = use the built-in parchment.
+# Background color for the light palette. Any CSS color. Empty uses the built-in parchment.
 bg_color: ""
 
-# Override the accent color for the dark palette. Any CSS color works. Empty = use the built-in dark accent (a brighter scarlet).
+# Accent color for the dark palette. Empty uses the built-in brighter scarlet.
 accent_color_dark: ""
 
-# Override the background color for the dark palette. Any CSS color works. Empty = use the built-in deep warm dark.
+# Background color for the dark palette. Empty uses the built-in deep warm dark.
 bg_color_dark: ""
 
-# Default colour theme: 'auto' (follows the visitor's OS preference), 'light' (parchment + scarlet), or 'dark'. Visitors can flip via the sidebar toggle; their choice persists in localStorage.
+# Default theme: 'auto' follows the visitor's OS setting, or 'light' or 'dark'. Visitors can flip it from the sidebar and their choice persists.
 theme: auto
 
-# Vault-relative path to an image used as the site favicon (png/jpg/svg/webp). Empty = generated default with the vault's accent color.
+# Vault-relative path to a favicon image (png/jpg/svg/webp). Empty generates one from the accent color.
 favicon: ""
 
-# When a page has no 'image:' frontmatter, fall back to the first embedded image in the body. Used for OG/Twitter social cards, Bases card covers, and Foundry actor/item reskins. Set false to opt out.
+# Fall back to a page's first embedded image when it has no 'image:' frontmatter. Used for social cards, Bases card covers, and Foundry art.
 auto_image: true
 
-# Ship files with unrecognized extensions to every deploy variant. Default false skips them (with a warning) so a stray file in your vault can't accidentally bypass role gating. Recognized media types (audio/video/pdf/epub) are reference-gated like images regardless of this setting.
+# Ship files with unrecognized extensions. Default false skips them with a warning, so a stray file cannot bypass role gating. Recognized media (audio, video, pdf, epub) is reference-gated either way.
 include_unknown_files: false
 
-# Everything this vault says about Foundry VTT. 'package' is how it is delivered: 'adventure' packages it as one Adventure document, so importing it once makes every internal link resolve to the documents you imported — what a campaign wants; 'compendium' (the default) produces browsable packs, one per document type, which is what a reference library wants; 'none' ships no integration at all and the deploy drops the importer bundle and sync endpoints. 'player_role' is the highest role your players may read: pages at that role or below import player-visible, everything above stays GM-only, and empty (the default) means none of it is. 'module' is the manifest for 'vaults build --module' — anything Foundry accepts in a module.json, with only 'packs' written for you; leave it empty and the compiler looks for a module.json at the vault root or in foundry/ instead.
+# Foundry VTT integration. 'package': 'adventure' ships the vault as one Adventure document you import once, 'compendium' (the default) as browsable packs, one per document type, 'none' ships nothing. 'player_role': the highest role players may read. Pages at or below it arrive player-visible; empty (the default) means none are. 'system': the game system your Actor and Item content targets, e.g. dnd5e. 'core_version': the full quoted Foundry version your exported Scene / Actor JSON came from, e.g. '14.359'. A bare '14' sorts before every release in that generation and costs a Scene its levels. 'module': extra keys merged into the module.json the vault serves, such as 'authors'.
 foundry:
   package: compendium
   player_role: ''
@@ -65,10 +65,10 @@ foundry:
   core_version: '14.359'
   module: {}
 
-# Public base URL this vault is served from, e.g. 'https://notes.example.com'. Set it and the build emits sitemap.xml and robots.txt so search engines can index the site; leave it empty and neither is written. Only pages in the default (lowest) role are listed — a sitemap naming gated pages would advertise that they exist.
+# Public base URL this vault is served from, e.g. 'https://notes.example.com'. Set it and the build writes sitemap.xml and robots.txt; leave it empty and neither is written. Only default-role pages are listed, so a sitemap cannot advertise gated ones.
 site_url: ""
 
-# Markdown text rendered in a small <footer> at the bottom of every page. Supports inline markdown (links, *italic*, **bold**). Set to an empty string to hide the footer entirely.
+# Markdown rendered in a <footer> on every page. Inline markdown works. Empty hides the footer.
 footer: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com)."
 ---
 

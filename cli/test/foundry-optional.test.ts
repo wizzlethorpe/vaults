@@ -1,6 +1,6 @@
 // `foundry.package: none` drops the Foundry integration from a deploy.
 //
-// The /_batch endpoints are the API the Foundry provider reads through, and
+// The /_batch endpoints are the API the Foundry module reads through, and
 // `_foundry/` holds the module a reader installs. A course site or a research
 // wiki has no use for either, and shouldn't be serving them.
 //

@@ -650,7 +650,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   const collapseToRoot = roles.length === 1;
   let defaultRolePagePaths: string[] = [];
   let katexCopied = false;
-  // What the Foundry provider compares a cached file against, so a rebuild
+  // What the Foundry module compares a cached file against, so a rebuild
   // re-fetches only what changed. Keyed "<variant>/<path>", and hashed once
   // per asset rather than once per variant: every variant copies the same
   // staged file. Roles run least privileged first, so by the time a variant
@@ -746,7 +746,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       for (const warning of grafts.warnings) console.warn(`  warning: ${warning}`);
 
       // A second body per page, with links resolved to UUIDs and media pointed
-      // at markers the provider fills in. Foundry gets this one; the wiki keeps
+      // at markers the Foundry module fills in. Foundry gets this one; the wiki keeps
       // the plain `.body.html`, since the same HTML cannot serve both.
       // A player-visible page's body carries both renders: the GM's inside a
       // secret section, the player's in the open (see dualVariantBody). Roles

@@ -54,7 +54,7 @@ describe("journal entries", () => {
 
   it("never carries a body, only a reference to one", () => {
     // Inlining would make this file megabytes and re-download every page on
-    // every build. The provider batches these through /_batch instead.
+    // every build. The Foundry module batches these through /_batch instead.
     const [entry] = journalEntries([page("Characters/Marlo.md")], opts);
     const pages = entry!.patch["pages"] as Array<Record<string, any>>;
     assert.equal(pages[0]!.text.content, "@vaults/dm/Characters/Marlo.foundry.html");
@@ -231,10 +231,10 @@ describe("the module a vault ships", () => {
     assert.ok(packs.filter((p) => p.type === "Actor" || p.type === "Item").every((p) => p.system));
   });
 
-  it("requires graft and the provider, so a missing one is Foundry's error", async () => {
+  it("requires graft and the Foundry module, so a missing one is Foundry's error", async () => {
     const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com" });
     const ids = ((m["relationships"] as any).requires as Array<any>).map((r) => r.id);
-    // The provider module's id is "vaults". Naming it anything else gives a
+    // The Foundry module's id is "vaults". Naming it anything else gives a
     // dependency Foundry cannot resolve, and the module installs but never
     // builds — the failure looks like empty packs, not a missing dependency.
     assert.deepEqual(ids, ["graft", "vaults"]);

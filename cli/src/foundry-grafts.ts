@@ -46,7 +46,7 @@ export interface GraftsFile {
  * A build consumes three things, and each is hashed by value: the entries
  * (patches, sidecars, ids), every page body the entries reference, and the
  * bytes of every asset those bodies and entries reference (the assets map
- * already carries a content hash per file). That is the provider's whole
+ * already carries a content hash per file). That is the Foundry module's whole
  * fixed point, so anything it would fetch differently moves this.
  */
 export function contentHash(
@@ -333,7 +333,7 @@ const graftFolder = (folder: string): string | undefined => folder || undefined;
  *
  * Bodies are references, not content. Inlining them would make this file
  * megabytes for a large vault and re-download every page on every build; a
- * reference lets the provider batch them through `/_batch` and skip what has
+ * reference lets the Foundry module batch them through `/_batch` and skip what has
  * not changed.
  */
 export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] {
@@ -595,7 +595,7 @@ export function buildGrafts(
 //
 // Generated once and then inert. It declares packs and dependencies and points
 // at the vault; it holds no logic, so pushing content never means reinstalling
-// it. That is the whole reason the provider lives in a shared module instead.
+// it. That is the whole reason the transform lives in a shared module instead.
 
 /** One pack per document type, declared up front. */
 export const PACK_SUFFIX: Record<string, string> = Object.fromEntries(
@@ -690,7 +690,7 @@ export function moduleManifest(opts: ManifestOptions): Record<string, unknown> {
 
 /** The one-line grafts.json the module ships: a pointer, not a list. */
 export function moduleGrafts(vaultUrl: string, gated: boolean): unknown[] {
-  // `gated` is not a hint the provider could work out for itself. A single-role
+  // `gated` is not a hint the Foundry module could work out for itself. A single-role
   // deploy collapses its one variant to the site root and ships no Pages
   // Functions, so `/_batch` is not there and a reference's variant segment is
   // not a directory. A gated deploy is the opposite on both counts. Probing for

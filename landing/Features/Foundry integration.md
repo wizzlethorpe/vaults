@@ -25,13 +25,13 @@ Scene, etc.) by adding a `foundry:` block to frontmatter.
 | `foundry.source: <UUID>` | New `Actor` or `Item` cloned from the template (see below) |
 | `foundry.source: <Type>[:<subtype>]` | Blank `Actor` / `Item` / `Scene` / `JournalEntry` / `RollTable` / `Macro` / `Cards` / `Playlist` (see below) |
 | `foundry.source: [<spec>, …]` | A priority list, tried in order, so one page serves readers with different content installed. End it with a type so it always produces something |
-| `foundry.source: "@moulinette/<pack_ref>/<filepath>"` | A document cloned from the reader's own [Moulinette](https://assets.moulinette.cloud/) library. `pack_ref` is the number in a marketplace URL, not a name (see below) |
+| `foundry.source: "@moulinette/<Type>/<pack_ref>/<filepath>"` | A document from the reader's own [Moulinette](https://assets.moulinette.cloud/) library, via [graft-moulinette](https://github.com/wizzlethorpe/graft-moulinette) (see below) |
 | `foundry.sync: false` | Skip this page entirely: no `JournalEntry`, no derived doc (see below) |
 | `foundry.embed: false` | Skip auto-embedding the page article into the doc's description field |
 | `foundry.journal: false` | Instantiate the derived doc but keep the article out of the journal sidebar. An Actor or Scene that needs no wiki entry of its own |
 | `foundry.link` | `journal` (default) or `doc`: where wikilinks to this page point. `doc` sends them at the instantiated document instead of its journal page. Implied by `journal: false` |
 | `foundry.folder` | A `/`-separated folder path the document is filed under, independent of where the page lives |
-| `foundry.patch` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); `"@moulinette/<pack_ref>/<filepath>"` strings resolve against the reader's own Moulinette library (see below) |
+| `foundry.patch` | Deep-merge overlay applied to the resulting document. `"@vault/PATH"` strings are rewritten on sync to a local cache URL (`worlds/<id>/vaults-cache/<vault-id>/PATH`); Moulinette files are named by the path Moulinette downloads them to (see below) |
 | `foundry.patch_json` | Vault-relative path to a JSON file deep-merged into the doc *before* `foundry.patch` (use for exported sheets / community-shared dumps) |
 | `foundry.patch._id` | 16-char `[A-Za-z0-9]` Foundry id pinned for the page's document, instead of the derived one |
 
@@ -164,7 +164,7 @@ foundry:
 
 JSON files ship to the deploy as passthroughs (gated per role like any
 other file), and the build hashes the parsed content into the page's
-manifest entry — change the JSON, re-sync triggers an update.
+manifest entry, so changing the JSON triggers an update.
 
 [[Aelar]] is the live demo: he points at `sheets/aelar-export.json` for
 biography, languages, skills, and pocket change, then layers the wound
@@ -180,7 +180,7 @@ By default each page's document id derives from a SHA1 of
 want to reference the doc from outside the vault: a hotbar macro, a
 scene flag, another module's data, a hardcoded `@UUID[...]` enricher.
 
-Set `_id` in the page's patch and the build pins that id instead — it is
+Set `_id` in the page's patch and the build pins that id instead. It is
 a field of the document, so it lives in the document's own data:
 
 ```yaml
@@ -216,84 +216,26 @@ auto-deleted. Drop it by hand if you need to.
 
 ## Moulinette: assets and scenes from the reader's own library
 
-A vault can point at content it does not ship. Reference a map, a track, or a whole scene from [Moulinette](https://assets.moulinette.cloud/), and on sync it resolves against **the reader's own Moulinette library** — so the licensing question stays between them and the creator, exactly as it does when `foundry.source` names a compendium UUID. Nothing is redistributed, and a reader who is not subscribed simply gets less.
+A vault can point at content it does not ship. Name a scene or a track from [Moulinette](https://assets.moulinette.cloud/) and the build resolves it against **the reader's own Moulinette library**, so the licensing question stays between them and the creator, exactly as it does when `foundry.source` names a compendium UUID. Nothing is redistributed, and a reader who is not subscribed simply gets less.
 
-Requires the [Moulinette](https://foundryvtt.com/packages/moulinette) module, installed and signed in.
+Requires the [Moulinette](https://foundryvtt.com/packages/moulinette) module signed in, and [graft-moulinette](https://github.com/wizzlethorpe/graft-moulinette), which owns this and documents it fully.
 
-### The reference format
+### Documents: whole scenes, journals and playlists
 
-```
-@moulinette/<pack_ref>/<filepath>
-```
-
-**`pack_ref` is the number in a marketplace URL.** Browse to a product at [assets.moulinette.cloud](https://assets.moulinette.cloud/) and read it off the address bar:
-
-```
-https://assets.moulinette.cloud/marketplace/product/13648/the-mad-cartographer-sci-fi/outer-rim
-                                                    ^^^^^
-```
-
-That pack is `13648`. The two segments after it are the creator and product names run through a slugifier, purely for readability — they change when a creator renames a pack, so they are not part of the reference.
-
-**`filepath` is the asset's path inside that pack**, which the Moulinette Browser shows for any asset. It keeps its slashes, because creators nest folders:
-
-```
-@moulinette/13648/images/maps/06-junkyard.webp
-@moulinette/442/SFX/Basic/Environment/Waterfall (Loop).ogg
-```
-
-### Assets: maps, images and audio
-
-An asset reference goes wherever a path goes, in `foundry.patch` or a `data_json` file, alongside `@vault/`:
+A source names a Moulinette document the way its marketplace page reads:
 
 ```yaml
 foundry:
-  source: Scene
-  patch:
-    width: 4200
-    height: 2800
-    levels:
-      - _id: defaultLevel0000
-        background:
-          src: "@moulinette/11938/images/maps/05BoarsTears/MAD_Taverns_05_FVTT_20x30_Boars_Tears_Taverna.webp"
-    sounds:
-      - name: Ambience
-        path: "@moulinette/2333/Ambiences/Basic/City/School of Magic Refectory.ogg"
-```
-
-**An unresolved reference takes its container with it**, propagating exactly one level. A sound that loses its `path` is dropped from the array; a `background` that loses its `src` is deleted. But one missing track never discards the document — the scene still syncs, correctly sized and gridded, just without that piece. That is what makes a page degrade rather than point Foundry at a file that is not there.
-
-### Documents: whole scenes, actors and items
-
-A `@moulinette/` reference can also be a rung on `foundry.source`, where it names a *document* to clone rather than a file to point at — a creator's own scene, with their walls, lighting and ambience:
-
-```yaml
-foundry:
-  source:
-    - "@moulinette/13648/json/scene/06-junkyard-empty.json"   # if the reader owns it
-    - Scene                                                    # if not
+  source: "@moulinette/Scene/13648/json/scene/06-junkyard-empty.json"
   patch:
     navName: Junkyard
 ```
 
-`foundry.source` accepts a **priority list**, tried in order, so one page can serve readers with different content installed. A Moulinette rung names no document type of its own — only the reader's library knows whether an asset is a Scene or an Actor, and the CLI has to answer that question at build time with no library to ask — so **a list containing one must also contain a rung that names the type**. That entry is doing double duty: it tells the build what the page creates, and it is what a reader without the pack falls back to.
+`Scene` is which kind of document it is, `13648` is the pack number in the product's address bar, and the rest is the asset's path inside that pack. Both are on the page you bought it from. The build turns that into a compendium UUID before anything else sees it, so it behaves as an ordinary source: it can sit in a priority list, and a reader whose subscription does not include the pack gets that entry skipped with a reason, not a broken document.
 
-> [!warning] The base is only read when the document is first created
-> A page whose document already exists takes the update path, which applies `foundry.patch` and `data_json` but never re-clones. To adopt a changed `base`, delete the document from the pack and **Force Sync**.
+### Files: maps, images and audio
 
-### Versioning, and why the asset rung ages better
-
-Creators re-export their catalogue for each new Foundry generation, and republish it as a **new pack with a new `pack_ref`** — often under the same name. So a `pack_ref` pins a Foundry version as much as it pins content.
-
-A **document** is coupled to the generation it was exported for. A Foundry 13 scene imported into a Foundry 14 world keeps its walls, lights and sounds, but its map does not land where it belongs, because v14 moved a scene's background onto its Level. Foundry ships no conversion for this on the import path, so vaults does not attempt one. It reports it instead:
-
-> *N document(s) came from a different Foundry generation and may not render correctly.*
-
-with the pack and both versions in the console. Point the base at a pack built for the reader's generation, or ask the creator for a re-export.
-
-An **asset** has no such problem. A `.webp` is a `.webp`, and always will be.
-
-That asymmetry makes composing a scene yourself the more durable pattern, and often the better one:
+A file is named by the path Moulinette itself downloads it to, and graft-moulinette fetches whatever the reader is missing once the build is done:
 
 ```yaml
 foundry:
@@ -301,16 +243,21 @@ foundry:
   patch_json: Scenes/tavern.json     # your dimensions, grid, walls, lights, levels
 ```
 
-with the map referenced from `@moulinette/` inside that file. The licensing line falls where it should — you cannot redistribute a creator's art, but wall geometry and lighting are *your* work and ship freely in the vault. The vault carries the structure it owns; the reader's library supplies the licensed pixels. See [[Battlemaps]] for the same pattern applied to layered maps.
+with the map named inside that file as `moulinette-v2/cloud/<creator>/<pack>/images/maps/06-junkyard.webp`. Import the asset once in Foundry and copy the path off the document; nothing derives it from a marketplace URL, because the folder is the creator's own and the URL only shows a slug of it.
+
+### Why composing the scene yourself ages better
+
+Creators re-export their catalogue for each Foundry generation and republish it as a **new pack with a new number**, often under the same name, so a pack number pins a Foundry version as much as it pins content. A document carries that coupling: a Foundry 13 scene imported into a Foundry 14 world keeps its walls, lights and sounds, but its map does not land where it belongs, because v14 moved a scene's background onto its Level. The build reports the mismatch rather than guessing at a conversion.
+
+A file has no such problem. A `.webp` is a `.webp`, and always will be. So the durable pattern is to compose the scene yourself and name only the art: the licensing line falls where it should, since you cannot redistribute a creator's map, but wall geometry and lighting are *your* work and ship freely in the vault. See [[Battlemaps]] for the same pattern applied to layered maps.
 
 > [!tip] Prefer a compendium rung when a creator offers one
 > Many creators distribute through both Moulinette and their own Foundry module. If the reader has the module installed, a compendium UUID is the better rung: Foundry migrates compendium packs on load, which is exactly the step a raw Moulinette import skips.
 >
 > ```yaml
-> base:
+> source:
 >   - Compendium.mad-taverns.mad-taverns-maps.Scene.F3wyDaiec72h5sFG
->   - "@moulinette/13648/json/scene/06-junkyard-empty.json"
->   - Scene
+>   - "@moulinette/Scene/13648/json/scene/06-junkyard-empty.json"
 > ```
 
 ## Packs, and getting content into your world
@@ -360,11 +307,11 @@ A bare generation like `'14'` is worse than leaving it unset: it sorts before ev
 
 ## What players see inside a shared page
 
-A player-visible page's journal body carries both renders: the GM's full page inside a Foundry secret section, and the player variant's render in the open. Foundry strips the secret for anyone below owner, so players see exactly what the public wiki shows them — not a redacted copy of the GM's page but the actual player rendering, which also covers differences no callout marks: a base row for a DM-only page, a link only the GM's render resolves. The GM's copy is hidden from players by Foundry, not absent from the document data; treat it as obfuscation, and keep real secrets on `role: dm` pages.
+A player-visible page's journal body carries both renders: the GM's full page inside a Foundry secret section, and the player variant's render in the open. Foundry strips the secret for anyone below owner, so players see exactly what the public wiki shows them: not a redacted copy of the GM's page but the actual player rendering, which also covers differences no callout marks, such as a source row for a DM-only page or a link only the GM's render resolves. The GM's copy is hidden from players by Foundry, not absent from the document data; treat it as obfuscation, and keep real secrets on `role: dm` pages.
 
 ## Linking to the document instead of the page
 
-A wikilink always opens the page: its journal page, or its document when the page sets `journal: false`. When a page has both and you want the document — send the reader to the Actor's statblock, not their biography — use the inline handler:
+A wikilink always opens the page: its journal page, or its document when the page sets `journal: false`. When a page has both and you want the document (the Actor's statblock rather than their biography) use the inline handler:
 
 ```markdown
 Run `fvtt-link: Toggle Feast` before the banquet.
@@ -395,9 +342,6 @@ A vault with roles `public`, `patron`, `dm` running that setting:
 | [[Hidden Caves]] | dm | GM-only |
 
 Set it to `patron` instead and the middle row becomes player-visible too. The named tier is one players *can* read, not the first they cannot.
-
-> [!note] This used to be a per-vault setting in the Foundry module
-> It was called `dmRole`, it named the first *secret* tier rather than the last readable one, and each GM set it themselves. Which pages are player-facing is a fact about the vault's content, so the vault says it — once, in `settings.md`, where the roles are already configured — and every reader who syncs it gets the same answer.
 
 ### Hiding role-gated callouts inside player-visible pages
 

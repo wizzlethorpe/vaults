@@ -4,9 +4,9 @@ Self-host an Obsidian vault as a static, role-gated wiki on your own Cloudflare 
 
 This is the monorepo for three intertwined pieces. They release in lockstep so a "vaults vX.Y.Z" tag pins the exact behavior across all three:
 
-- **[`cli/`](cli/)** — `@wizzlethorpe/vaults` (npm). The renderer + deploy CLI. Reads your vault, renders to HTML, includes to a Cloudflare Pages project on your own account.
-- **[`foundry/`](foundry/)** — Wizzlethorpe Vaults Foundry VTT module. Pulls a deployed vault into a Foundry world as journal entries, with optional Actor / Item / Scene / RollTable / etc. creation from a per-page `foundry:` block.
-- **[`landing/`](landing/)** — A vault that doubles as the project's landing page (deployed at vaults.wizzlethorpe.com) and a working demo of every CLI feature.
+- **[`cli/`](cli/)**: `@wizzlethorpe/vaults` (npm). The renderer + deploy CLI. Reads your vault, renders to HTML, deploys to a Cloudflare Pages project on your own account.
+- **[`foundry/`](foundry/)**: Wizzlethorpe Vaults Foundry VTT module. Pulls a deployed vault into a Foundry world as journal entries, with optional Actor / Item / Scene / RollTable / etc. creation from a per-page `foundry:` block.
+- **[`landing/`](landing/)**: A vault that doubles as the project's landing page (deployed at vaults.wizzlethorpe.com) and a working demo of every CLI feature.
 
 ## Getting started
 
@@ -38,7 +38,7 @@ A single shared version applies across all three subprojects. The root `release.
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide. Short version: working on a single subproject is normal (`cd cli && pnpm typecheck && pnpm test`, etc.); cross-cutting PRs touching CLI + Foundry + landing together are welcome and easier here than they were in the prior submodule layout. Contributions are governed by the [Contributor License Agreement](./CLA.md).
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide. Short version: working on a single subproject is normal (`cd cli && pnpm typecheck && pnpm test`, etc.); cross-cutting PRs touching CLI + Foundry + landing together are welcome. Contributions are governed by the [Contributor License Agreement](./CLA.md).
 
 ## License
 
