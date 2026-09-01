@@ -10,7 +10,7 @@
 import { forgetPlaced } from "./assets.mjs";
 import { forgetToken } from "./token.mjs";
 import { forgetBuilt, vaultsIn } from "./freshness.mjs";
-import { vaultKey } from "./provider.mjs";
+import { vaultKey } from "./transform.mjs";
 
 const t = (key, data) => (data ? game.i18n.format(key, data) : game.i18n.localize(key));
 

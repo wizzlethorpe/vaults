@@ -1,6 +1,6 @@
-// The graft provider for a deployed vault: turn the module's one-line
-// marker into entries graft can build, and resolve the references they
-// carry. Everything else is fetched from the vault at build time, so
+// The graft pre-build transform for a deployed vault: turn the module's
+// one-line marker into entries graft can build, and resolve the references
+// they carry. Everything else is fetched from the vault at build time, so
 // pushing content never means reinstalling anything.
 
 import { fetchSourceBatch, url as vaultUrl } from "./api.mjs";
@@ -8,8 +8,6 @@ import { collectRefs, byVariant, substituteRefs, isBody } from "./refs.mjs";
 import { placeAssets } from "./assets.mjs";
 import { referencedUuids, expandItems } from "./items.mjs";
 import { tokenFor, promptForToken } from "./token.mjs";
-
-export const PROVIDER_ID = "vaults";
 
 /**
  * graft's progress bar, or a no-op when it is not there. Fetching happens
@@ -27,11 +25,9 @@ function bar() {
 /**
  * A marker is the module's whole grafts.json: `[{ vault, gated }]`.
  *
- * An entry carrying an id is a built one coming back through on a later pass,
- * not a marker; treating it as one would refetch the vault every pass. An empty
- * URL is not a marker either — it would send every fetch at the current page.
+ * An empty URL is not a marker: it would send every fetch at the current page.
  */
-const isMarker = (entry) => typeof entry?.vault === "string" && !!entry.vault && !entry.id;
+const isMarker = (entry) => typeof entry?.vault === "string" && !!entry.vault;
 
 /** Stable directory name for a vault's cache: host and path, so two vaults on one host stay apart. */
 export function vaultKey(vaultUrl) {
@@ -152,67 +148,54 @@ async function resolveUuids(uuids) {
   return out;
 }
 
-/**
- * The providers to run again over what this one produced.
- *
- * graft runs providers from a queue, not to a fixed point: Moulinette ran
- * before this provider and saw only the marker line. The one producing the
- * references is the one that knows to send it round again.
- */
-function enqueueFor(entries) {
-  return JSON.stringify(entries).includes("@moulinette/") ? ["moulinette"] : [];
-}
+export const vaultsTransform = {
+  id: "vaults",
+  label: "Wizzlethorpe Vaults",
 
-export function vaultsProvider() {
-  return {
-    id: PROVIDER_ID,
-    label: "Wizzlethorpe Vaults",
+async transform(entries) {
+    const markers = entries.filter(isMarker);
+    if (markers.length === 0) return entries;
 
-    async hydrate(entries) {
-      const markers = entries.filter(isMarker);
-      if (markers.length === 0) return entries;
+    const out = entries.filter((e) => !isMarker(e));
+    const warnings = [];
 
-      const out = entries.filter((e) => !isMarker(e));
-      const warnings = [];
+    for (const marker of markers) {
+      const vaultId = vaultKey(marker.vault);
+      // A gated vault needs a bearer before anything can be read, including
+      // the entry list. Asking once here beats a wall of 401s later.
+      const token = marker.gated
+        ? (tokenFor(marker.vault) ?? await promptForToken(marker.vault))
+        : null;
+      if (marker.gated && !token) {
+        warnings.push({ id: marker.vault, reason: "not connected, so nothing was built from it" });
+        continue;
+      }
+      const vault = { url: marker.vault, token, gated: !!marker.gated };
 
-      for (const marker of markers) {
-        const vaultId = vaultKey(marker.vault);
-        // A gated vault needs a bearer before anything can be read, including
-        // the entry list. Asking once here beats a wall of 401s later.
-        const token = marker.gated
-          ? (tokenFor(marker.vault) ?? await promptForToken(marker.vault))
-          : null;
-        if (marker.gated && !token) {
-          warnings.push({ id: marker.vault, reason: "not connected, so nothing was built from it" });
-          continue;
-        }
-        const vault = { url: marker.vault, token, gated: !!marker.gated };
-
-        let vaultEntries;
-        let assets;
-        try {
-          ({ entries: vaultEntries, assets } = await fetchEntries(vault));
-        } catch (err) {
-          warnings.push({ id: marker.vault, reason: err.message });
-          continue;
-        }
-
-        const { resolved, warnings: refWarnings } = await resolveRefs(vault, vaultId, vaultEntries, assets);
-        warnings.push(...refWarnings);
-
-        // Items a page names by uuid, resolved from the reader's own installed
-        // compendiums. This cannot happen at build time: the CLI has no
-        // Foundry, and which compendiums exist is a fact about the reader.
-        const { patched, warnings: itemWarnings } = expandItems(
-          vaultEntries, await resolveUuids(referencedUuids(vaultEntries)));
-        warnings.push(...itemWarnings);
-
-        out.push(...substituteRefs(patched, resolved));
+      let vaultEntries;
+      let assets;
+      try {
+        ({ entries: vaultEntries, assets } = await fetchEntries(vault));
+      } catch (err) {
+        warnings.push({ id: marker.vault, reason: err.message });
+        continue;
       }
 
-      return { entries: out, warnings, enqueue: enqueueFor(out) };
-    },
-  };
-}
+      const { resolved, warnings: refWarnings } = await resolveRefs(vault, vaultId, vaultEntries, assets);
+      warnings.push(...refWarnings);
 
-export const __test = { isMarker, vaultKey, fetchEntries, bar, resolveRefs, enqueueFor };
+      // Items a page names by uuid, resolved from the reader's own installed
+      // compendiums. This cannot happen at build time: the CLI has no
+      // Foundry, and which compendiums exist is a fact about the reader.
+      const { patched, warnings: itemWarnings } = expandItems(
+        vaultEntries, await resolveUuids(referencedUuids(vaultEntries)));
+      warnings.push(...itemWarnings);
+
+      out.push(...substituteRefs(patched, resolved));
+    }
+
+    return { entries: out, warnings };
+  },
+};
+
+export const __test = { isMarker, vaultKey, fetchEntries, bar, resolveRefs };

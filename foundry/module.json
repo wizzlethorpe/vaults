@@ -1,7 +1,7 @@
 {
   "id": "vaults",
   "title": "Wizzlethorpe Vaults",
-  "description": "Read an Obsidian vault published with Wizzlethorpe Vaults into Foundry VTT. Registers a Graft provider, so a vault's documents are built from its deployment and stay updatable without reinstalling anything.",
+  "description": "Read an Obsidian vault published with Wizzlethorpe Vaults into Foundry VTT. Registers a Graft pre-build transform, so a vault's documents are built from its deployment and stay updatable without reinstalling anything.",
   "version": "0.17.1",
   "compatibility": {
     "minimum": "14",
@@ -37,7 +37,7 @@
         "type": "module",
         "manifest": "https://github.com/wizzlethorpe/graft/releases/latest/download/module.json",
         "compatibility": {
-          "minimum": "0.6.0"
+          "minimum": "0.7.0"
         }
       }
     ]

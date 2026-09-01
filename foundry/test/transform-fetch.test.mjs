@@ -46,7 +46,7 @@ describe("fetchEntries", () => {
   afterEach(() => { globalThis.fetch = original; });
 
   test("asks for the entry list as the signed-in reader", async () => {
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     await __test.fetchEntries({ url: "https://v.example.com", token: "tok", gated: true });
     assert.equal(calls.length, 1);
     assert.match(calls[0], /_token=tok/);
@@ -54,7 +54,7 @@ describe("fetchEntries", () => {
 
   test("reports the status when the vault refuses", async () => {
     globalThis.fetch = async () => ({ ok: false, status: 403 });
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     await assert.rejects(
       () => __test.fetchEntries({ url: "https://v.example.com", token: "bad", gated: true }),
       /403/);
@@ -63,7 +63,7 @@ describe("fetchEntries", () => {
   test("carries the asset hashes back with the entries", async () => {
     // What lets a rebuild skip a file it already has. Absent, every build
     // re-downloads every image.
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({ format: 1, entries: [], assets: { "DM/a.webp": "abc123" } }),
@@ -73,14 +73,14 @@ describe("fetchEntries", () => {
   });
 
   test("treats a vault that named no assets as naming none", async () => {
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     const { assets } = await __test.fetchEntries({ url: "https://v.example.com", gated: false });
     assert.deepEqual(assets, {});
   });
 
   test("rejects a body that is not an entry list", async () => {
     globalThis.fetch = async () => ({ ok: true, json: async () => ({ nope: true }) });
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     await assert.rejects(
       () => __test.fetchEntries({ url: "https://v.example.com", gated: false }),
       /no entries/);
@@ -94,7 +94,7 @@ describe("resolving to a fixed point", () => {
   // injected: `serve` maps raw references to what fetching them returns, and
   // `passes` counts the rounds the loop actually took.
   async function resolveAll(entries, serve) {
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     const lookup = new Map(Object.entries(serve).map(([raw, value]) => {
       const rest = raw.slice("@vaults/".length);
       const slash = rest.indexOf("/");
@@ -195,14 +195,14 @@ describe("reporting progress", () => {
   afterEach(() => { globalThis.game = saved; });
 
   test("names a phase and its size before the slow part starts", async () => {
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     const ui = __test.bar();
     ui.phase("Downloading assets", 42);
     assert.deepEqual(calls[0], ["phase", "Downloading assets", 42]);
   });
 
   test("advances one step per file", async () => {
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     const ui = __test.bar();
     ui.step("Cassius Marlo.webp");
     assert.deepEqual(calls[0], ["step", "Cassius Marlo.webp"]);
@@ -212,13 +212,13 @@ describe("reporting progress", () => {
     // An older graft, or one whose API moved. A missing progress bar must cost
     // the bar and nothing else.
     globalThis.game = { modules: new Map([["graft", { api: {} }]]) };
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     assert.doesNotThrow(() => { __test.bar().phase("x", 1); __test.bar().step("y"); });
   });
 
   test("survives graft not being there at all", async () => {
     globalThis.game = { modules: new Map() };
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     assert.doesNotThrow(() => __test.bar().step("y"));
   });
 
@@ -227,7 +227,7 @@ describe("reporting progress", () => {
       phase() { throw new Error("notification API changed"); },
       step() { throw new Error("notification API changed"); },
     } } }]]) };
-    const { __test } = await import("../scripts/provider.mjs");
+    const { __test } = await import("../scripts/transform.mjs");
     assert.doesNotThrow(() => { __test.bar().phase("x", 1); __test.bar().step("y"); });
   });
 });

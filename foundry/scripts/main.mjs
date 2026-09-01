@@ -1,7 +1,7 @@
-// Where Foundry calls in: one graft provider for deployed vaults, the
+// Where Foundry calls in: one graft pre-build transform for deployed vaults, the
 // credential it needs, and the freshness prompt.
 
-import { vaultsProvider } from "./provider.mjs";
+import { vaultsTransform } from "./transform.mjs";
 import { registerTokenSetting, forgetToken, tokenFor } from "./token.mjs";
 import { registerBuiltSetting, promptForUpdates, recordBuilt, indexVaults } from "./freshness.mjs";
 import { addReconnectControl } from "./reconnect.mjs";
@@ -16,8 +16,8 @@ Hooks.once("init", () => {
 
 // Registered on graft's own hook rather than at init, so this module never has
 // to care whether it loaded before graft did.
-Hooks.on("graftRegisterProviders", ({ registerProvider }) => {
-  registerProvider(vaultsProvider());
+Hooks.on("graftPreBuild", (_moduleId, register) => {
+  register(vaultsTransform);
 });
 
 // Whoever started the build: the world-load prompt, graft's compendium header,
