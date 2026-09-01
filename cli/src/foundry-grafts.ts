@@ -458,11 +458,12 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
 }
 
 /**
- * A source naming another entry of this vault that this variant does not build.
+ * A page left with no source this variant can resolve.
  *
  * graft orders siblings so one can graft onto another, but role gating decides
  * membership per variant: a public page grafting onto a dm-only one resolves
- * for the GM and silently skips for everyone else.
+ * for the GM and skips for everyone else. A fallback list is the fix, so this
+ * warns only when nothing in the list survives.
  */
 function warnMissingSiblings(
   entries: GraftEntry[],
@@ -472,17 +473,14 @@ function warnMissingSiblings(
 ): void {
   const built = new Set(entries.map((e) => e.id));
   const mine = `Compendium.${opts.vaultId}.`;
+  // Anything outside this vault is graft's to resolve on the reader's machine.
+  const usable = (base: string) => !base.startsWith(mine) || built.has(base.split(".").pop()!);
   for (const [id, { path, bases }] of sourcedBy) {
-    if (!built.has(id)) continue;
-    for (const base of bases) {
-      if (!base.startsWith(mine)) continue;
-      const target = base.split(".").pop()!;
-      if (built.has(target)) continue;
-      warnings.push(
-        `${path}: grafts onto "${base}", which this build does not make`
-        + ` — check the page it names is visible at this role`,
-      );
-    }
+    if (!built.has(id) || bases.some(usable)) continue;
+    warnings.push(
+      `${path}: grafts onto ${bases.map((b) => `"${b}"`).join(", ")}, which this build does not make.`
+      + ` Check the page it names is visible at this role, or add a source outside this vault to fall back on.`,
+    );
   }
 }
 

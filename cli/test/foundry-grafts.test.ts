@@ -162,6 +162,24 @@ describe("grafting onto a sibling entry", () => {
     assert.match(warnings[0]!, /which this build does not make/);
   });
 
+  it("is quiet when a fallback outside the vault survives the gating", () => {
+    // The fix for the case above: the GM resolves the sibling, and everyone
+    // else falls through to the statblock they think the NPC is.
+    const { warnings } = documentEntries([
+      page("NPCs/Brynn.md", { foundry: { source: [sibling("344a28ac1128a1d5"), "Compendium.some-bestiary.actors.Actor.mmCommoner0000000"] } }),
+    ], opts);
+    assert.deepEqual(warnings, []);
+  });
+
+  it("warns when no source in the list survives, and names them all", () => {
+    const { warnings } = documentEntries([
+      page("NPCs/Brynn.md", { foundry: { source: [sibling("344a28ac1128a1d5"), sibling("gone000000000000")] } }),
+    ], opts);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /344a28ac1128a1d5/);
+    assert.match(warnings[0]!, /gone000000000000/);
+  });
+
   it("says nothing about a source outside this vault", () => {
     const { warnings } = documentEntries([
       page("NPCs/Guard.md", { foundry: { source: "Compendium.some-bestiary.actors.Actor.mmGuard000000000" } }),
