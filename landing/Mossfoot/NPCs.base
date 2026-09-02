@@ -1,6 +1,6 @@
 filters:
   and:
-    - 'file.folder == "NPCs"'
+    - 'file.folder == "Mossfoot/NPCs"'
     - 'file.name != "index"'
 properties:
   note.role-class: { displayName: Class }

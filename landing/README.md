@@ -41,7 +41,7 @@ wikilinks instead of working anchors), not CSS-hidden content.
 | Frontmatter dialog (`{}` button) | Every page's top-right corner |
 | Per-page OG / Twitter card meta | View source on any page |
 | Custom theme colors via `settings.md` | `settings.md` |
-| Auto-generated folder indexes | `NPCs/`, `Items/`, `Lore/`, `Features/` |
+| Auto-generated folder indexes | `Mossfoot/NPCs/`, `Mossfoot/Items/`, `Mossfoot/Lore/`, `Features/` |
 
 ## Repo layout
 
@@ -51,13 +51,15 @@ vaults/                    ← this repo (a working Vault, not a static site)
 ├── .vaults/config.json    ← CLI-managed: roles + password hashes (test passwords; safe)
 ├── index.md               ← homepage at vaults.wizzlethorpe.com
 ├── README.md              ← this file (excluded from the wiki via settings.md `ignore`)
-├── NPCs.base              ← cards-view config used on the homepage
 ├── attachments/           ← images (compressed to webp at build time)
-├── Audio/                 ← passthrough files (audio/video/pdf, role-gated like images)
-├── NPCs/                  ← Aelar (SRD Scout), Bram (SRD Commoner), Dr. Bixby Wizzlethorpe (SRD Archmage)
-├── Items/                 ← Healing Potion (SRD Potion of Healing)
-├── Lore/                  ← The Mossfoot Inn (public), Witchwood Cult (patron), Hidden Caves (dm)
-└── Features/              ← documentation pages: one per CLI feature
+├── Features/              ← documentation pages: one per CLI feature
+└── Mossfoot/              ← the sample campaign, one folder per content kind
+    ├── NPCs.base          ← cards-view config embedded on the Mossfoot index
+    ├── Audio/             ← passthrough files (audio/video/pdf, role-gated like images)
+    ├── NPCs/              ← Aelar (SRD Scout), Bram (SRD Commoner), Dr. Bixby Wizzlethorpe (SRD Archmage)
+    ├── Items/             ← Healing Potion (SRD Potion of Healing)
+    ├── Lore/              ← The Mossfoot Inn (public), Witchwood Cult (patron), Hidden Caves (dm)
+    └── …                  ← Scenes, Decks, Playlists, Macros, Tables, sheets
 ```
 
 ## Build it yourself
@@ -88,17 +90,17 @@ vaults push    # one-shot wrangler pages deploy
 Each page in this repo is intentionally minimal so you can see the
 patterns at a glance:
 
-- **A plain article** — `Lore/The Mossfoot Inn.md`. Just title, image,
+- **A plain article** — `Mossfoot/Lore/The Mossfoot Inn.md`. Just title, image,
   body text, and wikilinks.
-- **A page-gated article** — `Lore/Witchwood Cult.md` (patron) and
-  `Lore/Hidden Caves.md` (dm). Shows `role:` frontmatter.
-- **A page with role-gated callouts** — `NPCs/Aelar.md`. Visible to
+- **A page-gated article** — `Mossfoot/Lore/Witchwood Cult.md` (patron) and
+  `Mossfoot/Lore/Hidden Caves.md` (dm). Shows `role:` frontmatter.
+- **A page with role-gated callouts** — `Mossfoot/NPCs/Aelar.md`. Visible to
   everyone; the patron + dm paragraphs strip per tier.
-- **An NPC clone** — `NPCs/Dr. Bixby Wizzlethorpe.md` with `foundry.source:`
+- **An NPC clone** — `Mossfoot/NPCs/Dr. Bixby Wizzlethorpe.md` with `foundry.source:`
   pointing at the SRD Archmage. Foundry clones it; the `foundry:` block
-  patches HP/CR/token name. Same pattern for `NPCs/Aelar.md` (SRD Scout)
-  and `NPCs/Bram.md` (SRD Commoner).
-- **An item clone** — `Items/Healing Potion.md` doing the same thing for
+  patches HP/CR/token name. Same pattern for `Mossfoot/NPCs/Aelar.md` (SRD Scout)
+  and `Mossfoot/NPCs/Bram.md` (SRD Commoner).
+- **An item clone** — `Mossfoot/Items/Healing Potion.md` doing the same thing for
   the SRD Potion of Healing.
 
 ## ⚠️ A note on the test passwords

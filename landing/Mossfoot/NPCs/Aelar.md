@@ -9,7 +9,7 @@ foundry:
   # data_json supplies the bulk of the sheet (biography, languages,
   # skills, pocket change). data: layers a few page-driven patches on
   # top: a wound penalty (HP), the bumped CR, and a flavour token name.
-  patch_json: sheets/aelar-export.json
+  patch_json: Mossfoot/sheets/aelar-export.json
   patch:
     system:
       attributes:

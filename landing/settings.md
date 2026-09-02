@@ -13,6 +13,14 @@ default_frontmatter:
   - match: '**'
     data:
       role: public
+  - match: index.md
+    data:
+      foundry:
+        journal: false
+  - match: Features/**
+    data:
+      foundry:
+        journal: false
 
 # Glob patterns of files to skip, e.g. 'Templates/**' or '*.draft.md'. Wildcards cross hidden segments, so 'tools/**' also covers 'tools/.venv/**'.
 ignore:

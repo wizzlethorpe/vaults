@@ -103,7 +103,7 @@ foundry:
       # walking the scene's ambient-sound collection. The radius covers the
       # whole hall at the 140 ppi grid scale.
       - _id: mossfootHallAmb1
-        path: "@vault/Audio/great-hall.ogg"
+        path: "@vault/Mossfoot/Audio/great-hall.ogg"
         x: 2870
         y: 2100
         radius: 100
@@ -156,7 +156,3 @@ cache via the `@vault/...` paths in the scene's `tiles[]` and
 > Each macro reaches the scene by its pinned `patch._id`
 > (`mossfootHall0001`) and the placeable by its pinned `_id`, with no
 > SHA1 lookups or name-search.
-
-> [!info] 
-> This map is a simplified version of the Great Hall map from the Wizzlethorpe [World of Wizards](https://wizzlethorpe.com/modules/world-of-wizards/) map pack. The original map has floatin candles and more fun macros. You should check it out!
-

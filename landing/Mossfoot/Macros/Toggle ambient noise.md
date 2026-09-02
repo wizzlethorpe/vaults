@@ -19,7 +19,7 @@ foundry:
 Mutes / unmutes the ambient `great-hall.ogg` track in the
 [[Mossfoot Great Hall]] scene by addressing the AmbientSound document
 via its pinned `_id` (`mossfootHallAmb1`). The audio file itself is
-pulled into the per-vault Foundry cache via the `@vault/Audio/great-hall.ogg`
+pulled into the per-vault Foundry cache via the `@vault/Mossfoot/Audio/great-hall.ogg`
 reference in the scene's `sounds[]`, so playback works offline.
 
 > [!quote] Macro body

@@ -33,8 +33,8 @@ Folder-prefixed paths still work for disambiguation:
 
 | Markdown | Renders as |
 |---|---|
-| `[[NPCs/Aelar]]` | [[NPCs/Aelar]] |
-| `[[Lore/The Mossfoot Inn]]` | [[Lore/The Mossfoot Inn]] |
+| `[[Mossfoot/NPCs/Aelar]]` | [[Mossfoot/NPCs/Aelar]] |
+| `[[Mossfoot/Lore/The Mossfoot Inn]]` | [[Mossfoot/Lore/The Mossfoot Inn]] |
 
 In practice you'll rarely need them. Bare names resolve as long as the basename is unique across the vault.
 

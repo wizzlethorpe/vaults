@@ -22,14 +22,14 @@ the underlying markdown.
 | [[Math]] | `$inline$` and `$$display$$` LaTeX, rendered at build time with KaTeX |
 | [[Battlemaps]] | Layered, multi-level maps with a grid overlay and PNG export |
 
-Other features that don't need a dedicated page:
+Other features:
 
 - **Frontmatter dialog**: the `{}` button at the top-right of every page
   pops up the raw YAML in a copy-friendly box. Useful for grabbing UUIDs
   out of an existing page or sharing frontmatter snippets.
 - **Folder-index synthesis**: any folder without an `index.md` gets one
-  auto-generated as a Bases card view of its contents. See `NPCs/index`,
-  `Items/index`, `Lore/index` for examples.
+  auto-generated as a Bases card view of its contents. See `Mossfoot/NPCs/index`,
+  `Mossfoot/Items/index`, `Mossfoot/Lore/index` for examples.
 - **Dark mode**: theme picker in the sidebar (auto / light / dark). Set
   `accent_color_dark` and `bg_color_dark` in `settings.md` to override
   the dark palette; `accent_color` / `bg_color` cover light mode.

@@ -6,7 +6,7 @@ Bases are filtered, sorted, table-or-card views over your vault's pages, followi
 
 ## A Small Cast
 
-The base below embeds `NPCs.base` (in the vault root) which queries the `NPCs/` folder:
+The base below embeds `NPCs.base` (in the `Mossfoot/` folder) which queries the `Mossfoot/NPCs/` folder:
 
 ![[NPCs]]
 
@@ -15,7 +15,7 @@ The `.base` source:
 ```yaml
 filters:
   and:
-    - 'file.folder == "NPCs"'
+    - 'file.folder == "Mossfoot/NPCs"'
     - 'file.name != "index"'
 properties:
   note.role-class: { displayName: Class }
@@ -60,7 +60,7 @@ filters: 'role == "patron"'
 # Combined
 filters:
   and:
-    - 'file.folder == "NPCs"'
+    - 'file.folder == "Mossfoot/NPCs"'
     - 'cr >= 2'
     - or:
         - 'role-class == "Ranger"'

@@ -33,7 +33,7 @@ DM-only page (or a DM-only callout). The build does the rest.
 
 ## Example
 
-This page links to [mossfoot-tavern.ogg](../Audio/mossfoot-tavern.ogg), a 1.4 MB tavern ambience loop (mixed from the Sonniss GDC library). Because this page is `public` (no `role:` frontmatter override), the file includes to all three deploy variants.
+This page links to [mossfoot-tavern.ogg](../Mossfoot/Audio/mossfoot-tavern.ogg), a 1.4 MB tavern ambience loop (mixed from the Sonniss GDC library). Because this page is `public` (no `role:` frontmatter override), the file includes to all three deploy variants.
 
 ![[mossfoot-tavern.ogg]]
 
