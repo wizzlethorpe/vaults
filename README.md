@@ -5,6 +5,8 @@
 [![license](https://img.shields.io/github/license/wizzlethorpe/vaults)](LICENSE)
 [![release](https://img.shields.io/github/v/release/wizzlethorpe/vaults?display_name=tag&sort=semver)](https://github.com/wizzlethorpe/vaults/releases/latest)
 
+> **🌐 Documentation and live demo: [vaults.wizzlethorpe.com](https://vaults.wizzlethorpe.com)**
+
 Self-host an Obsidian vault as a static, role-gated wiki on your own Cloudflare account, with optional sync into Foundry VTT.
 
 This is the monorepo for three intertwined pieces. They release in lockstep so a "vaults vX.Y.Z" tag pins the exact behavior across all three:
