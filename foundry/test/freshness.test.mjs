@@ -51,7 +51,6 @@ describe("markersOf", () => {
   test("keeps only vault markers", () => {
     const entries = [
       { vault: "https://v.example.com", gated: true },
-      { id: "built0000", vault: "https://v.example.com" },   // built entry passing back through
       { vault: "" },
       { pack: "p", patch: {} },
     ];

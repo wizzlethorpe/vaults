@@ -688,15 +688,11 @@ export function moduleManifest(opts: ManifestOptions): Record<string, unknown> {
   };
 }
 
-/** The one-line grafts.json the module ships: a pointer, not a list. */
-export function moduleGrafts(vaultUrl: string, gated: boolean): unknown[] {
-  // `gated` is not a hint the Foundry module could work out for itself. A single-role
-  // deploy collapses its one variant to the site root and ships no Pages
-  // Functions, so `/_batch` is not there and a reference's variant segment is
-  // not a directory. A gated deploy is the opposite on both counts. Probing for
-  // the difference means reading a 404 as "public", which is also what a
-  // misconfigured deploy looks like.
-  return [{ vault: vaultUrl.replace(/\/+$/, ""), gated }];
+/** The module's grafts.json: one entry naming the vault. */
+export function moduleGrafts(vaultUrl: string, gated: boolean) {
+  // A single-role deploy has no /_batch and no variant segment, and probing for
+  // that reads a 404 as "public", which a misconfigured deploy also looks like.
+  return { format: 1, entries: [{ vault: vaultUrl.replace(/\/+$/, ""), gated }] };
 }
 
 /**
@@ -729,7 +725,7 @@ export function withFolderIndexes(pages: Page[], roles: string[]): Page[] {
   return [...pages, ...synthetic];
 }
 
-/** Pages a role may see, in the shape the emitter wants. *//** Pages a role may see, in the shape the emitter wants. */
+/** Pages a role may see, in the shape the emitter wants. */
 export function pagesFrom(
   metas: Array<{
     path: string; title: string; role: string;

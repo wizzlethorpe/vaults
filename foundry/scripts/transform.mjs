@@ -22,12 +22,8 @@ function bar() {
   };
 }
 
-/**
- * A marker is the module's whole grafts.json: `[{ vault, gated }]`.
- *
- * An empty URL is not a marker: it would send every fetch at the current page.
- */
-const isMarker = (entry) => typeof entry?.vault === "string" && !!entry.vault;
+/** An empty URL is not a marker: it would send every fetch at the current page. */
+export const isMarker = (entry) => typeof entry?.vault === "string" && !!entry.vault;
 
 /** Stable directory name for a vault's cache: host and path, so two vaults on one host stay apart. */
 export function vaultKey(vaultUrl) {
@@ -42,10 +38,10 @@ async function fetchEntries(vault) {
   // returns the public entry list with nothing marking the rest as missing.
   const res = await fetch(vaultUrl(vault, "/_foundry/grafts.json"));
   if (!res.ok) throw new Error(`GET /_foundry/grafts.json → ${res.status}`);
-  const data = await res.json();
-  const entries = Array.isArray(data) ? data : data.entries;
+  const data = (await res.json()) ?? {};
+  const entries = data.entries;
   if (!Array.isArray(entries)) throw new Error("the vault's grafts.json holds no entries");
-  return { entries, assets: (!Array.isArray(data) && data.assets) || {} };
+  return { entries, assets: data.assets ?? {} };
 }
 
 /**

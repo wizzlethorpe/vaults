@@ -248,10 +248,10 @@ describe("the module a vault ships", () => {
     assert.deepEqual((m["flags"] as any).graft.entries, ["grafts.json"]);
   });
 
-  it("ships a pointer, not a list", async () => {
+  it("names the vault instead of carrying its entries", async () => {
     assert.deepEqual(
       moduleGrafts("https://marlo.example.com/", true),
-      [{ vault: "https://marlo.example.com", gated: true }]);
+      { format: 1, entries: [{ vault: "https://marlo.example.com", gated: true }] });
   });
 
   it("only offers a role the pages it may see", async () => {

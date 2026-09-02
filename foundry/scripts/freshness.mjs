@@ -6,6 +6,7 @@
 
 import { url as vaultUrl } from "./api.mjs";
 import { tokenFor } from "./token.mjs";
+import { isMarker } from "./transform.mjs";
 
 const MODULE_ID = "vaults";
 export const BUILT = "builtHashes";
@@ -55,9 +56,7 @@ async function record(moduleId, hash) {
 }
 
 /** The vault markers in a module's own grafts.json, if any. */
-function markersOf(entries) {
-  return entries.filter((e) => typeof e?.vault === "string" && e.vault && !e.id);
-}
+const markersOf = (entries) => entries.filter(isMarker);
 
 /**
  * Which enabled modules are vaults, and what each one points at.
