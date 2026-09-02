@@ -1,0 +1,42 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Run tests
+        run: pnpm test
+      - name: Build the landing vault end-to-end
+        run: |
+          pnpm build:cli
+          node cli/dist/index.js build landing
+      - name: Check the manifest parses and matches the module id
+        run: |
+          jq -e '.id == "vaults" and (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' foundry/module.json
+          jq -e '.languages[0].path == "lang/en.json"' foundry/module.json
+          jq -e . foundry/lang/en.json > /dev/null
+      - name: Check every localisation key used is defined
+        run: |
+          node -e '
+            const fs = require("fs");
+            const lang = JSON.parse(fs.readFileSync("foundry/lang/en.json", "utf8"));
+            const src = fs.readdirSync("foundry/scripts").map(f => fs.readFileSync("foundry/scripts/" + f, "utf8")).join("");
+            const used = [...src.matchAll(/"(VAULTS\.[A-Za-z.]+)"/g)].map(m => m[1]);
+            const missing = [...new Set(used)].filter(k => !(k in lang));
+            if (missing.length) { console.error("undefined keys:", missing); process.exit(1); }
+            console.log(`${new Set(used).size} keys, all defined`);
+          '
