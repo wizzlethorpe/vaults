@@ -21,8 +21,10 @@ foundry:
 Decided:
 
 - **A non-text page drops the article body.** An `image`, `video` or `pdf` page's content *is* its `src`, so there is nowhere for prose to live. Say so at build time rather than silently discarding it.
-- **A world without the type degrades to `text`, with a warning.** Same as a `foundry.source` rung that cannot resolve. Only the Foundry module can do this, since it runs inside the world and can ask what types exist; `vaults build --module` writes what the vault declared and cannot know the reader's system.
-- **Both paths write the same pages**, or the two diverge again.
+- **A world without the type degrades to `text`, with a warning.** Same as a `foundry.source` rung that cannot resolve. Only the Foundry module can do this, since it runs inside the world and can ask what types exist; the compiled `grafts.json` carries what the vault declared and cannot know the reader's system.
+- **Divergence between package shapes is no longer a risk.** `compendium` and `adventure` both compile from the one entry list `journalEntries` writes, so the overlay lands in `foundry-grafts.ts` once.
+
+This shipped once (8a6749b) against the pre-graft architecture and was lost in the graft rewrite; the decisions above are that implementation's, and its spec conformance tests are in history to crib from.
 
 ## 2. Separating vaults from Foundry
 
@@ -30,38 +32,19 @@ Vaults is increasingly used for things with nothing to do with TTRPGs, and those
 
 What remains is the built-ins: `statblock`, `battlemap` and `dice` are hardcoded rather than bundled-but-disableable handlers. **Do not build a plugin system for this.** The handler registry already is one, with user-authored handlers, browser JS and CSS, and Foundry opt-in. A general plugin API earns its keep when a third party wants to write one, and today the third party is us.
 
-## 4. Decoupling roles from passwords
-
-`vaults role add` prompts for a password, so a site authenticating only through OIDC or Patreon still renders a password form and a role picker it does not want. Stop conflating the two: **roles say what content is tagged, authenticators say how a visitor proves one.** Per-role password hashes become one optional authenticator beside `oidc` and `patreon`, and the login page renders only the methods a deploy actually has.
-
-**Keep the total order.** Roles are a ladder, and that is what makes "higher tiers see lower content" free. A set model needs one variant per reachable role combination, which explodes. Decouple authentication only.
-
-## 5. Obsidian plugin
+## 3. Obsidian plugin
 
 Straightforward, and real quality of life: plugins have Node access, so a ribbon button for build/preview/push and a settings pane for roles is small work.
 
 Be honest that it does not touch the barrier that actually stops people. Needing a Cloudflare account, an API token and wrangler is a hosting problem. Removing it means the managed platform, and a plugin that publishes to *that* is the real product. Sequence it that way.
 
-## 6. Composing an adventure from other creators' content
-
-Publish an adventure using someone else's maps, scenes and ambience where **the vault contains none of it**. Each reader gets what their own subscriptions entitle them to, and licensing stays between them and the creator. Ship a pointer and a diff, never a pixel.
-
-Most of this works. Creators ship real Foundry modules with compendium packs, so their content is addressable by ordinary UUID, and the `foundry.source` priority list is the "use it if the reader owns it" mechanism. [graft-moulinette](https://github.com/wizzlethorpe/graft-moulinette) covers a reader's own Moulinette library, documents by `@moulinette/<Type>/<pack_ref>/<filepath>` and files by the path Moulinette downloads them to.
-
-Known about that integration:
-
-- **Composing a scene from Moulinette files beats cloning a Moulinette document.** A file path survives re-exports; a document carries a whole scene built for one Foundry generation.
-- **Prefer a compendium rung above a Moulinette rung.** Foundry migrates compendium packs on load, which is exactly the step a raw import skips.
-- **Re-releases fragment a pack across pack numbers**, so a reference can go stale even though the reader still owns the content.
-- **Moulinette is on borrowed time against v15.** Its `file-manager.ts` reaches for the global `FilePicker`, deprecated in v13 and slated for removal. Not ours to fix, but it dates this integration, and a documented `resolveAsset(creator, pack, file)` would remove the last internal dependency. Worth asking them rather than reverse engineering a minified bundle forever.
-
-## 7. One Foundry generation per vault
+## 4. One Foundry generation per vault
 
 Not built, and not needed while v14 is the only target, but the decision is made: supporting several means deploying a separate copy of the vault per generation, not branching inside pages.
 
 This separates two things the Moulinette work conflated. A `foundry.source` priority list is for **content availability**, meaning does this reader own that pack. We also used it for **version compatibility**, and those are independent axes, so every rung became a guess about two variables and the combinations multiply past what anyone can test. Declared instead, probably as a setting, it gives one honest answer up front, and the generation-skew warning gets a better question to ask: does this pack match what the vault was built for, rather than does it match this world.
 
-## 8. Vaults as decentralised distribution
+## 5. Vaults as decentralised distribution
 
 Vaults already has most of what a content marketplace sells: entitlement checking, per-user access, a client that pulls content into Foundry, auth for that client, and multiple creators in one world. Structurally it is *better* for entitlement than a client-side gate, because a non-subscriber is not filtered by a module they could patch. The premium files are simply not in the variant the server returns.
 

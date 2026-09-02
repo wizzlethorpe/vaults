@@ -43,6 +43,10 @@ A single shared version applies across all three subprojects. The root `release.
 └── release.sh         # Single-command unified release
 ```
 
+## Support
+
+Wizzlethorpe Vaults is a free and open-source Wizzlethorpe Labs product. If you find it useful, please consider [supporting us on Patreon](https://www.patreon.com/wizzlethorpe). Check out [wizzlethorpe.com](https://wizzlethorpe.com) for more free tools and content!
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide. Short version: working on a single subproject is normal (`cd cli && pnpm typecheck && pnpm test`, etc.); cross-cutting PRs touching CLI + Foundry + landing together are welcome. Contributions are governed by the [Contributor License Agreement](./CLA.md).
