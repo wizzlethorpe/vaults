@@ -14,10 +14,6 @@
 // `role: patron` page ships to the patron variant only and is served only to
 // a patron. This handler's job is to make that a first-class thing to author
 // rather than a markdown link someone has to know to write.
-//
-// A Foundry module install link is deliberately NOT this handler. See
-// `foundry-manifest`: it hands a URL to a machine that has no cookie, which
-// is a different problem with a different answer.
 
 import type { CodeBlockHandler, HandlerContext } from "../types.js";
 import { registerBuiltinAssets } from "../assets.js";

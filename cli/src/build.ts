@@ -12,7 +12,7 @@ import {
   copyReferencedPassthroughs,
 } from "./asset-refs.js";
 import { downloadFilePaths } from "./render/handlers/builtin/download.js";
-import { foundryManifestPaths, manifestDownloadPath } from "./render/handlers/builtin/foundry-manifest.js";
+import { hasFoundryInstall } from "./render/handlers/builtin/foundry-install.js";
 import { warnFoundryDocCollisions } from "./foundry-meta.js";
 import { compressImage } from "./images.js";
 import {
@@ -306,34 +306,11 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // file that then gets staged sends the reader off to set
   // include_unknown_files for no reason.
   const downloadPaths = new Set<string>();
-  const manifestPaths = new Set<string>();
-  const manifestDownloads = new Map<string, string>();
+  const installPages: string[] = [];
   for (const f of markdownFiles) {
     const source = await readFile(f.absolute, "utf8");
     for (const path of downloadFilePaths(source)) downloadPaths.add(path);
-    for (const path of foundryManifestPaths(source)) manifestPaths.add(path);
-  }
-  // A foundry-manifest block names only the manifest. The zip is whatever the
-  // manifest's own download field says, so read it and ship that too — the
-  // author should not have to repeat a path the manifest already states, and
-  // an install needs both halves present or it fails on the second fetch.
-  for (const rel of manifestPaths) {
-    downloadPaths.add(rel);
-    const file = withinLimit.find((f) => f.path === rel);
-    if (!file) continue;
-    const { path, absolute } = manifestDownloadPath(await readFile(file.absolute, "utf8"), settings.values.site_url);
-    if (absolute) {
-      console.warn(
-        `  ${rel}: "download" points outside this vault (${absolute}), so the file is not`
-        + ` staged into the deploy. If it is meant to be this vault's own file, either`
-        + ` set 'site_url' to the host it names or write the path relative and let the`
-        + ` build make it absolute.`,
-      );
-    }
-    if (path) {
-      downloadPaths.add(path);
-      manifestDownloads.set(rel, path);
-    }
+    if (hasFoundryInstall(source)) installPages.push(f.path);
   }
   const unknownFiles = withinLimit.filter((f) =>
     !/\.md$|\.base$/i.test(f.path)
@@ -375,7 +352,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       console.warn(`  download block names '${p}', which is not in the vault; the link will 404.`);
     }
     if (promoted.length > 0) {
-      console.log(`  staging ${promoted.length} file(s) named by download / foundry-manifest blocks`);
+      console.log(`  staging ${promoted.length} file(s) named by download blocks`);
       stagedPassthroughs.push(...promoted);
     }
   }
@@ -558,6 +535,17 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     .slice(0, 10);
 
   const foundryEnabled = settings.values.foundry.package !== "none";
+  // The block promises a module this build is not writing, so the URL it shows
+  // would 404. Fail rather than deploy a dead install link. The module needs
+  // both a packaging and a URL to name; the warning below covers a vault with
+  // neither the block nor a site_url.
+  if (installPages.length > 0 && !(foundryEnabled && opts.siteUrl)) {
+    const why = foundryEnabled ? "site_url is not set" : 'foundry.package is "none"';
+    throw new Error(
+      `foundry-install block on ${installPages.length} page(s), but ${why},`
+      + ` so this vault writes no module to install:\n${installPages.map((p) => `  ${p}`).join("\n")}`,
+    );
+  }
   const foundryPackaging: "compendium" | "adventure" =
     settings.values.foundry.package === "adventure" ? "adventure" : "compendium";
 
@@ -693,7 +681,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       parsedSources,
       baseSources,
       imageIndex,
-      manifestDownloads,
       imageStagingDir,
       passthroughIndex,
       passthroughStagingDir: otherStagingDir,
@@ -949,7 +936,6 @@ interface VariantArgs {
   baseSources: Map<string, string>;
   imageIndex: Map<string, ImageEntry>;
   /** Manifest path -> the file its own download field names; see copyReferencedPassthroughs. */
-  manifestDownloads: ReadonlyMap<string, string>;
   /** Staging dir holding compressed images; we copy what's referenced. */
   imageStagingDir: string;
   /** Passthrough media (audio/video/pdf/epub) staged once, reference-copied per variant. */
@@ -1187,7 +1173,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   // contract as images: ship only into variants whose visible pages
   // reference the file. A DM-only audio cue can't ride along into the
   // public deploy because no public-tier source mentions it.
-  const copiedOther = await copyReferencedPassthroughs(visibleSources, visibleMetas, a.passthroughIndex, a.passthroughStagingDir, a.variantDir, a.manifestDownloads);
+  const copiedOther = await copyReferencedPassthroughs(visibleSources, visibleMetas, a.passthroughIndex, a.passthroughStagingDir, a.variantDir);
 
   return {
     pageCount: visibleMetas.length,

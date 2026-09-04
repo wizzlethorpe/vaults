@@ -44,7 +44,7 @@ const sanitizeSchema = {
     a: ["href", "title", "className", "id", "target", "rel", "download"],
     div: ["className", "data*", "role"],
     span: ["className", "data*"],
-    code: ["className", "title"],
+    code: ["className", "title", "data*"],
     table: ["className"],
     th: ["className", "data*", "tabindex"],
     td: ["className", "data*"],

@@ -15,7 +15,6 @@ import { copyFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { battlemapLayerPaths } from "./render/handlers/builtin/battlemap.js";
 import { downloadFilePaths } from "./render/handlers/builtin/download.js";
-import { foundryManifestPaths } from "./render/handlers/builtin/foundry-manifest.js";
 import { IMAGE_EXT_RE } from "./render/extensions.js";
 import { slugify } from "./render/slug.js";
 import type { ImageEntry, PageMeta } from "./render/types.js";
@@ -203,14 +202,6 @@ export async function copyReferencedPassthroughs(
   passthroughIndex: Map<string, ImageEntry>,
   stagingDir: string,
   variantDir: string,
-  /**
-   * Manifest path -> the file its own `download` field names. A
-   * foundry-manifest block names only the manifest, so the zip has no other
-   * reference to gate it into this variant; without this it would be staged
-   * and then shipped nowhere. Keyed by manifest so the zip inherits the
-   * manifest's role: a DM-only install link does not leak its module.
-   */
-  manifestDownloads: ReadonlyMap<string, string> = new Map(),
 ): Promise<string[]> {
   if (passthroughIndex.size === 0) return [];
   const refs = new Set<string>();
@@ -230,14 +221,9 @@ export async function copyReferencedPassthroughs(
     // Files named by ```download blocks, looked up by full vault-relative
     // path rather than basename: a download names an exact file, and two
     // releases called module.json in different folders must not collide.
-    for (const path of [...downloadFilePaths(source), ...foundryManifestPaths(source)]) {
+    for (const path of downloadFilePaths(source)) {
       const entry = passthroughIndex.get(path);
       if (entry) refs.add(entry.outputPath);
-      const derived = manifestDownloads.get(path);
-      if (derived) {
-        const zip = passthroughIndex.get(derived);
-        if (zip) refs.add(zip.outputPath);
-      }
     }
   }
   // `@vault/PATH` references inside any frontmatter string also gate a
