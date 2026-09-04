@@ -2,7 +2,7 @@
   "id": "vaults",
   "title": "Wizzlethorpe Vaults",
   "description": "Read an Obsidian vault published with Wizzlethorpe Vaults into Foundry VTT. Registers a Graft pre-build transform, so a vault's documents are built from its deployment and stay updatable without reinstalling anything.",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "compatibility": {
     "minimum": "14",
     "verified": "14"
