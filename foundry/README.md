@@ -2,7 +2,7 @@
 
 Read an Obsidian vault published with [vaults-cli](https://github.com/wizzlethorpe/vaults) into Foundry VTT. The vault is compiled to a graft entry list at build time; this module registers the [graft](https://github.com/wizzlethorpe/graft) pre-build transform that fetches that list, resolves what it references, and hands it to graft to build. Pushing new content never means reinstalling anything.
 
-Module ID: `vaults`. Requires Foundry V14 or newer, and graft 0.7.0 or newer.
+Module ID: `vaults`. Requires Foundry V14 or newer, and graft 0.9.0 or newer.
 
 ## Quick start
 

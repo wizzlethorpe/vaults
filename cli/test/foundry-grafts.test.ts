@@ -138,46 +138,68 @@ describe("documents from foundry.source", () => {
 
 describe("grafting onto a sibling entry", () => {
   const sibling = (id: string) => `Compendium.marlo.marlo-actors.Actor.${id}`;
+  const commoner = "Compendium.some-bestiary.actors.Actor.mmCommoner0000000";
+  const wight = page("Bestiary/Wight.md", {
+    foundry: { source: "Compendium.some-bestiary.actors.Actor.mmWight00000000", patch: { _id: "344a28ac1128a1d5" } },
+  });
+  const brynn = (source: string | string[]) => page("NPCs/Brynn.md", { foundry: { source } });
 
-  it("is quiet when the sibling is in this build", () => {
-    const { entries, warnings } = documentEntries([
-      page("Bestiary/Wight.md", {
-        foundry: { source: "Compendium.some-bestiary.actors.Actor.mmWight00000000",
-                   patch: { _id: "344a28ac1128a1d5" } },
-      }),
-      page("NPCs/Brynn.md", { foundry: { source: sibling("344a28ac1128a1d5") } }),
-    ], opts);
-    assert.equal(entries.length, 2);
+  it("names a sibling in this build by bare id, whichever pack it lands in", () => {
+    const { entries, warnings } = documentEntries([wight, brynn(sibling("344a28ac1128a1d5"))], opts);
     assert.deepEqual(warnings, []);
+    assert.equal(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, "344a28ac1128a1d5");
   });
 
   it("names the page whose sibling this variant filtered out", () => {
     // Role gating decides membership per variant, so a public page grafting
     // onto a dm-only one builds for the GM and skips for everyone else.
-    const { warnings } = documentEntries([
-      page("NPCs/Brynn.md", { foundry: { source: sibling("344a28ac1128a1d5") } }),
-    ], opts);
+    const { entries, warnings } = documentEntries([brynn(sibling("344a28ac1128a1d5"))], opts);
     assert.equal(warnings.length, 1);
     assert.match(warnings[0]!, /NPCs\/Brynn\.md/);
     assert.match(warnings[0]!, /which this build does not make/);
+    assert.equal(entries[0]!.source, sibling("344a28ac1128a1d5"), "left as written, so the report names it");
   });
 
-  it("is quiet when a fallback outside the vault survives the gating", () => {
-    // The fix for the case above: the GM resolves the sibling, and everyone
-    // else falls through to the statblock they think the NPC is.
-    const { warnings } = documentEntries([
-      page("NPCs/Brynn.md", { foundry: { source: [sibling("344a28ac1128a1d5"), "Compendium.some-bestiary.actors.Actor.mmCommoner0000000"] } }),
-    ], opts);
+  it("keeps only the fallback when the sibling is not in this variant", () => {
+    const { entries, warnings } = documentEntries([brynn([sibling("344a28ac1128a1d5"), commoner])], opts);
     assert.deepEqual(warnings, []);
+    assert.equal(entries[0]!.source, commoner);
   });
 
-  it("warns when no source in the list survives, and names them all", () => {
-    const { warnings } = documentEntries([
-      page("NPCs/Brynn.md", { foundry: { source: [sibling("344a28ac1128a1d5"), sibling("gone000000000000")] } }),
-    ], opts);
+  it("keeps the fallback list when the sibling is present", () => {
+    const { entries } = documentEntries([wight, brynn([sibling("344a28ac1128a1d5"), commoner])], opts);
+    assert.deepEqual(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, ["344a28ac1128a1d5", commoner]);
+  });
+
+  it("warns when no source in the list survives, names them all, and leaves them as written", () => {
+    const sources = [sibling("344a28ac1128a1d5"), sibling("gone000000000000")];
+    const { entries, warnings } = documentEntries([brynn(sources)], opts);
     assert.equal(warnings.length, 1);
     assert.match(warnings[0]!, /344a28ac1128a1d5/);
     assert.match(warnings[0]!, /gone000000000000/);
+    assert.deepEqual(entries[0]!.source, sources);
+  });
+
+  it("passes an own-vault embedded UUID through unchanged", () => {
+    const embedded = "Compendium.marlo.marlo-actors.Actor.344a28ac1128a1d5.Item.itemAAAAAAAAAAAA";
+    const { entries, warnings } = documentEntries([wight, brynn(embedded)], opts);
+    assert.deepEqual(warnings, []);
+    assert.equal(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, embedded);
+  });
+
+  it("does not take a sibling whose type disagrees with the UUID", () => {
+    // The full UUID would fail to resolve on the reader's machine; a bare id
+    // would quietly resolve to the wrong kind of document.
+    const asItem = "Compendium.marlo.marlo-items.Item.344a28ac1128a1d5";
+    const { entries } = documentEntries([wight, brynn([asItem, commoner])], opts);
+    assert.equal(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, commoner);
+  });
+
+  it("warns when two pages pin one id", () => {
+    const pin = (path: string) => page(path, { foundry: { source: "Actor:npc", patch: { _id: "duplicate0000001" } } });
+    const { warnings } = documentEntries([pin("A.md"), pin("B.md")], opts);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /B\.md.*duplicate0000001.*also pinned/);
   });
 
   it("says nothing about a source outside this vault", () => {
@@ -210,10 +232,22 @@ describe("documentTypeOf", () => {
 });
 
 describe("the whole file", () => {
-  it("declares its format, which lets a newer vault refuse an older graft", () => {
+  it("writes format 2", () => {
     const { file } = buildGrafts([page("A/B.md")], opts);
-    assert.equal(file.format, 1);
+    assert.equal(file.format, 2);
     assert.equal(file.entries.length, 1);
+  });
+
+  it("aims every entry at the Adventure pack under adventure packaging", () => {
+    const wolf = page("Bestiary/Wolf.md", {
+      role: "dm", foundry: { source: "Actor:npc", patch: { _id: "wolf000000000001" } },
+    });
+    const pup = page("Bestiary/Pup.md", { foundry: { source: "Compendium.marlo.marlo-actors.Actor.wolf000000000001" } });
+    const { file } = buildGrafts([wolf, pup, page("Notes/A.md")], { ...opts, packaging: "adventure" });
+    assert.ok(file.entries.length >= 3);
+    for (const e of file.entries) assert.equal(e.pack, "marlo-adventure", e.type);
+    // The sibling is named by bare id, which resolves whatever pack it lands in.
+    assert.equal(file.entries.find((e) => e.source)!.source, "wolf000000000001");
   });
 });
 
@@ -223,10 +257,7 @@ describe("the module a vault ships", () => {
     // first Scene would otherwise need reinstalling and a restart.
     const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com/" });
     const packs = m["packs"] as Array<Record<string, any>>;
-    // Every type a compendium can hold. Adventure is not one of them: it is
-    // the other way of delivering the same vault, not a pack alongside these.
-    assert.deepEqual(packs.map((p) => p.type).sort(),
-      Object.keys(DOC_TYPES).filter((t) => t !== "Adventure").sort());
+    assert.deepEqual(packs.map((p) => p.type).sort(), Object.keys(DOC_TYPES).sort());
     assert.ok(packs.every((p) => p.ownership.PLAYER === "NONE"), "never player-browsable");
     assert.ok(packs.filter((p) => p.type === "Actor" || p.type === "Item").every((p) => p.system));
   });
@@ -251,7 +282,7 @@ describe("the module a vault ships", () => {
   it("names the vault instead of carrying its entries", async () => {
     assert.deepEqual(
       moduleGrafts("https://marlo.example.com/", true),
-      { format: 1, entries: [{ vault: "https://marlo.example.com", gated: true }] });
+      { format: 2, entries: [{ vault: "https://marlo.example.com", gated: true }] });
   });
 
   it("only offers a role the pages it may see", async () => {
@@ -473,17 +504,6 @@ describe("_stats.coreVersion", () => {
     // called once per role and would say it three times for a three-role vault.
     const { file } = buildGrafts([doc()], opts);
     assert.equal(file.entries[0]!.patch["_stats"], undefined);
-  });
-
-  it("stamps the documents inside an Adventure, not only the Adventure", () => {
-    // The Adventure wrapper validating is not the Scene inside it validating.
-    // Stamped after folding, every nested document arrives without one and the
-    // Scene is the one that loses its levels for it.
-    const { file } = buildGrafts([doc(), page("Notes/A.md")], { ...opts2, packaging: "adventure" });
-    const patch = file.entries[0]!.patch as any;
-    assert.equal(patch._stats.coreVersion, "14");
-    assert.equal(patch.actors[0]._stats.coreVersion, "14");
-    assert.equal(patch.journal[0]._stats.coreVersion, "14");
   });
 
   it("leaves an entry with a compendium source alone", () => {
@@ -713,10 +733,8 @@ describe("document artwork", () => {
   });
 
   it("never lets an _id ride along in the patch", () => {
-    // The entry's id is the one that counts. A patch that keeps its own can
-    // disagree with it — harmless for a pack document, which graft stamps, but
-    // an Adventure spreads the patch over the id it just assigned, so a
-    // rejected `_id` would arrive and Foundry would refuse the document.
+    // The entry's id is the one that counts: graft stamps it over whatever the
+    // patch carries, so an `_id` left in the patch only misstates where it lands.
     const p = withImage({ foundry: { source: "Actor:npc", patch: { _id: "short" } } });
     assert.equal(artOf(p)["_id"], undefined);
     assert.match(documentEntries([p], opts).entries[0]!.id, /^[a-f0-9]{16}$/);
@@ -771,9 +789,8 @@ describe("what the patch can say for itself", () => {
   });
 
   it("keeps a sidecar's own _id out of the patch", () => {
-    // Every Scene exported from Foundry carries the id it had in that world.
-    // Left in, an Adventure spreads it over the id the entry just assigned and
-    // the document arrives under an id nothing else in the build refers to.
+    // Every Scene exported from Foundry carries the id it had in that world,
+    // which is not the deterministic one the entry was given.
     const p = doc({}, { sidecar: { _id: "sidecarSceneId01", width: 2240 } });
     const { entries } = entryFor(p);
     assert.equal(entries[0]!.patch["_id"], undefined);
@@ -810,6 +827,7 @@ describe("what packs a module declares", () => {
     });
     assert.deepEqual((m["packs"] as Array<any>).map((p) => [p.name, p.type]),
       [["v-adventure", "Adventure"]]);
+    assert.equal((m["packs"] as Array<any>)[0].label, "V");
   });
 
   it("gives the Adventure pack the vault's system", async () => {

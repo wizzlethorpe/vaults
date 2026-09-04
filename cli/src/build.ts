@@ -739,7 +739,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
           coreVersion: settings.values.foundry.core_version,
           system: settings.values.foundry.system,
           packaging: foundryPackaging,
-          title: opts.vaultName,
           assets: Object.fromEntries(assetHashes),
         },
       );

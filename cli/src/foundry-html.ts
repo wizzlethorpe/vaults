@@ -10,6 +10,7 @@
 import { createHash } from "node:crypto";
 
 import { htmlAttr, htmlUnescape } from "./escape.js";
+import type { Packaging } from "./foundry-types.js";
 
 /**
  * Where a page ended up: its journal page, its document, or both. A wikilink
@@ -37,7 +38,7 @@ export interface LinkIndex {
    * pack would send a reader to a second copy of the thing sitting beside the
    * one they are reading.
    */
-  packaging: "compendium" | "adventure";
+  packaging: Packaging;
 }
 
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;

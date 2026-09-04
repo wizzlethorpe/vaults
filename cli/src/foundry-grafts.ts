@@ -4,10 +4,9 @@
 
 import { createHash } from "node:crypto";
 
-import { DOC_TYPES, canonicalType } from "./foundry-types.js";
+import { ADVENTURE_PACK, DOC_TYPES, canonicalType, type Packaging } from "./foundry-types.js";
 import { rewriteVaultRefs } from "./foundry-html.js";
 import { defaultsFor, resolvePageRefs } from "./foundry-defaults.js";
-import { asAdventure } from "./foundry-adventure.js";
 import { mergeDefaults } from "./frontmatter-defaults.js";
 import type { LinkIndex, LinkTarget } from "./foundry-html.js";
 
@@ -17,13 +16,13 @@ export interface GraftEntry {
   type: string;
   pack: string;
   folder?: string;
-  /** A UUID, or several to try in order. */
+  /** A UUID, a sibling's bare id, or several to try in order. */
   source?: string | string[];
   patch: Record<string, unknown>;
 }
 
 export interface GraftsFile {
-  format: 1;
+  format: 2;
   /**
    * Content hash per `"<variant>/<path>"`, for every asset this file can
    * reach. What lets a reader tell a file it already downloaded from one that
@@ -174,10 +173,7 @@ export interface GraftOptions {
   coreVersion?: string;
   /** Game system the vault targets, for system-specific enrichers. */
   system?: string;
-  /** How the vault is delivered: browsable packs, or one Adventure. */
-  packaging?: "compendium" | "adventure";
-  /** Display name, used for the Adventure itself. */
-  title?: string;
+  packaging?: Packaging;
   /** Content hash per `"<variant>/<path>"`; see `GraftsFile.assets`. */
   assets?: Record<string, string>;
 }
@@ -396,7 +392,7 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 export function documentEntries(pages: Page[], opts: GraftOptions): { entries: GraftEntry[]; warnings: string[] } {
   const entries: GraftEntry[] = [];
   const warnings: string[] = [];
-  const sourcedBy = new Map<string, { path: string; bases: string[] }>();
+  const sourcedBy = new Map<GraftEntry, { path: string; bases: string[] }>();
   const targets = vaultIdTargets(pages, opts);
 
   for (const page of pages) {
@@ -438,50 +434,56 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
       ownership: { default: ownership },
     }, opts.buildRole);
     const folder = documentFolder(page);
+    const id = pinnedId(spec.patch, { warnings, path: page.path }) ?? instanceId(opts.vaultId, page.path);
+    if (entries.some((e) => e.id === id)) warnings.push(`${page.path}: foundry.patch._id "${id}" is also pinned by another page; graft refuses both`);
     entries.push({
-      id: pinnedId(spec.patch, { warnings, path: page.path }) ?? instanceId(opts.vaultId, page.path),
+      id,
       type,
       pack,
       ...(graftFolder(folder) ? { folder } : {}),
-      // A list travels whole: graft tries each in order and takes the first
-      // that resolves, so a page can prefer better content without demanding
-      // the reader own it.
-      ...(base.startsWith("Compendium.")
-        ? { source: bases.length > 1 ? bases : base }
-        : {}),
       patch,
     });
-    sourcedBy.set(entries[entries.length - 1]!.id, { path: page.path, bases });
+    if (base.startsWith("Compendium.")) sourcedBy.set(entries[entries.length - 1]!, { path: page.path, bases });
   }
-  warnMissingSiblings(entries, sourcedBy, opts, warnings);
-  return { entries, warnings };
+  return { entries: placeSiblings(entries, sourcedBy, opts, warnings), warnings };
 }
 
 /**
- * A page left with no source this variant can resolve.
- *
- * graft orders siblings so one can graft onto another, but role gating decides
- * membership per variant: a public page grafting onto a dm-only one resolves
- * for the GM and skips for everyone else. A fallback list is the fix, so this
- * warns only when nothing in the list survives.
+ * Set each sourced entry's `source`. Own-vault sources become bare ids: graft
+ * resolves those whatever pack the entry lands in, and adventure packaging
+ * never declares the per-type pack a full UUID names. Siblings not in this
+ * variant are dropped from a fallback list.
  */
-function warnMissingSiblings(
+function placeSiblings(
   entries: GraftEntry[],
-  sourcedBy: Map<string, { path: string; bases: string[] }>,
+  sourcedBy: Map<GraftEntry, { path: string; bases: string[] }>,
   opts: GraftOptions,
   warnings: string[],
-): void {
-  const built = new Set(entries.map((e) => e.id));
-  const mine = `Compendium.${opts.vaultId}.`;
-  // Anything outside this vault is graft's to resolve on the reader's machine.
-  const usable = (base: string) => !base.startsWith(mine) || built.has(base.split(".").pop()!);
-  for (const [id, { path, bases }] of sourcedBy) {
-    if (!built.has(id) || bases.some(usable)) continue;
-    warnings.push(
-      `${path}: grafts onto ${bases.map((b) => `"${b}"`).join(", ")}, which this build does not make.`
-      + ` Check the page it names is visible at this role, or add a source outside this vault to fall back on.`,
-    );
-  }
+): GraftEntry[] {
+  const built = new Map(entries.map((e) => [e.id, e]));
+  const sibling = (base: string): { id: string; type: string } | null => {
+    const parts = base.split(".");
+    return parts.length === 5 && parts[0] === "Compendium" && parts[1] === opts.vaultId
+      ? { type: parts[3]!, id: parts[4]! }
+      : null;
+  };
+  return entries.map((entry) => {
+    const named = sourcedBy.get(entry);
+    if (!named) return entry;
+    const placed = named.bases.flatMap((base) => {
+      const s = sibling(base);
+      if (!s) return [base];
+      return built.get(s.id)?.type === s.type ? [s.id] : [];
+    });
+    if (placed.length === 0) {
+      warnings.push(
+        `${named.path}: grafts onto ${named.bases.map((b) => `"${b}"`).join(", ")}, which this build does not make.`
+        + ` Check the page it names is visible at this role, or add a source outside this vault to fall back on.`,
+      );
+    }
+    const source = placed.length > 0 ? placed : named.bases;
+    return { ...entry, source: source.length > 1 ? source : source[0]! };
+  });
 }
 
 /**
@@ -563,30 +565,23 @@ export function buildGrafts(
   pages: Page[], opts: GraftOptions,
 ): { file: GraftsFile; warnings: string[]; links: LinkIndex } {
   const docs = documentEntries(pages, opts);
-  // Stamped before folding: inside an Adventure the documents that need a
-  // `coreVersion` are nested, and nothing reaches them afterwards.
-  const typed = stampCoreVersion(
+  const stamped = stampCoreVersion(
     [...journalEntries(pages, opts), ...docs.entries], opts.coreVersion ?? "");
-  const shaped = opts.packaging === "adventure"
-    ? asAdventure(typed, {
-      id: instanceId(opts.vaultId, "\u0000adventure"),
-      pack: opts.packs["Adventure"]!,
-      name: opts.title ?? opts.vaultId,
-      coreVersion: opts.coreVersion,
-      folderId: (type, path) => det("folder", `${opts.vaultId}:${type}:${path}`),
-    })
-    : { entries: typed, warnings: [] };
-  const entries = shaped.entries;
+  // graft folds every entry that names an Adventure-typed pack into one
+  // Adventure, so packaging changes only which pack the entries name.
+  const entries = opts.packaging === "adventure"
+    ? stamped.map((e) => ({ ...e, pack: `${opts.vaultId}-${ADVENTURE_PACK}` }))
+    : stamped;
   const assets = opts.assets && Object.keys(opts.assets).length ? opts.assets : undefined;
   return {
     file: {
-      format: 1,
+      format: 2,
       ...(assets ? { assets } : {}),
       // Finished by the caller once the bodies exist; see contentHash().
       contentHash: "",
       entries,
     },
-    warnings: [...docs.warnings, ...shaped.warnings],
+    warnings: docs.warnings,
     links: linkIndex(pages, opts),
   };
 }
@@ -597,31 +592,19 @@ export function buildGrafts(
 // at the vault; it holds no logic, so pushing content never means reinstalling
 // it. That is the whole reason the transform lives in a shared module instead.
 
-/** One pack per document type, declared up front. */
-export const PACK_SUFFIX: Record<string, string> = Object.fromEntries(
-  Object.entries(DOC_TYPES).map(([type, info]) => [type, info.packSuffix]),
-);
-
 export function packsFor(moduleId: string): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(PACK_SUFFIX).map(([type, suffix]) => [type, `${moduleId}-${suffix}`]),
+    Object.entries(DOC_TYPES).map(([type, suffix]) => [type, `${moduleId}-${suffix}`]),
   );
 }
 
 /**
- * The pack types a vault's module declares.
- *
- * Compendium packaging declares them all, used or not: packs are read when the
- * server starts, so a vault that later gains its first Scene would otherwise
- * need the module reinstalled and Foundry restarted before it could build.
- *
- * Adventure packaging needs exactly one, permanently. Everything the vault
- * holds goes inside the Adventure, so gaining a new document type adds nothing
- * to declare — and seven empty packs beside it are seven things a reader opens
- * once to find out they are empty.
+ * The packs a vault's module declares, as `[type, suffix]`. Compendium
+ * packaging declares every type up front: packs are read at server start, so
+ * a type the vault gains later would otherwise need a reinstall and restart.
  */
-export function packTypesFor(packaging: "compendium" | "adventure"): string[] {
-  return packaging === "adventure" ? ["Adventure"] : Object.keys(PACK_SUFFIX).filter((t) => t !== "Adventure");
+function packsDeclared(packaging: Packaging): Array<[string, string]> {
+  return packaging === "adventure" ? [["Adventure", ADVENTURE_PACK]] : Object.entries(DOC_TYPES);
 }
 
 export interface ManifestOptions {
@@ -632,22 +615,15 @@ export interface ManifestOptions {
   systemId?: string;
   /** Extra manifest keys from `foundry.module` in settings.md. */
   extra?: Record<string, unknown>;
-  /** How the vault is delivered, which decides what packs it declares. */
-  packaging?: "compendium" | "adventure";
+  packaging?: Packaging;
 }
 
-/**
- * The `module.json` a vault serves for itself.
- *
- * Every pack type is declared whether the vault uses it or not: packs are read
- * when the server starts, so a vault that later gains its first Scene would
- * otherwise need the module reinstalled and the server restarted before it
- * could build. Declaring them all keeps the module genuinely permanent.
- */
 const label = (suffix: string) => `${suffix[0]!.toUpperCase()}${suffix.slice(1)}`;
 
+/** The `module.json` a vault serves for itself. */
 export function moduleManifest(opts: ManifestOptions): Record<string, unknown> {
   const url = opts.vaultUrl.replace(/\/+$/, "");
+  const packs = packsDeclared(opts.packaging ?? "compendium");
   return {
     id: opts.moduleId,
     title: opts.title,
@@ -656,10 +632,11 @@ export function moduleManifest(opts: ManifestOptions): Record<string, unknown> {
     url,
     manifest: `${url}/_foundry/module.json`,
     download: `${url}/_foundry/module.zip`,
-    packs: packTypesFor(opts.packaging ?? "compendium").map((type) => ({
-      name: `${opts.moduleId}-${PACK_SUFFIX[type]!}`,
-      label: `${opts.title}: ${label(PACK_SUFFIX[type]!)}`,
-      path: `packs/${opts.moduleId}-${PACK_SUFFIX[type]!}`,
+    packs: packs.map(([type, suffix]) => ({
+      name: `${opts.moduleId}-${suffix}`,
+      // graft names the Adventure it assembles after the pack's label.
+      label: type === "Adventure" ? opts.title : `${opts.title}: ${label(suffix)}`,
+      path: `packs/${opts.moduleId}-${suffix}`,
       type,
       // Never player-browsable. A reader sees vault content because the GM
       // imported it, and the entry itself says whether they may.
@@ -672,7 +649,7 @@ export function moduleManifest(opts: ManifestOptions): Record<string, unknown> {
     })),
     packFolders: [{
       name: opts.title, sorting: "m",
-      packs: packTypesFor(opts.packaging ?? "compendium").map((t) => `${opts.moduleId}-${PACK_SUFFIX[t]!}`),
+      packs: packs.map(([, suffix]) => `${opts.moduleId}-${suffix}`),
     }],
     relationships: {
       requires: [
@@ -692,7 +669,7 @@ export function moduleManifest(opts: ManifestOptions): Record<string, unknown> {
 export function moduleGrafts(vaultUrl: string, gated: boolean) {
   // A single-role deploy has no /_batch and no variant segment, and probing for
   // that reads a 404 as "public", which a misconfigured deploy also looks like.
-  return { format: 1, entries: [{ vault: vaultUrl.replace(/\/+$/, ""), gated }] };
+  return { format: 2, entries: [{ vault: vaultUrl.replace(/\/+$/, ""), gated }] };
 }
 
 /**
