@@ -7,49 +7,50 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { moduleVersion } from "../src/foundry-version.js";
+import { moduleVersion, ordersAbove } from "../src/foundry-version.js";
 
 const day = (y: number, m: number, d: number) => new Date(y, m - 1, d);
-const manifest = (over: Record<string, unknown> = {}) =>
-  ({ id: "my-vault", title: "My Vault", packs: [{ name: "a" }], ...over });
+/** The files a module ships, defaulting to a manifest that never changes. */
+const files = (over: Record<string, unknown> = {}) =>
+  [{ name: "module.json", data: Buffer.from(JSON.stringify({ id: "my-vault", title: "My Vault", packs: [{ name: "a" }], ...over })) }];
 
 describe("moduleVersion", () => {
   it("reads as the day the module changed", () => {
-    assert.equal(moduleVersion(manifest(), undefined, day(2026, 8, 29)).version, "2026.8.29");
+    assert.equal(moduleVersion(files(), undefined, day(2026, 8, 29)).version, "2026.8.29");
   });
 
   it("does not move when the module has not changed", () => {
     // A module that offers an update containing nothing is one people learn to
     // dismiss, and the vault is rebuilt on every push.
-    const first = moduleVersion(manifest(), undefined, day(2026, 8, 29));
-    const later = moduleVersion(manifest(), first, day(2026, 9, 14));
+    const first = moduleVersion(files(), undefined, day(2026, 8, 29));
+    const later = moduleVersion(files(), first, day(2026, 9, 14));
     assert.deepEqual(later, first);
   });
 
   it("moves when the module does", () => {
-    const first = moduleVersion(manifest(), undefined, day(2026, 8, 29));
-    const next = moduleVersion(manifest({ packs: [{ name: "a" }, { name: "b" }] }), first, day(2026, 9, 14));
+    const first = moduleVersion(files(), undefined, day(2026, 8, 29));
+    const next = moduleVersion(files({ packs: [{ name: "a" }, { name: "b" }] }), first, day(2026, 9, 14));
     assert.equal(next.version, "2026.9.14");
     assert.notEqual(next.hash, first.hash);
   });
 
   it("counts within a day rather than repeating a version", () => {
-    let v = moduleVersion(manifest(), undefined, day(2026, 8, 29));
-    v = moduleVersion(manifest({ title: "Renamed" }), v, day(2026, 8, 29));
+    let v = moduleVersion(files(), undefined, day(2026, 8, 29));
+    v = moduleVersion(files({ title: "Renamed" }), v, day(2026, 8, 29));
     assert.equal(v.version, "2026.8.29.1");
-    v = moduleVersion(manifest({ title: "Again" }), v, day(2026, 8, 29));
+    v = moduleVersion(files({ title: "Again" }), v, day(2026, 8, 29));
     assert.equal(v.version, "2026.8.29.2");
   });
 
   it("orders the way Foundry compares versions", () => {
     // Each issued version numeric and increasing per segment, so
     // isNewerVersion agrees with the order they were issued in.
-    let v = moduleVersion(manifest(), undefined, day(2026, 8, 29));
+    let v = moduleVersion(files(), undefined, day(2026, 8, 29));
     const issued = [v.version];
     for (const [m, when] of [
-      [manifest({ title: "B" }), day(2026, 8, 29)],
-      [manifest({ title: "C" }), day(2026, 9, 14)],
-      [manifest({ title: "D" }), day(2027, 1, 2)],
+      [files({ title: "B" }), day(2026, 8, 29)],
+      [files({ title: "C" }), day(2026, 9, 14)],
+      [files({ title: "D" }), day(2027, 1, 2)],
     ] as const) {
       v = moduleVersion(m, v, when);
       issued.push(v.version);
@@ -66,15 +67,36 @@ describe("moduleVersion", () => {
     // "2026.8.29" starts with "2026.8.2": a prefix test would read the day
     // field as a same-day counter and issue 2026.8.2.10.
     const before = { version: "2026.8.29", hash: "aaaaaaaaaaaa" };
-    const v = moduleVersion(manifest(), before, day(2026, 8, 2));
+    const v = moduleVersion(files(), before, day(2026, 8, 2));
     assert.equal(v.version, "2026.8.2");
   });
 
-  it("ignores the version already on the manifest when fingerprinting", () => {
-    // Otherwise stamping a version changes the manifest, which changes the
-    // fingerprint, which demands a new version, forever.
-    const a = moduleVersion(manifest({ version: "old" }), undefined, day(2026, 8, 29));
-    const b = moduleVersion(manifest({ version: a.version }), a, day(2026, 8, 30));
-    assert.deepEqual(b, a);
+  it("moves when a file beside the manifest changes", () => {
+    // The bug this exists for: graft's entry-file format went to 2, the
+    // manifest was untouched, so no update was offered.
+    const beside = (data: string) => [...files(), { name: "grafts.json", data: Buffer.from(data) }];
+    const first = moduleVersion(beside('[{"vault":"https://v.example"}]'), undefined, day(2026, 8, 29));
+    const next = moduleVersion(beside('{"format":2,"entries":[]}'), first, day(2026, 9, 14));
+    assert.equal(next.version, "2026.9.14");
+    assert.notEqual(next.hash, first.hash);
+  });
+});
+
+describe("ordersAbove", () => {
+  it("agrees with the order moduleVersion issues", () => {
+    assert.equal(ordersAbove("2026.9.6", "2026.8.30"), true);
+    assert.equal(ordersAbove("2026.8.30.1", "2026.8.30"), true);
+    assert.equal(ordersAbove("2026.8.30", "2026.8.30"), false);
+  });
+
+  it("refuses a version that would strand every installed copy", () => {
+    // An author switching to their own numbering after dates have shipped:
+    // Foundry compares 1 against 2026 and never offers the update again.
+    assert.equal(ordersAbove("1.4.0", "2026.9.6"), false);
+  });
+
+  it("compares segments as numbers, not as text", () => {
+    // "10" sorts before "9" as a string, and a vault gets stuck every October.
+    assert.equal(ordersAbove("2026.10.1", "2026.9.6"), true);
   });
 });

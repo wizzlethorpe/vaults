@@ -46,7 +46,8 @@ import { formatDuration, pMap, Progress } from "./util.js";
 import { buildGrafts, contentHash, moduleManifest, moduleGrafts, packsFor, pagesFrom, withFolderIndexes } from "./foundry-grafts.js";
 import { toFoundryHtml, dualVariantBody } from "./foundry-html.js";
 import { zip } from "./zip.js";
-import { moduleVersion } from "./foundry-version.js";
+import type { ZipEntry } from "./zip.js";
+import { moduleVersion, ordersAbove } from "./foundry-version.js";
 import { loadDataJson } from "./foundry-meta.js";
 
 export interface BuildOptions {
@@ -786,9 +787,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   if (foundryEnabled && opts.siteUrl) {
     const dir = join(opts.outputDir, "_foundry");
     await mkdir(dir, { recursive: true });
-    // Versioned from the manifest itself, so it reads as a date and moves only
-    // when the module changes. `assetVersion` is a hash of the stylesheet: it
-    // cannot be ordered, which is what Foundry needs to offer an update.
     const manifest = moduleManifest({
       moduleId: foundryModuleId,
       title: opts.vaultName,
@@ -797,28 +795,43 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       packaging: foundryPackaging,
       extra: settings.values.foundry.module as Record<string, unknown>,
     });
-    const stamped = moduleVersion(manifest, cfg.foundryModule);
-    manifest["version"] = stamped.version;
-    if (stamped.version !== cfg.foundryModule?.version) {
-      await saveConfig(input.vaultPath, { ...cfg, foundryModule: stamped });
-    }
-    await writeFile(join(dir, "module.json"), JSON.stringify(manifest, null, 2));
 
-    // The module itself, which is what Foundry installs from the manifest. It
-    // holds no content: a manifest, and the one line naming the vault to read.
-    //
     // The marker exists only inside the archive. graft reads a module's entry
     // file from `modules/<id>/grafts.json` — the installed copy — so serving
     // one at the deploy root would be a file nothing fetches, sharing a name
     // with the per-variant entry list the middleware rewrites `/_foundry/` to.
-    // Pack directories are absent on purpose: Foundry creates them.
-    const manifestJson = await readFile(join(dir, "module.json"));
     const marker = Buffer.from(
       JSON.stringify(moduleGrafts(opts.siteUrl, !collapseToRoot), null, 2) + "\n");
-    await writeFile(join(dir, "module.zip"), zip([
+
+    // What the module ships, named once: the same list is fingerprinted and
+    // archived, so a file can never reach one and miss the other. Pack
+    // directories are absent on purpose: Foundry creates them.
+    const serialize = () => Buffer.from(JSON.stringify(manifest, null, 2));
+    const shipped = (manifestJson: Buffer): ZipEntry[] => [
       { name: `${foundryModuleId}/module.json`, data: manifestJson },
       { name: `${foundryModuleId}/grafts.json`, data: marker },
-    ]));
+    ];
+
+    const authored = manifest["version"];
+    if (typeof authored === "string") {
+      const published = cfg.foundryModule?.version;
+      if (published && !ordersAbove(authored, published)) {
+        throw new Error(
+          `settings.md: foundry.module.version "${authored}" does not order above the `
+          + `"${published}" this vault already published, so Foundry will never offer the `
+          + "update. Raise it, or remove it to go back to date stamping.");
+      }
+    } else {
+      const stamped = moduleVersion(shipped(serialize()), cfg.foundryModule);
+      manifest["version"] = stamped.version;
+      if (stamped !== cfg.foundryModule) {
+        await saveConfig(input.vaultPath, { ...cfg, foundryModule: stamped });
+      }
+    }
+
+    const manifestJson = serialize();
+    await writeFile(join(dir, "module.json"), manifestJson);
+    await writeFile(join(dir, "module.zip"), zip(shipped(manifestJson)));
   }
 
   // ── Pages Functions ─────────────────────────────────────────────────────

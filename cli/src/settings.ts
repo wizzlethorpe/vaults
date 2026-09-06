@@ -218,7 +218,7 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
       + "'player_role': the highest role players may read. Pages at or below it arrive player-visible; empty (the default) means none are. "
       + "'system': the game system your Actor and Item content targets, e.g. dnd5e. "
       + "'core_version': the full quoted Foundry version your exported Scene / Actor JSON came from, e.g. '14.359'. A bare '14' sorts before every release in that generation and costs a Scene its levels. "
-      + "'module': extra keys merged into the module.json the vault serves, such as 'authors'."
+      + "'module': extra keys merged into the module.json the vault serves, such as 'authors'. A quoted 'version' there takes over the numbering, and must rise on every release or Foundry stops offering updates; leave it out to have the build stamp a date."
   },
   site_url: {
     default: "",
@@ -371,6 +371,13 @@ function normalizeFoundry(values: Settings, warnings: string[]): void {
   const module = raw["module"];
   if (module !== undefined && !isPlainObject(module)) {
     warnings.push(`settings.md: 'foundry.module' should be a manifest object, got ${describeType(module)}.`);
+  }
+  // Quoted or the YAML scalar decides: 1.4.0 is a string, 1.4 is a number, and
+  // only a string suppresses the date stamp.
+  const moduleVersion = isPlainObject(module)
+    ? (module as Record<string, unknown>)["version"] : undefined;
+  if (moduleVersion !== undefined && typeof moduleVersion !== "string") {
+    warnings.push(`settings.md: 'foundry.module.version' should be a quoted string, got ${describeType(moduleVersion)}. Ignoring it and stamping a date.`);
   }
 
   values.foundry = {
