@@ -3,17 +3,16 @@ title: Images
 image: moss-tavern.webp
 ---
 
-Vaults handles images in three places: inline body embeds, `image:` frontmatter
-(used for cards, social cards, and Foundry document portraits), and an
-auto-discovery fallback when no explicit image is set.
+Images appear in three places: inline body embeds, `image:` frontmatter (used for cards, social cards and Foundry portraits), and cover discovery when no `image:` is set.
 
-This page has `image: moss-tavern.webp` in frontmatter. Open the `{}` button at the top-right to see the raw YAML, or view source to see the generated `og:image` and Twitter card meta tags in `<head>`.
+This page has `image: moss-tavern.webp` in its frontmatter. Open the `{}` button at the top-right to see the raw YAML. View source to see the `og:image` and Twitter card meta tags in `<head>`.
 
 ## Inline body embeds
 
 ```markdown
-![[aelar-portrait.webp]]              # natural width
+![[aelar-portrait.webp]]              # default_image_width from settings.md, 300px unless changed
 ![[aelar-portrait.webp|400]]          # explicit pixel width
+![[aelar-portrait.webp|400x300]]      # width and height
 ```
 
 ![[aelar-portrait.webp|240]]
@@ -28,35 +27,20 @@ Plain Markdown image syntax also works:
 
 ## Frontmatter `image:`
 
-Setting `image:` in the page's frontmatter does three things:
+Setting `image:` in a page's frontmatter does three things:
 
-1. **Social meta**: the layout emits `og:image` and `twitter:image` tags
-   so link previews on Slack, Discord, and Twitter look right.
-2. **Bases card covers**: when a Base view declares `image: image`, the
-   cards plugin uses this property to populate each card's cover. (See
-   [[Features/Bases]] for the card view in action.)
-3. **Foundry portraits**: when the page is cloned into Foundry via
-   `foundry.source`, this image becomes the Actor/Item `img` and prototype
-   token texture. (See [[Features/Foundry integration]].)
+1. **Social meta**: the layout emits `og:image` and `twitter:image`, so link previews on Slack, Discord and Twitter show the picture.
+2. **Bases card covers**: a card view with `image: image` takes each card's cover from this property (see [[Features/Bases]]).
+3. **Foundry portraits**: a page built into Foundry through `foundry.source` uses this image as the document's `img`, and for an Actor as the prototype token texture too (see [[Features/Foundry integration]]).
 
-## Auto-discovery
+## Cover discovery
 
-If a page has no `image:` frontmatter, the renderer falls back to **the
-first image embed in the body**. [[Bram]]'s page has no explicit `image:`
-field but still gets a cover image. The auto-discovery picks his portrait
-from the body. Toggle this off with `auto_image: false` in `settings.md`.
+A page with no `image:` takes the first image embed in its body as its cover. [[Bram]]'s page has no `image:` and still gets one, from the portrait in his body. Embeds inside code spans and code blocks do not count, so a page that quotes an embed as an example does not adopt it. Turn discovery off with `auto_image: false` in `settings.md`.
 
-## Compression + format conversion
+## Compression and format conversion
 
-PNG/JPEG/AVIF/TIFF/GIF inputs all get re-encoded to WebP at build time
-(quality controlled by `image_quality` in `settings.md`, default 85). The
-resulting file includes under `attachments/` (or wherever your source put
-it). The original file stays put in your vault, only the deploy gets
-the recoded version.
+PNG, JPEG, WebP, AVIF, TIFF and GIF inputs are re-encoded to WebP at build time, at the quality `image_quality` sets in `settings.md` (85 by default; `0` disables compression and ships files as they are). SVG passes through untouched. The result lands under `attachments/` or wherever the source lives, mirroring the source path. The source file is not modified; only the deploy carries the recoded copy.
 
-## File caching
+## Caching
 
-Image compression is the slowest part of a build. Vaults caches every
-encode keyed on the source file's hash, so repeat builds skip the codec
-entirely for unchanged images. The cache lives under `.vaults/cache/images/`
-in your vault and is gitignored by default.
+Every encode is cached under `.vaults/cache/images/q<quality>/`, keyed on the source file's hash, so a repeat build skips the codec for unchanged images. The cache is gitignored.

@@ -9,13 +9,6 @@
     "dm": "100000:a03713f180b026f3a200365516d7641a:01a4e1f59f7af11219313fadfc0e9b4943e765af6ce3d801387883a3ed1d627b"
   },
   "projectName": "landing",
-  "patreon": {
-    "clientId": "J-kz5VanWRJ4VvfM3DN8lvDzkmgi-yo29aMhPcgZ197CVrSGk_2H4qJiXgap2JcK",
-    "campaignId": "15088155",
-    "tiers": {
-      "patron": "27738604"
-    }
-  },
   "oauth": {
     "patreon": {
       "clientId": "J-kz5VanWRJ4VvfM3DN8lvDzkmgi-yo29aMhPcgZ197CVrSGk_2H4qJiXgap2JcK",
@@ -24,5 +17,9 @@
         "patron": "27738604"
       }
     }
+  },
+  "foundryModule": {
+    "version": "2026.9.4",
+    "hash": "ad113c97c193"
   }
 }

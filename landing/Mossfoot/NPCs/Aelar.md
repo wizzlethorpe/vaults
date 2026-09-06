@@ -6,9 +6,8 @@ location: Mossfoot Inn
 cr: 3
 foundry:
   source: Compendium.dnd5e.monsters.Actor.O3ABqI55Ir1du1Xa
-  # data_json supplies the bulk of the sheet (biography, languages,
-  # skills, pocket change). data: layers a few page-driven patches on
-  # top: a wound penalty (HP), the bumped CR, and a flavour token name.
+  # patch_json supplies the bulk of the sheet (biography, languages,
+  # skills, coin). patch layers a wound (HP), a CR bump and a token name on top.
   patch_json: Mossfoot/sheets/aelar-export.json
   patch:
     system:
@@ -22,8 +21,7 @@ foundry:
       name: "Aelar (wounded)"
 ---
 
-A weary elven ranger, scarred from too many nights along the Witchwood
-border. Speaks softly, listens harder.
+A weary elven ranger, scarred from too many nights along the Witchwood border. Speaks softly, listens harder.
 
 ![[aelar-portrait.webp|240]]
 
@@ -37,10 +35,7 @@ border. Speaks softly, listens harder.
 - Carries a [[Healing Potion]] he never seems to drink.
 
 > [!patron] For supporters
-> Aelar's bow once belonged to his sister, lost to the [[Witchwood Cult]]
-> three winters ago. He hasn't said her name aloud since.
+> Aelar's bow once belonged to his sister, lost to the [[Witchwood Cult]] three winters ago. He hasn't said her name aloud since.
 
 > [!dm] DM only
-> Aelar is secretly tracking the cult's recruitment patterns through the
-> Mossfoot region. He'll share what he knows for the right price, or if a
-> party shows up that reminds him of his sister.
+> Aelar is secretly tracking the cult's recruitment patterns through the Mossfoot region. He'll share what he knows for the right price, or if a party shows up that reminds him of his sister.

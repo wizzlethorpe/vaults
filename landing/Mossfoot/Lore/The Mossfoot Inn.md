@@ -4,9 +4,7 @@ image: moss-tavern.webp
 location: Witchwood Road
 ---
 
-A two-storey timber-and-stone inn at the last bend of the Witchwood Road
-before travellers commit to the deeper trees. No `foundry.source` here, this
-page demonstrates the plain-journal pipeline.
+A two-storey timber-and-stone inn at the last bend of the Witchwood Road before travellers commit to the deeper trees. This page has no `foundry.source`. It demonstrates the plain journal pipeline.
 
 ![[moss-tavern.webp|420]]
 
@@ -19,8 +17,7 @@ page demonstrates the plain-journal pipeline.
 
 ## Atmosphere
 
-The common room smells like pine smoke and slow-cooked onions. A fiddle
-sits on the bar, never quite touched, never quite removed.
+The common room smells like pine smoke and slow-cooked onions. A fiddle sits on the bar, never quite touched, never quite removed.
 
 > [!warning] Watch the third stair
 > Half-rotten. The Mossfoots know to skip it; you don't.

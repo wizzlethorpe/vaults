@@ -7,17 +7,11 @@ foundry:
     system:
       description:
         chat: "A bittersweet, mossy aftertaste. Brewed by the Mossfoot family."
-      rarity: common
-      price:
-        value: 50
-        denomination: gp
 ---
 
-A local variant of the standard healing potion, distilled by the
-[[The Mossfoot Inn|Mossfoot]] family. Tastes faintly of pine.
+A local variant of the standard healing potion, distilled by the [[The Mossfoot Inn|Mossfoot]] family. Tastes faintly of pine.
 
 > [!info] Mechanically standard
-> The recipe behaves identically to a standard potion of healing. The
-> overrides above only touch the flavour text and price.
+> The recipe behaves identically to a standard potion of healing. The override above only touches the chat flavour text.
 
 When uncorked, smells like wet stone after rain.

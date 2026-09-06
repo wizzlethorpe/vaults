@@ -7,12 +7,10 @@ foundry:
   # computing the SHA1 we'd otherwise derive from the page path. Stable
   # across renames and across vault redeploys.
   source: Scene
-  # `@vault/PATH` strings inside foundry.patch are rewritten at build time
-  # to local Foundry cache URLs (worlds/<id>/vaults-cache/<vault-id>/PATH).
-  # Lets the scene reference vault-shipped assets without hardcoding the
-  # deploy URL. Walls trace the outer room; one ambient sound plays at
-  # the centre. Lights / overlay tiles / Levels-module metadata from the
-  # original export were stripped to keep the demo legible.
+  # `@vault/PATH` strings inside foundry.patch become references the Foundry
+  # module downloads into worlds/<world>/vaults-cache/<deploy>/<role>/PATH, so
+  # the scene names vault-shipped assets without a deploy URL. Walls trace
+  # the outer room; one ambient sound plays at the centre.
   patch:
     _id: mossfootHall0001
     name: Mossfoot Great Hall
@@ -56,9 +54,8 @@ foundry:
         shadows: 0
         darkness: { min: 0, max: 0 }
       cycle: false
-    # Pinned _ids on every wall: V14 EmbeddedCollectionField updates by _id;
-    # without one, every re-sync would assign a fresh randomID() and the
-    # scene would accrue a duplicate set of walls each time.
+    # Pinned _ids on every wall, so a rebuild compares equal and writes
+    # nothing. Without them each build would mint new ids and rewrite the scene.
     walls:
       - { _id: mossfootHallW001, c: [1120,  840, 1120, 3360] }
       - { _id: mossfootHallW002, c: [1120, 3360, 4480, 3360] }
@@ -73,9 +70,8 @@ foundry:
       # `hidden` to drape the tables across the empty hall.
       #
       # Coordinate math: V14 Tile uses `texture.anchorX/Y` as the sprite
-      # anchor within `(tile.x, tile.y)` (both default to 0.5; set
-      # explicitly here for clarity). `(x, y)` is therefore the tile's
-      # CENTRE.
+      # anchor within `(tile.x, tile.y)`; both are set to 0.5 here, so
+      # `(x, y)` is the tile's centre.
       #
       # The image-area centre isn't naively `(padding*w + w/2, padding*h + h/2)`
       # because V14 grid-aligns the image origin: padding offset is rounded
@@ -114,12 +110,7 @@ foundry:
     ownership: { default: 0 }
 ---
 
-The grand hall of the Mossfoot Inn (well, that's what we're calling it
-for this demo). A 27 × 20 grid map at 140 ppi, walls tracing the outer
-room, one ambient sound covering the centre. On Foundry sync this
-becomes a real `Scene` you can navigate to from the scene sidebar; both
-the background image and the audio are pulled into the per-vault cache
-and served locally, no deploy URL involved.
+The grand hall of the Mossfoot Inn. A 27 by 20 grid map at 140 pixels per square, walls tracing the outer room, one ambient sound covering the centre. In Foundry this becomes a `Scene` in the vault's scenes pack; the background image and the audio are downloaded into the per-vault cache and served locally.
 
 ```battlemap
 grid: 140
@@ -140,19 +131,13 @@ And the ambient track that plays while you're in the scene:
 
 ![[great-hall.ogg]]
 
-Embedding both files via `![[...]]` here is what gates them into the
-deploy (the image scanner only picks up wikilink embeds, not plain
-markdown links). The Foundry sync then pulls them into the per-vault
-cache via the `@vault/...` paths in the scene's `tiles[]` and
-`sounds[]`.
+Both files reach the deploy through the `@vault/` paths in the scene's `levels`, `tiles` and `sounds`; the embed above is here so the track can be heard on the web page. The Foundry module downloads both into the per-vault cache.
 
 > [!tip] Try the macros
 > Three pinned-id macros target this scene:
 >
-> - [[Toggle feast]]: show / hide the dinner overlay (`mossfootDinner01`)
-> - [[Toggle lights]]: flip scene darkness 0 ↔ 1
-> - [[Toggle ambient noise]]: mute / unmute the ambient sound (`mossfootHallAmb1`)
+> - [[Toggle feast]]: show or hide the dinner overlay (`mossfootDinner01`)
+> - [[Toggle lights]]: flip scene darkness between 0 and 1
+> - [[Toggle ambient noise]]: mute or unmute the ambient sound (`mossfootHallAmb1`)
 >
-> Each macro reaches the scene by its pinned `patch._id`
-> (`mossfootHall0001`) and the placeable by its pinned `_id`, with no
-> SHA1 lookups or name-search.
+> Each macro reaches the scene by its pinned `patch._id` (`mossfootHall0001`) and the placeable by its pinned `_id`. They read `game.scenes`, so import the scene with **Keep Document IDs** checked.

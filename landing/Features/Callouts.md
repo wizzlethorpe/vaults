@@ -2,18 +2,20 @@
 title: Callouts
 ---
 
-Obsidian-style callouts are blockquotes that start with `[!type]`. The renderer turns them into styled boxes with a coloured stripe and an icon slot. Standard types map to recognisable styles. **Types that match a configured role name are redacted at lower tiers**. That's how page-level content can hide pieces of itself based on the visitor's role.
+Obsidian-style callouts are blockquotes that start with `[!type]`. Each becomes a styled box with a coloured stripe and a title. **A type that matches a configured role name is removed at lower tiers**, so a page can gate part of its body without gating the whole page.
 
-## Standard types
+## Types
+
+Styled types: `note` and `info`, `tip` and `hint`, `warning` and `caution`, `danger` and `error`, and `dm`. Any other type renders with the default style.
 
 > [!info] Info
-> Same energy as note, slightly different color palette.
+> The same shape as note, in a different colour.
 
 > [!tip] Tip
-> Use for advice or shortcuts.
+> Advice or shortcuts.
 
 > [!warning] Warning
-> Use for important caveats or potential pitfalls.
+> Caveats and pitfalls.
 
 ## Anatomy
 
@@ -23,31 +25,27 @@ Obsidian-style callouts are blockquotes that start with `[!type]`. The renderer 
 > Markdown inside callouts works (links, **bold**, lists).
 ```
 
-The above markdown produces this callout:
+The markdown above produces this callout:
 
 > [!info] Optional title goes here
 > Body content. Can span multiple lines.
 > Markdown inside callouts works (links, **bold**, lists).
 
-If you omit the title, the type name is used as a default label.
+Without a title, the type name is the label.
 
 > [!info]
-> No title was supplied. The header reads "Info" by default.
+> No title was supplied, so the header reads "Info".
+
+A fold marker after the type makes the callout collapsible: `[!info]+` starts open, `[!info]-` starts collapsed.
 
 ## Role-gated callouts
 
-When the callout type matches one of your configured roles, the renderer
-**strips the entire blockquote** at every variant lower than that role.
-This vault has roles `public < patron < dm`, so:
+When the callout type matches one of the vault's roles, the whole blockquote is stripped from every variant below that role, before rendering and not with CSS. This vault's roles are public, patron and dm, in that order.
 
 > [!patron] Patron-tier callout
-> Public visitors don't see this paragraph at all. It's removed from
-> their HTML before rendering, not hidden with CSS. Patrons and the DM see
-> it normally.
+> Patrons and the DM see this paragraph. Public visitors do not.
 
 > [!dm] DM-tier callout
-> Only the DM sees this. Patrons get nothing here either. The two callouts
-> above and below this one render at their respective tiers.
+> Only the DM sees this paragraph.
 
-Toggle between the public/patron/dm tiers (sidebar auth box) to see the
-difference.
+Sign in at each tier (the auth box in the sidebar) to see the difference.

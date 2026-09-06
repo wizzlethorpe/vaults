@@ -2,14 +2,11 @@
 title: Wikilinks
 ---
 
-Vaults supports the same `[[Page Name]]` wikilink syntax as Obsidian, with
-some Obsidian-flavored extensions. Resolution happens at build time, so
-broken links surface as warnings during `vaults push`.
+Vaults resolves the same `[[Page Name]]` syntax as Obsidian, at build time, so a broken link is a build warning, whether you run `vaults build`, `vaults preview` or `vaults push`.
 
 ## Basic forms
 
-The most common form is just the page's basename. Folders don't need to
-appear in the link:
+The common form is the page's basename. Folders need not appear:
 
 | Markdown | Renders as |
 |---|---|
@@ -20,7 +17,7 @@ appear in the link:
 
 ## Aliases
 
-Use a pipe to display custom text:
+A pipe sets the displayed text:
 
 | Markdown | Renders as |
 |---|---|
@@ -29,14 +26,16 @@ Use a pipe to display custom text:
 
 ## Folder paths
 
-Folder-prefixed paths still work for disambiguation:
+Folder-prefixed paths work too:
 
 | Markdown | Renders as |
 |---|---|
 | `[[Mossfoot/NPCs/Aelar]]` | [[Mossfoot/NPCs/Aelar]] |
 | `[[Mossfoot/Lore/The Mossfoot Inn]]` | [[Mossfoot/Lore/The Mossfoot Inn]] |
 
-In practice you'll rarely need them. Bare names resolve as long as the basename is unique across the vault.
+## Resolution
+
+A link is tried four ways, in order: as a full path, as a path relative to the vault root, as `<name>/index` (so `[[NPCs]]` opens a folder's index page), and by its last segment. Frontmatter aliases take part in the same lookup. A bare name therefore resolves whenever its basename is unique, and a folder path disambiguates when it is not.
 
 ## Image embeds
 
@@ -51,26 +50,25 @@ The same syntax with a leading `!` embeds an image:
 
 ## Page transclusion
 
-An embed whose target is a page rather than a file pulls that page's rendered body inline. Put it on a line of its own:
+An embed whose target is a page inlines that page's rendered body. Put it on a line of its own:
 
 ```markdown
-![[Bram]]              # the whole page
-![[Statblocks#Spellcasting]]   # just that section
+![[Bram]]                        # the whole page
+![[Statblocks#Spellcasting]]     # one section
+![[Statblocks#Spellcasting#Tips]] # a nested heading
+![[Bram#^tavern]]                # one block, by block id
 ```
 
-Transcluded pages are themselves rendered, so their wikilinks, handlers, and embeds all work. Nesting is capped at three levels, which stops two pages that embed each other from looping.
+Transcluded pages are rendered in full, so their wikilinks, handlers and embeds work. Nesting stops after two levels inside the outer transclusion. Two pages that embed each other are caught by name, and the inner embed renders as a warning callout.
 
-Role gating applies to the *source* page: a transclusion of a page above the reader's tier renders as a broken embed, exactly like a link to it.
+Role gating applies to the transcluded page: an embed of a page above the reader's tier renders as a broken embed, like a link to it.
 
-## Cross-tier behavior
+## Cross-tier behaviour
 
-Wikilinks to pages above your role tier render as **broken** rather than
-working anchors. This is structural: the lower-tier build has no record
-of the higher-tier page existing, so even guessing the URL would 404. Try
-this page at each tier to compare:
+A wikilink to a page above your tier renders as an unresolved link, faded and italic, pointing nowhere. The lower-tier build has no record of the page, so even the guessed URL returns 404. Read this page at each tier to compare:
 
 > [!patron] Patron-only
-> Linked here: [[Witchwood Cult]]. works for you, broken for public visitors.
+> Linked here: [[Witchwood Cult]]. It works for you and is unresolved for public visitors.
 
 > [!dm] DM-only
-> Linked here: [[Hidden Caves]]. works for the DM, broken for everyone else.
+> Linked here: [[Hidden Caves]]. It works for the DM and is unresolved for everyone else.

@@ -2,7 +2,7 @@
 title: Passthrough files
 ---
 
-Audio, video, PDFs, EPUBs (files the build doesn't currently render) deploy alongside the wiki. They follow the same per-variant gating as images: a file lands in a deploy variant **only if a visible page in that variant references it**.
+Audio, video, PDFs, EPUBs and JSON ship as they are, alongside the wiki. They follow the same per-variant gating as images: a file lands in a variant **only if a visible page in that variant references it**.
 
 ## Recognised extensions
 
@@ -10,60 +10,56 @@ Audio, video, PDFs, EPUBs (files the build doesn't currently render) deploy alon
 |---|---|
 | Audio | `.ogg`, `.mp3`, `.m4a`, `.wav`, `.flac`, `.opus`, `.aac` |
 | Video | `.mp4`, `.webm`, `.mov`, `.ogv` |
-| Documents | `.pdf`, `.epub` |
+| Documents | `.pdf`, `.epub`, `.json` |
 
-Anything else is treated as **unknown** (see the bottom of this page).
+Anything else is **unknown** (see the bottom of this page).
 
 ## How references are detected
 
-Three patterns count as a reference. As long as a visible page in the
-target variant matches one, the file includes to that variant:
+Four kinds of reference count. A file ships to a variant when a visible page in it has any of them:
 
 ```markdown
-![[file.ogg]]                  # Obsidian embed (audio plays inline)
-![[clip.mp4]]                  # video embed (<video controls>)
-[[file.ogg]]                   # Obsidian wikilink
-[label](path/to/file.pdf)      # standard markdown link
+![[file.ogg]]                  # Obsidian embed
+[label](path/to/file.pdf)      # markdown link
 ```
 
-Audio and video embeds become real `<audio controls>` / `<video controls>` players. Any other passthrough (PDF, EPUB, JSON) embeds as a plain link to the file.
+plus a ` ```download ` block naming the file by its vault path (see [[Handlers]]), and an `@vault/PATH` string in the page's frontmatter, which is how a Foundry playlist or scene names its audio.
 
-If you want an audio file gated to the DM tier, just reference it from a
-DM-only page (or a DM-only callout). The build does the rest.
+Audio and video embeds render as `<audio controls>` and `<video controls>` players. Any other passthrough embeds as a link to the file.
+
+To gate an audio file to the DM tier, reference it from a DM-only page or a DM-only callout.
 
 ## Example
 
-This page links to [mossfoot-tavern.ogg](../Mossfoot/Audio/mossfoot-tavern.ogg), a 1.4 MB tavern ambience loop (mixed from the Sonniss GDC library). Because this page is `public` (no `role:` frontmatter override), the file includes to all three deploy variants.
+This page links to [mossfoot-tavern.ogg](../Mossfoot/Audio/mossfoot-tavern.ogg), a 1.4 MB tavern ambience loop mixed from the Sonniss GDC library. This page is `public`, so the file ships to all three variants.
 
 ![[mossfoot-tavern.ogg]]
 
 ## Unknown extensions
 
-Anything outside the recognised list is dropped from the deploy by default,
-with a warning at build time:
+A file outside the recognised list is dropped from the deploy, with a warning at build time, unless a `download` block names it:
 
 ```
   skipping 1 file(s) with unrecognized extensions:
     handouts/data.bin
-    Set 'include_unknown_files: true' in settings.md to include them.
+    Set 'include_unknown_files: true' in settings.md to ship them.
 ```
 
-This is a safety default: a stray file in your vault can't accidentally
-bypass role gating. To opt in, add this to `settings.md`:
+The warning lists ten paths at most. This default keeps a stray file from bypassing role gating. To opt in, add this to `settings.md`:
 
 ```yaml
 include_unknown_files: true
 ```
 
-When enabled, unknown-extension files join the passthrough pool. They still need to be referenced by a visible page (in the target variant) to deploy.
+Unknown-extension files then join the passthrough pool. They still need a reference from a visible page in the target variant to ship.
 
-## What about HTTP-referenced files?
+## Raw HTML references
 
-`<a href="/audio/foo.ogg">` and similar raw-HTML references are NOT detected by the scanner. Only markdown-level patterns are. If you need to reference a file from raw HTML, also add a markdown-level reference elsewhere on the page (or inside a comment):
+`<a href="/audio/foo.ogg">` and other raw-HTML references are not detected. Only markdown links and embeds, `download` blocks and `@vault/` frontmatter references are. To reference a file from raw HTML, add a markdown reference elsewhere on the page, an HTML comment will do:
 
 ```markdown
 <!-- ![[foo.ogg]] -->
 <a href="/Audio/foo.ogg">play me</a>
 ```
 
-The HTML comment ensures the file is included without affecting the rendered output.
+The comment stages the file without affecting the rendered output.

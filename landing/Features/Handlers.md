@@ -2,12 +2,12 @@
 title: Handlers
 ---
 
-Handlers are small build-time transforms that turn a special markdown form into rendered HTML. Two trigger shapes:
+Handlers are build-time transforms that turn a special markdown form into HTML. Two trigger shapes:
 
-- **Inline:** `` `prefix: content` ``: a plain inline-code span where the content starts with a registered prefix and a colon.
-- **Code block:** ` ```lang `: a fenced code block whose language tag matches a registered handler.
+- **Inline:** `` `prefix: content` ``, an inline code span whose content starts with a registered prefix and a colon.
+- **Code block:** ` ```lang `, a fenced code block whose language tag names a registered handler.
 
-Vaults ships six built-in handlers and lets you add your own under `.vaults/handlers/`:
+Nine handlers are built in, and you can add your own under `.vaults/handlers/`:
 
 | Handler | Trigger | Demo |
 |---|---|---|
@@ -17,8 +17,11 @@ Vaults ships six built-in handlers and lets you add your own under `.vaults/hand
 | `statblock` | code block | [[Statblocks]] |
 | `battlemap` | code block | [[Battlemaps]] |
 | `gallery` | code block | below |
+| `download` | code block | below |
+| `foundry-install` | code block | [[Foundry integration]] |
+| `fvtt-link` | inline | [[Foundry integration]] |
 
-## Built-in: ``` `dice:` ```
+## Built-in: `` `dice:` ``
 
 Click the rolled die for a fresh result.
 
@@ -28,35 +31,35 @@ Click the rolled die for a fresh result.
 | `` `dice: 8d6` `` | `dice: 8d6` |
 | `` `dice: 1d100` `` | `dice: 1d100` |
 
-Unrecognised formulas degrade to a struck-through code span instead of crashing the build:
+An unrecognised formula renders as a struck-through code span:
 
 | Markdown | Renders as |
 |---|---|
 | `` `dice: not-a-formula` `` | `dice: not-a-formula` |
 
-Supported syntax: `XdY`, `XdY+Z`, `XdY-Z`. More elaborate dice notation (advantage, exploding, keep-highest) is not currently supported.
+Supported syntax: `XdY`, `XdY+Z`, `XdY-Z`. Advantage, exploding and keep-highest notation are not supported.
 
-## Built-in: ``` `fm:` ```
+## Built-in: `` `fm:` ``
 
-Inserts a value from this page's frontmatter. The frontmatter on this very page is:
+Inserts a value from the page's frontmatter. This page's frontmatter is:
 
 ```yaml
 title: Handlers
 ```
 
-So `` `fm: title` `` renders as: `fm: title`. Frontmatter values flow through the rest of the markdown pipeline, so you can put inline markup in your frontmatter and it will render. This is handy when the same value appears in a heading and in prose, and you don't want to hand-sync the formatting.
+So `` `fm: title` `` renders as: `fm: title`. Values pass through a small inline formatter: `**bold**`, `*italic*` and `` `code` `` render; wikilinks do not.
 
-Missing keys render a visible warning marker so typos surface instead of silently emitting "undefined":
+A missing key renders a visible warning marker, so a typo surfaces instead of an empty string:
 
 | Markdown | Renders as |
 |---|---|
 | `` `fm: nope` `` | `fm: nope` |
 
-Date frontmatter values (YAML auto-parses ISO 8601 to JS `Date`) format as YYYY-MM-DD. Arrays join with `, `. Objects emit the warning marker, but you can dot-path into them: `` `fm: stats.hp` `` walks nested keys, with any missing segment along the path triggering the warning.
+Date values (YAML parses ISO 8601 dates) format as YYYY-MM-DD. Arrays join with `, `. Objects emit the warning marker, but a dot path walks into them: `` `fm: stats.hp` `` reads a nested key, and a missing segment anywhere along the path triggers the warning.
 
-Numeric segments index into arrays, so `` `fm: foundry.patch.results.0.name` `` pulls the first row's `name` field. [[Witchwood encounters]] uses this to render a `RollTable` defined entirely in `foundry.patch` as a markdown table in the page body, with no duplicated content between the Foundry doc and the wiki.
+Numeric segments index into arrays: `` `fm: foundry.patch.results.0.description` `` reads the first row's `description`. [[Witchwood encounters]] uses this to render a `RollTable` defined in `foundry.patch` as a markdown table in the page body, with nothing duplicated between the Foundry document and the wiki.
 
-For values that should appear inside a `<pre><code>` (a script body, a long string), there's a fenced-code form keyed on `fm`. The body is the dot-path. Any text after the lang on the fence is the language hint for the rendered code element:
+For a value that belongs in `<pre><code>` (a script body, a long string) there is a fenced form keyed on `fm`. The body is the dot path; text after the language tag is the language hint for the rendered code element:
 
 ````
 ```fm javascript
@@ -64,11 +67,11 @@ foundry.patch.command
 ```
 ````
 
-Renders as `<pre><code class="language-javascript">…value…</code></pre>`. The macro pages ([[Toggle feast]], [[Toggle lights]], [[Toggle ambient noise]]) use this to display their `command` source without duplicating the script between the frontmatter and the body.
+Renders as `<pre><code class="language-javascript">…</code></pre>`. The macro pages ([[Toggle feast]], [[Toggle lights]], [[Toggle ambient noise]]) display their `command` source this way.
 
 ## Built-in: `statblock`
 
-A code-block handler keyed on `` ```statblock ``, schema-compatible with the [Fantasy Statblocks](https://github.com/javalent/fantasy-statblocks) Obsidian plugin. See the dedicated [[Statblocks]] page for a full demo.
+A code-block handler keyed on `` ```statblock ``, schema-compatible with the [Fantasy Statblocks](https://github.com/javalent/fantasy-statblocks) Obsidian plugin. See [[Statblocks]] for the full demo.
 
 ```statblock
 name: Pseudodragon
@@ -96,11 +99,11 @@ actions:
     desc: "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: `dice: 1d4+2` piercing damage."
 ```
 
-Note the `dice:` button inside the action description. Handler descriptions support inline handler chaining, so dice expressions in stat damage rolls click through like everywhere else.
+The `dice:` button inside the action description works because handler descriptions run through the inline handlers.
 
 ## Built-in: `gallery`
 
-A responsive grid of thumbnails. One image per line, referenced by name the same way a `![[file]]` embed is, with an optional caption after a pipe. Lines starting with `#` are comments.
+A responsive grid of thumbnails. One image per line, named the way a `![[file]]` embed names it, with an optional caption after a pipe. Lines starting with `#` are comments.
 
 ````
 ```gallery
@@ -118,9 +121,33 @@ screenshot-fvtt-journal-bram-mossfoot.webp | Bram's journal entry
 
 Images resolve through the same index as `![[ ]]` embeds, so anything a gallery names is staged into the deploy and gated per role like any other image.
 
+## Built-in: `download`
+
+A download link for a file in the vault:
+
+````
+```download
+file: Mossfoot/Audio/mossfoot-tavern.ogg
+label: Mossfoot tavern ambience
+note: 1.4 MB, OGG
+```
+````
+
+```download
+file: Mossfoot/Audio/mossfoot-tavern.ogg
+label: Mossfoot tavern ambience
+note: 1.4 MB, OGG
+```
+
+The file ships only to the variants of the pages that reference it, and the auth middleware serves it only to those roles, the same gating as any other passthrough. A `download` block stages its file whatever the extension, so it also covers files outside the recognised list on [[Passthrough files]].
+
+## Built-in: `foundry-install` and `` `fvtt-link:` ``
+
+`foundry-install` renders a copyable install link for the module a vault builds for itself. `fvtt-link:` links to the Foundry document a page builds rather than to its journal page. Both are documented on [[Foundry integration]].
+
 ## Writing a custom handler
 
-Drop a file in `.vaults/handlers/` and export a `handler` (or `handlers: []`):
+Put an `.mjs` file in `.vaults/handlers/` that exports a `handler` (or `handlers: []`):
 
 ```javascript
 // .vaults/handlers/shout.mjs
@@ -134,16 +161,16 @@ export const handler = {
 
 Now `` `shout: hello` `` renders as a bold uppercase **HELLO** anywhere in the vault.
 
-Handler API surface:
+The handler API:
 
 - **Inline:** `{ inline: "prefix", render(content, ctx) }`
 - **Code block:** `{ codeBlock: "lang", render(content, ctx) }`
-- Return `{ html: "..." }` to insert raw markup, or `{ markdown: "..." }` to re-process through the rest of the pipeline (wikilinks resolve, embeds inline, dice buttons in your output get picked up).
-- `ctx.frontmatter` is the rendering page's parsed frontmatter; `ctx.pagePath` is its vault-relative path; `ctx.escape(s)` is an HTML-escape helper; `ctx.applyInlineHandlers(s)` lets your handler invoke other inline handlers (this is how `statblock`'s `desc` fields support `dice:`).
+- Return `{ html: "..." }` to insert raw markup, or `{ markdown: "..." }` to run the result through the rest of the pipeline, so wikilinks resolve, embeds inline, and dice buttons in the output are picked up.
+- `ctx.frontmatter` is the page's parsed frontmatter; `ctx.pagePath` is the page's basename without its extension; `ctx.escape(s)` HTML-escapes a string; `ctx.applyInlineHandlers(s)` runs the other inline handlers over a string, which is how `statblock` supports `dice:` inside a `desc`.
 
 ### Browser-side assets
 
-Handlers can include JS and CSS to the deploy:
+A handler can ship JS and CSS with the deploy:
 
 ```javascript
 export const handler = {
@@ -156,26 +183,6 @@ export const handler = {
 };
 ```
 
-### Foundry import opt-in
+Paths resolve relative to the handler file and must stay inside `.vaults/handlers/`; a path outside it fails the build. The assets bundle into `_handlers.js` and `_handlers.css`, served to the wiki only. In Foundry the HTML a handler produced survives, but its styling and behaviour do not.
 
-By default, handler CSS/JS only reaches the wiki. The Foundry VTT module ignores it because running arbitrary scripts from a third-party URL inside a Foundry world is the kind of thing that warrants explicit consent. To make a handler's assets *eligible* for import into Foundry, add a `foundry` block:
-
-```javascript
-export const handler = {
-  inline: "clicker",
-  assets: {
-    scripts: ["./clicker.runtime.js"],
-    styles: ["./clicker.css"],
-    foundry: { scripts: true, styles: true },  // both default false
-  },
-  render: ...,
-};
-```
-
-Two layers of consent gate this:
-
-1. **Handler-side opt-in** (above): only handlers that set `foundry.scripts` / `foundry.styles` get bundled into the deploy's `_handlers.foundry.{js,css}`. Everything else stays wiki-only.
-2. **A per-session prompt before any script runs**, naming the vault it came from. Stylesheets are injected without asking: at worst one restyles a journal sheet. There is no GM-side checkbox — a handler's CSS is what makes its output look like anything, so a vault rendering wrongly until someone found a setting they had no reason to look for was almost always an accident rather than a decision.
-
-Live demo: this vault includes a ``` `clicker:` ``` inline handler with both opted in. ``` `clicker: try me` ``` renders as `clicker: try me` (click it!). On the wiki it works because the handler's CSS + JS included at `_handlers.{css,js}`. In Foundry it works only if the GM checked both import boxes for this vault. Otherwise the journal page shows an unstyled, inert button (since the wiki HTML containing `<button class="vaults-clicker">` survives the sync, but the styling/behaviour does not).
-
+This vault includes a `` `clicker:` `` inline handler with a script and a stylesheet: `` `clicker: try me` `` renders as `clicker: try me`.

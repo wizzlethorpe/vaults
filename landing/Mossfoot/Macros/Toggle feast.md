@@ -12,18 +12,14 @@ foundry:
       const tile = scene.tiles.get("mossfootDinner01");
       if (!tile) return ui.notifications.warn("Feast tile not found on the scene.");
       await tile.update({ hidden: !tile.hidden });
-      ui.notifications.info(`Feast ${tile.hidden ? "spread" : "cleared"}.`);
+      ui.notifications.info(`Feast ${tile.hidden ? "cleared" : "spread"}.`);
 ---
 
-Toggles the feast overlay on [[Mossfoot Great Hall]] by reaching the
-tile via its pinned `_id` (`mossfootDinner01`). Click once → the tables
-appear; click again → they're cleared.
+Toggles the feast overlay on [[Mossfoot Great Hall]] through the tile's pinned `_id` (`mossfootDinner01`). Click once and the tables appear; click again and they are cleared. The macro reads `game.scenes`, so the scene must have been imported into the world with **Keep Document IDs** checked.
 
 > [!quote] Macro body
 > ```fm javascript
 > foundry.patch.command
 > ```
 
-Reaching the placeable by `_id` rather than by name (`scene.tiles.find(t => t.name === "Dinner")`)
-is the safer pattern: it survives the GM renaming the tile in the
-sidebar, and it ignores any other tile that happens to share the name.
+Reaching the placeable by `_id` rather than by name (`scene.tiles.find(t => t.name === "Dinner")`) survives the GM renaming the tile and ignores any other tile that shares the name.

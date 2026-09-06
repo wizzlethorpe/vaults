@@ -1,5 +1,4 @@
 {
-  "_comment": "Hand-tuned dnd5e overlay for Aelar. Pretend this came from another GM's export. landing/NPCs/Aelar.md references this via foundry.patch_json; foundry.patch layers HP / CR / token-name on top.",
   "system": {
     "details": {
       "biography": {
@@ -8,23 +7,40 @@
     },
     "traits": {
       "languages": {
-        "value": ["common", "elvish", "sylvan", "thieves"]
-      },
-      "senses": {
-        "darkvision": 60
+        "value": [
+          "common",
+          "elvish",
+          "sylvan",
+          "cant"
+        ]
       }
     },
     "skills": {
-      "ste": { "value": 1 },
-      "prc": { "value": 2 },
-      "sur": { "value": 1 },
-      "ath": { "value": 1 },
-      "ani": { "value": 1 }
+      "ste": {
+        "value": 1
+      },
+      "prc": {
+        "value": 2
+      },
+      "sur": {
+        "value": 1
+      },
+      "ath": {
+        "value": 1
+      },
+      "ani": {
+        "value": 1
+      }
     },
     "currency": {
       "gp": 12,
       "sp": 8,
       "cp": 14
+    },
+    "attributes": {
+      "senses": {
+        "darkvision": 60
+      }
     }
   }
 }

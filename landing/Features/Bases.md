@@ -2,11 +2,11 @@
 title: Bases
 ---
 
-Bases are filtered, sorted, table-or-card views over your vault's pages, following the same syntax as Obsidian's [Bases plugin](https://help.obsidian.md/bases), but rendered statically at build time. They're declared as `.base` files (YAML), embedded into pages via the same `![[Foo]]` syntax as image embeds, and resolved against page frontmatter.
+Bases are filtered, sorted table, card or list views over your vault's pages, with the syntax of Obsidian's [Bases plugin](https://help.obsidian.md/bases), rendered at build time. A base is a `.base` file (YAML) embedded with the same `![[Foo]]` syntax as an image, or an inline ` ```base ` block. Both resolve against page frontmatter.
 
-## A Small Cast
+## A small cast
 
-The base below embeds `NPCs.base` (in the `Mossfoot/` folder) which queries the `Mossfoot/NPCs/` folder:
+The base below embeds `NPCs.base` from the `Mossfoot/` folder, which queries `Mossfoot/NPCs/`:
 
 ![[NPCs]]
 
@@ -39,19 +39,19 @@ views:
       - note.location
 ```
 
-Two views were declared (`Roster` cards + `Stats` table). Each card's cover image comes from the page's ``image:`` frontmatter (falling back to body auto-discovery; see [[Images]]).
+The base declares two views, `Roster` (cards) and `Stats` (table). More than one view renders as a tab strip. Each card's cover comes from the page's `image:` frontmatter, or from cover discovery when that is absent (see [[Images]]). Table and card views carry a filter box and a row count.
 
 ## View types
 
 | Type | Use for |
 |---|---|
-| `table` | Spreadsheet-style. Good for stat blocks, item indexes. |
-| `cards` | Visual grid with cover images. Good for NPC rosters, location galleries. |
-| `list` | Compact bullet list with optional metadata. Good for changelogs, link catalogues. |
+| `table` | Spreadsheet-style. Stat blocks, item indexes. |
+| `cards` | A grid with cover images. NPC rosters, location galleries. |
+| `list` | A compact bullet list with optional metadata. Changelogs, link catalogues. |
 
 ## Filtering
 
-``filters:`` accepts a single expression or an `and`/`or` tree:
+`filters:` takes a single expression or an `and`, `or` or `not` tree:
 
 ```yaml
 # Simple
@@ -63,15 +63,21 @@ filters:
     - 'file.folder == "Mossfoot/NPCs"'
     - 'cr >= 2'
     - or:
-        - 'role-class == "Ranger"'
-        - 'role-class == "Rogue"'
+        - 'location == "Mossfoot Inn"'
+        - 'location.contains("Witchwood")'
 ```
 
-Available functions: `file.inFolder("NPCs")`, `file.hasTag("villain")`,
-plus comparison operators (`==`, `!=`, `<`, `<=`, `>`, `>=`, `contains`,
-`startsWith`, `endsWith`). 
+Inside a filter expression an identifier is letters, digits and underscores, so a hyphenated property such as `role-class` parses as subtraction and matches nothing. Hyphenated names work in `order`, `properties` and `sort`, which take the name as a string.
 
-## Sorting + limits
+Expressions offer:
+
+- Comparison operators `==`, `!=`, `<`, `<=`, `>`, `>=`, and arithmetic `+`, `-`, `*`, `/`, `%`.
+- File functions `file.inFolder("NPCs")`, `file.hasTag("villain")`, `file.hasLink("Aelar")`.
+- String methods `.contains()`, `.startsWith()`, `.endsWith()`, `.lower()`, `.upper()`, `.trim()`, `.length`.
+- Array methods `.contains()`, `.join()`, `.length`; number methods `.abs()`, `.round()`, `.floor()`, `.ceil()`, `.toFixed()`.
+- Functions `if(cond, a, b)`, `min()`, `max()`, `now()`, `today()`, `number()`.
+
+## Sorting and limits
 
 ```yaml
 views:
@@ -82,11 +88,11 @@ views:
     limit: 10
 ```
 
-Multi-key sort breaks ties from earlier columns with later ones.
+A multi-key sort breaks ties from earlier columns with later ones.
 
 ## Computed columns
 
-You can declare formula columns and reference them as `formula.<name>`:
+Declare formula columns and reference them as `formula.<name>`:
 
 ```yaml
 formulas:
@@ -98,16 +104,14 @@ views:
       - formula.hp_per_cr
 ```
 
-Formulas can reference other formulas (cycle detection inline-renders an
-error block instead of crashing the build).
+A formula can reference other formulas. A cycle renders an error block in place of the view instead of failing the build.
 
-## Standalone view names
+## A single view by name
 
-Embed a specific view by name with a `#` anchor:
+Embed one view with a `#` anchor. The anchor must match the view's `name` exactly; a miss renders an error block.
 
 ```markdown
-![[NPCs#Stats]]      # render only the Stats view
+![[NPCs#Stats]]      # only the Stats view
 ```
 
 ![[NPCs#Stats]]
-

@@ -35,7 +35,7 @@ actions:
     desc: "*Ranged Weapon Attack:* +4 to hit, range 80/320 ft., one target. *Hit:* `dice: 1d6+2` piercing damage."
 ```
 
-The damage rolls in the action descriptions are clickable. Handler descriptions chain through the inline-handler dispatcher, so `` `dice: 1d6+2` `` inside an action's `desc` becomes a real roll button at render time.
+The damage rolls in the action descriptions are clickable: a `desc` runs through the inline handlers, so `` `dice: 1d6+2` `` becomes a roll button.
 
 ## A larger one
 
@@ -89,9 +89,7 @@ legendary_description: The dragon can take 3 legendary actions, choosing from th
 
 ## Spellcasting
 
-The `spells:` field takes a list of strings. The first string is the intro
-prose (it renders as a Spellcasting trait); each following string is one
-spell-level line `"<label>: <comma-separated spells>"`.
+`spells:` takes a list of strings. The first is the intro prose, rendered as a Spellcasting trait. Each following string is one spell-level line, `"<label>: <comma-separated spells>"`.
 
 ```statblock
 name: Mage
@@ -130,57 +128,55 @@ actions:
 
 | Field | Notes |
 |---|---|
-| `name` | Required for a sensible header. |
+| `name` | Required. |
 | `size`, `type`, `subtype`, `alignment` | Joined into the subheading line. |
-| `ac`, `ac_class` | If `ac_class` is present it appears parenthesised after `ac`. |
-| `hp`, `hit_dice` | Same. `hit_dice` appears in parens after `hp`. |
+| `ac`, `ac_class` | `ac_class`, if present, appears in parentheses after `ac`. |
+| `hp`, `hit_dice` | `hit_dice` appears in parentheses after `hp`. |
 | `speed` | Free-form string. |
-| `stats` | Six numbers, STR DEX CON INT WIS CHA. Modifiers computed automatically. |
-| `saves` | List of `{ ability: bonus }`; ability name is lower-cased and abbreviated. |
-| `skillsaves` | List of `{ skill: bonus }`. |
+| `stats` | Six numbers: STR, DEX, CON, INT, WIS, CHA. Modifiers are computed. |
+| `saves` | A list of single-key `{ ability: bonus }` maps, or one flat map. Ability names are abbreviated. |
+| `skillsaves` | A list of single-key `{ skill: bonus }` maps, or one flat map. |
 | `damage_vulnerabilities`, `damage_resistances`, `damage_immunities`, `condition_immunities` | Free-form strings. |
 | `senses`, `languages` | Free-form strings. |
-| `cr` | Quote `"1/4"` etc. so YAML doesn't parse it as a fraction. |
-| `traits`, `actions`, `reactions`, `legendary_actions` | Lists of `{ name, desc }`. `desc` supports inline `**bold**`/`*italic*`/`` `code` `` and chains through inline handlers (so `dice:` works inside descriptions). |
-| `spells` | Basic 5e spellcasting block. List of strings: first is the intro prose (rendered as a Spellcasting trait), the rest are per-level entries `"<label>: <comma-separated spells>"`. Spell names are auto-italicized. |
-| `legendary_description` | Optional intro paragraph for legendary actions. |
-| `image` | Portrait shown in the header. Accepts a wikilink (`![[portrait.png]]`), a bare filename, or an absolute URL. |
+| `cr` | Quote fractions (`"1/4"`) so YAML does not read them as numbers. |
+| `traits`, `actions`, `bonus_actions`, `reactions`, `legendary_actions`, `mythic_actions`, `lair_actions`, `triggered_actions` | Lists of `{ name, desc }`. A `desc` renders bold, italic and code spans and runs through the inline handlers, so `dice:` works inside it. A trait with its own nested `traits` list is flattened into the parent with a `Parent: Child` name. |
+| `legendary_description`, `mythic_description` | Intro paragraph for the matching section. |
+| `spells` | The spellcasting block above. Spell names are italicised. |
+| `source`, `note` | Italic lines at the foot of the block. `source` may be a list. |
+| `image` | Portrait in the header: a vault-relative path such as `attachments/goblin.webp`, or an absolute URL. The value is used as written; wikilink and bare-filename forms are not resolved. |
 
-Every string field tokenizes inline-handler invocations, so you can pull
-data from elsewhere with `fm:`. For example, derive the statblock's CR from
-the same `foundry:` block your Foundry actor uses:
+Top-level string fields, the `name` and `desc` of every section entry, and each `spells` entry run through the inline handlers, so a block can read its numbers from elsewhere with `fm:`. For instance, the CR from the same `foundry.patch` block the page's Foundry actor is built from:
 
 ````markdown
 ---
 foundry:
-  system:
-    details:
-      cr: 1/4
+  source: Actor:npc
+  patch:
+    system:
+      details:
+        cr: 1
 ---
 
 ```statblock
-name: Goblin
-ac: 15
-hp: 7
-cr: "`fm: foundry.system.details.cr`"
+name: Bugbear
+ac: 16
+hp: 27
+cr: "`fm: foundry.patch.system.details.cr`"
 ```
 ````
 
-One source of truth for both the rendered statblock and the synced Foundry
-actor sheet. See [[Mossroot]] for a fully worked instance: a blank Foundry
-NPC actor (no compendium template), all stat fields pulled via `fm:` from
-the `foundry:` data block, Foundry sync and wiki render share the YAML.
+[[Mossroot]] is a fully worked instance: a blank Foundry NPC with every stat field read through `fm:` from its `foundry.patch` block, so the wiki render and the Foundry sheet share one YAML.
 
-## What's not (yet) supported
+## Not supported
 
-- Innate spellcasting (`innate_spellcasting:`) and PF2e/13th-age spell variants. The basic 5e `spells:` array (intro + per-level lines) is supported (see [Spellcasting](#spellcasting)).
-- Custom layouts (Pathfinder 2e, 13th age, etc.). The current handler always renders the basic 5e layout.
-- Wikilinks inside `desc` fields. They render as literal `[[...]]` text. Cross-references to other pages should live in surrounding prose.
-- JS callbacks. Fantasy Statblocks evaluates arbitrary JS in its layout JSON. We currently do not.
+- Innate spellcasting (`innate_spellcasting:`) and the PF2e and 13th Age spell variants. The basic 5e `spells:` list is supported (see [Spellcasting](#spellcasting)).
+- Layouts other than the basic 5e one.
+- Wikilinks inside `desc` fields. They render as literal `[[...]]` text; put cross-references in the surrounding prose.
+- JS callbacks. Fantasy Statblocks evaluates arbitrary JS in its layout JSON; this handler does not.
 
 ## Theming
 
-The CSS uses tokens lifted from Fantasy Statblocks so you can override the look from your own `.obsidian/snippets/<name>.css` (which includes as `user.css`):
+The CSS uses the tokens Fantasy Statblocks uses, so a snippet in `.obsidian/snippets/<name>.css` overrides the look. Snippets ship as `user.css`; when `.obsidian/appearance.json` exists, only the snippets it enables are included.
 
 ```css
 .statblock {
@@ -189,4 +185,3 @@ The CSS uses tokens lifted from Fantasy Statblocks so you can override the look 
   --statblock-bg: #f4ecf7;
 }
 ```
-

@@ -14,17 +14,11 @@ foundry:
       ui.notifications.info(`Mossfoot Great Hall ${newDarkness === 0 ? "lit" : "dimmed"}.`);
 ---
 
-Flips the [[Mossfoot Great Hall]] scene's darkness between `0` (fully
-lit) and `1` (full dark). Operates on the scene by its pinned
-`patch._id` (`mossfootHall0001`), so it works whether or not the
-scene is the active canvas.
+Flips the [[Mossfoot Great Hall]] scene's darkness between `0` (fully lit) and `1` (full dark). It reaches the scene by its pinned `patch._id` (`mossfootHall0001`), so it works whether or not the scene is on the canvas. The macro reads `game.scenes`, so the scene must have been imported into the world with **Keep Document IDs** checked.
 
 > [!quote] Macro body
 > ```fm javascript
 > foundry.patch.command
 > ```
 
-This is the simplest form of the lighting macro. The original Great
-Hall scene used candle / floating-candle overlay tiles that swapped on
-darkness change; we stripped those for the demo, so this version just
-moves the darkness slider.
+Darkness only. Overlay tiles that swap with the darkness level are a separate pattern.

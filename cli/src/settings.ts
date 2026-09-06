@@ -8,7 +8,7 @@ import matter from "gray-matter";
 // normalisation, the init template, and the warning for unknown keys.
 //
 // Auth config (roles, role_passwords, oauth providers) lives in
-// .vaults/config.json instead, with secrets mirrored to .vaults/.env.
+// .vaults/config.json instead, with secrets mirrored to the vault's .env.
 // CLI-managed (`vaults role add/remove/promote/demote`, `vaults password`,
 // `vaults patreon …`); shouldn't be hand-edited or git-tracked.
 export interface Settings {
@@ -109,7 +109,7 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
   image_quality: {
     default: 85,
     type: "number",
-    description: "WebP quality 1–100 for image compression. Set 0 to disable.",
+    description: "WebP quality 1 to 100 for image compression. Set 0 to disable.",
   },
   max_file_bytes: {
     default: 25 * 1024 * 1024,

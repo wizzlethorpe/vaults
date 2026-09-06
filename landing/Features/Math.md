@@ -2,7 +2,7 @@
 title: Math
 ---
 
-LaTeX renders at build time with [KaTeX](https://katex.org/), using the same `$…$` and `$$…$$` syntax Obsidian uses. No plugin, no client-side JavaScript: the deploy ships plain HTML plus a stylesheet.
+LaTeX renders at build time with [KaTeX](https://katex.org/), using the same `$…$` and `$$…$$` syntax Obsidian uses. No plugin and no client-side JavaScript. The deploy ships plain HTML and a stylesheet.
 
 ## Inline
 
@@ -29,7 +29,6 @@ $$
 
 ## Notes
 
-- Math parses **before** emphasis, so the underscores in `$a_i + b_j$` stay subscripts instead of turning into italics: $a_i + b_j$.
-- Math inside a fenced code block is left alone, so you can document the syntax without it rendering.
+- Math parses before emphasis, so the underscores in `$a_i + b_j$` stay subscripts instead of turning into italics: $a_i + b_j$.
+- Math inside a fenced code block is left alone, so the syntax can be documented without rendering.
 - The KaTeX stylesheet and its fonts ship only to vaults that contain math.
-

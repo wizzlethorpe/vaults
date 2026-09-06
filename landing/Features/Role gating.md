@@ -2,11 +2,7 @@
 title: Role gating
 ---
 
-Vaults supports access tiers. Multi-role builds emit one variant per
-role, with a Cloudflare Pages Function in front that rewrites requests
-to the right variant based on a session cookie. This vault has three
-tiers: **public** (anyone), **patron** (paying readers), and **dm**
-(the campaign GM).
+A vault can have access tiers. A multi-role build emits one variant per role, and a Cloudflare Pages Function in front rewrites each request to the right variant from a session cookie. This vault has three tiers: **public** (anyone), **patron** (paying readers) and **dm** (the campaign GM).
 
 > [!info] Test passwords
 > | Role | Password |
@@ -14,17 +10,13 @@ tiers: **public** (anyone), **patron** (paying readers), and **dm**
 > | `patron` | `patron-pass` |
 > | `dm` | `dm-pass` |
 >
-> Use the auth box in the sidebar. Higher tiers see everything below them
-> too. `dm` sees patron + public content as well.
+> Use the auth box in the sidebar. A higher tier sees everything below it: `dm` sees patron and public content too.
 
-## Two flavours of gating
+## Two kinds of gating
 
-### Page-level (whole-page invisibility)
+### Page-level
 
-Add `role: <name>` to a page's frontmatter and the entire page is **only
-included in that tier's build (and higher tiers)**. Lower tiers don't get
-the HTML, the body, the search hit, the sitemap entry, or the manifest
-entry. The page structurally doesn't exist for them.
+Add `role: <name>` to a page's frontmatter and the page is included only in that tier's build and the tiers above it. Lower tiers get no HTML, no body, no search hit, no hover preview and no Foundry entry. The page does not exist for them.
 
 ```yaml
 ---
@@ -37,14 +29,11 @@ Examples in this vault:
 - [[Witchwood Cult]]: `role: patron`
 - [[Hidden Caves]]: `role: dm`
 
-Try clicking these as a public visitor: the link itself renders as
-"unresolved" (muted text, no anchor), and a direct URL hit returns
-the 404 page.
+As a public visitor, those links render unresolved (faded and italic, pointing nowhere), and a direct URL returns the 404 page.
 
-### Callout-level (paragraph-scoped redaction)
+### Callout-level
 
-Add a callout whose **type matches a configured role name** and the
-callout is stripped from every variant lower than that role:
+A callout whose **type matches a configured role name** is stripped from every variant below that role:
 
 ```markdown
 > [!patron] For supporters
@@ -54,39 +43,33 @@ callout is stripped from every variant lower than that role:
 > Only the GM sees this paragraph.
 ```
 
-[[Aelar]] has both a `[!patron]` and a `[!dm]` callout. Toggle tiers and watch the page change! Surrounding paragraphs stay; only the role-tagged blockquote disappears.
+[[Aelar]] has both a `[!patron]` and a `[!dm]` callout. Sign in at each tier to see the difference. The surrounding paragraphs stay; only the role-tagged blockquote is removed.
 
 ## Setup
 
 ```bash
 vaults role add patron     # offers a password; press Enter to skip
 vaults role add dm         # same
-vaults push                # multi-role build + auth middleware
+vaults push                # multi-role build and auth middleware
 ```
 
-A password is one way to reach a role, not the only one. Press Enter at the
-prompt (or pass `--no-password`) for a role granted by [[Patreon login|Patreon]]
-or [[OIDC login|OIDC]] instead:
+A password is one way to reach a role, not the only one. Press Enter at the prompt (or pass `--no-password`) for a role granted by [[Patreon login|Patreon]] or [[OIDC login|OIDC]] instead:
 
 ```bash
 vaults role add staff --no-password
 vaults oidc configure              # grant 'staff' by email domain
 ```
 
-**The login page renders only the methods the deploy actually has.** With no
-password on any role there is no password form and no role picker, just the
-provider button. With exactly one password role the picker disappears too,
-since there is nothing to choose. `vaults role list` shows what each role
-accepts, and the build warns about any role that nothing can reach.
+**The login page renders only the methods the deploy has.** With no password on any role there is no password form and no role picker, only the provider button. With exactly one password role the picker disappears too. `vaults role list` shows what each role accepts, and the build warns about any role that nothing can reach.
 
-Roles are ordered by add time, lowest → highest. To reorder:
+Roles are ordered by the time they were added, lowest first. To reorder:
 
 ```bash
 vaults role promote dm     # move up
 vaults role demote patron  # move down
 ```
 
-To see what's configured:
+To see what is configured:
 
 ```bash
 vaults role list
@@ -94,15 +77,15 @@ vaults role list
 
 ## Production hardening
 
-The auth Function does several things by default:
+The auth Function does two things by default:
 
 - **Signed, partitioned, HttpOnly session cookies** (HMAC-SHA256).
-- **CSRF state cookies** on the Patreon round-trip with a 10-minute TTL.
+- **A signed CSRF state cookie** on the Patreon and OIDC round-trips, with a 10-minute TTL.
 
-What it does **not** do, and what you should consider configuring on Cloudflare:
+What it does not do, and what to consider configuring on Cloudflare:
 
-- **Rate limiting on `/login` and `/connect/approve`.** PBKDF2 is slow (~100 ms per guess) but a determined attacker can still brute-force common passwords from a botnet. Cloudflare's Rate Limiting is a paid feature (but there is a free tier). Turn it on for those routes if your vault is high-value. Cloudflare's built-in DDoS protection covers volumetric attacks but not slow-trickle credential spray.
-- **WAF rules.** The free tier includes a managed ruleset. Consider enabling it on production deploys.
+- **Rate limiting on `/login` and `/connect/approve`.** PBKDF2 costs about 100 ms per guess, which slows but does not stop a distributed credential spray. Cloudflare's rate limiting has a free tier; turn it on for those routes if the vault is high-value. Cloudflare's DDoS protection covers volumetric attacks, not a slow trickle.
+- **WAF rules.** The free tier includes a managed ruleset.
 
 Rotate the cookie-signing key any time you suspect a leak:
 
@@ -110,6 +93,4 @@ Rotate the cookie-signing key any time you suspect a leak:
 vaults push --rotate-secret
 ```
 
-Generates a fresh `SESSION_SECRET`, uploads it to Cloudflare, invalidates
-every issued cookie + bearer token immediately, and writes the new value
-to your local `.env`.
+On a multi-role vault this generates a fresh `SESSION_SECRET`, uploads it to Cloudflare, invalidates every issued cookie and bearer token, and writes the new value to the vault's `.env`. On a single-role vault there is no secret to rotate and the flag does nothing.

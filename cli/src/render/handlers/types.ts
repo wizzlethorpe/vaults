@@ -19,7 +19,7 @@ import type { RenderContext } from "../types.js";
  * Context passed to a handler's render() function.
  */
 export interface HandlerContext {
-  /** Vault-relative path of the page being rendered (e.g. "NPCs/Aldric.md"). */
+  /** Basename of the page being rendered, without its extension (e.g. "Aldric"). */
   pagePath: string;
   /** The rendering page's parsed frontmatter. */
   frontmatter: Record<string, unknown>;

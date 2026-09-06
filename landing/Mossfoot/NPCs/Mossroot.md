@@ -14,6 +14,7 @@ foundry:
           max: 45
         ac:
           flat: 14
+          calc: natural
         movement:
           walk: 30
           burrow: 10
@@ -35,12 +36,8 @@ foundry:
 
 A homebrew fey forest-spirit that tends the deep stands of [[Witchwood Cult|Witchwood]] outside the Mossfoot. Locals describe it as "a stump that walks when no one is watching." It is patient, jealous, and very, very good at hearing footsteps.
 
-> [!info] Live demo of three features chained
-> This page demonstrates all three of: blank-doc `foundry.source`, the
-> ``` `statblock` ``` handler, and ``` `fm:` ``` pulling from frontmatter.
-> The block below reads `cr`, AC, and HP straight out of the `foundry.patch`
-> block, so the wiki render and the synced Foundry actor sheet share one
-> source of truth.
+> [!info] Three features chained
+> This page combines a blank-document `foundry.source`, the `statblock` handler, and `fm:` reading from frontmatter. The block below reads CR, AC and HP out of the `foundry.patch` block, so the wiki render and the Foundry actor sheet share one source.
 
 ## Statblock
 
@@ -59,7 +56,7 @@ saves:
   - wisdom: 4
 skillsaves:
   - perception: 4
-  - stealth: 5
+  - stealth: 3
 damage_resistances: bludgeoning, piercing, slashing from nonmagical attacks not made with cold iron
 damage_immunities: poison
 condition_immunities: charmed, exhaustion, poisoned
@@ -82,7 +79,7 @@ actions:
 
 ## How this page works
 
-The frontmatter declares a blank Foundry NPC actor (no compendium template):
+The frontmatter declares a blank Foundry NPC with no compendium template. An excerpt:
 
 ```yaml
 foundry:
@@ -91,13 +88,13 @@ foundry:
     system:
       attributes:
         hp: { value: 45, max: 45 }
-        ac: { flat: 14 }
+        ac: { flat: 14, calc: natural }
         movement: { walk: 30, burrow: 10 }
       details:
         cr: 3
         type: { value: fey }
 ```
 
-The statblock above pulls AC, HP, speeds, and CR from that same `foundry.patch` subtree via `` `fm: foundry.patch.system.attributes.ac.flat` `` etc. Change the value in one place; both the wiki render and the synced Foundry actor sheet update on the next push. Damage rolls in actions are clickable `dice:` buttons. Everywhere else the inline-handler dispatcher chains naturally because every string field in the statblock YAML is tokenized before render.
+The statblock reads AC, HP, speeds and CR from that `foundry.patch` subtree through `` `fm: foundry.patch.system.attributes.ac.flat` `` and the like. Change a value once and the wiki render and the Foundry sheet both update on the next push. The damage rolls in actions are `dice:` buttons: top-level string fields and each action's name and description run through the inline handlers before the block renders.
 
 See [[Handlers]], [[Statblocks]], and [[Foundry integration]] for the underlying mechanics.

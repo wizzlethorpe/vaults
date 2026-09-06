@@ -17,9 +17,8 @@ The innkeeper's son. Eleven, all elbows, asks too many questions.
 
 ![[bram-portrait.webp|180]]
 
-This page intentionally has no `image:` frontmatter. The auto-image setting
-should pick the first body embed (Bram's portrait) for OG tags and the
-Foundry actor's `img`.
+> [!info] No `image:` on this page
+> Cover discovery takes the first body embed, Bram's portrait, for the OG tags and the Foundry actor's `img`.
 
 ## Loyalties
 
@@ -27,6 +26,4 @@ Foundry actor's `img`.
 - Idolises [[Aelar]]; pesters him for ranger stories.
 
 > [!dm] DM only
-> Bram has overheard cult members at the inn but doesn't know what they are.
-> If a party gains his trust he'll repeat phrases verbatim, useful breadcrumbs
-> toward the [[Hidden Caves]].
+> Bram has overheard cult members at the inn but doesn't know what they are. If a party gains his trust he'll repeat phrases verbatim, useful breadcrumbs toward the [[Hidden Caves]].

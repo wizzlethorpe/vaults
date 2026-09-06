@@ -2,7 +2,7 @@
 # Display name for the wiki. Shown in the header and in page titles.
 vault_name: Wizzlethorpe Vaults
 
-# WebP quality 1–100 for image compression. Set 0 to disable.
+# WebP quality 1 to 100 for image compression. Set 0 to disable.
 image_quality: 85
 
 # Hard cap (in bytes) on a single file. Larger files are skipped.
@@ -74,7 +74,7 @@ foundry:
   module: {}
 
 # Public base URL this vault is served from, e.g. 'https://notes.example.com'. Set it and the build writes sitemap.xml and robots.txt; leave it empty and neither is written. Only default-role pages are listed, so a sitemap cannot advertise gated ones.
-site_url: ""
+site_url: "https://vaults.wizzlethorpe.com"
 
 # Markdown rendered in a <footer> on every page. Inline markdown works. Empty hides the footer.
 footer: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com)."

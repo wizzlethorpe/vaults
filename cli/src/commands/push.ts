@@ -47,7 +47,7 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
   await ensureSetup(vaultPath, cfg);
 
   // Multi-role deployments need SESSION_SECRET on the Pages project so the
-  // auth middleware can sign cookies. Reuse the secret in .vaults/.env (the
+  // auth middleware can sign cookies. Reuse the secret in the vault's .env (the
   // one preview also uses) so a logged-in browser session survives across
   // preview ↔ push.
   //
@@ -61,7 +61,7 @@ export async function push(vaultPath: string, opts: PushOptions): Promise<void> 
       await saveSessionSecret(vaultPath, secret);
       console.log(opts.rotateSecret
         ? "Rotated SESSION_SECRET; all existing tokens are now invalid."
-        : "Generated SESSION_SECRET (saved to .vaults/.env).");
+        : "Generated SESSION_SECRET (saved to .env).");
     }
     await wranglerSecret(cfg.projectName!, "SESSION_SECRET", secret);
   }

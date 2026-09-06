@@ -4,18 +4,14 @@ role: dm
 location: Witchwood (subterranean)
 ---
 
-A DM-only page. Public and patron tiers cannot reach this article. The
-build for those variants strips it entirely (no JournalEntry, no search
-hit, no backlink, no manifest entry).
+A DM-only page. Public and patron tiers cannot reach this article. The build for those variants strips it entirely (no journal page, no search hit, no backlink, no Foundry entry).
 
 ## Layout
 
 Three connected chambers carved into the limestone:
 
 1. **The Antechamber**: circular, ringed with niches that once held idols.
-2. **The Pool Chamber**: a cold black pool the [[Witchwood Cult]] uses for
-   their initiation rite. Anyone immersed gains advantage on Insight checks
-   for an hour but disadvantage on Wisdom saves for a week.
+2. **The Pool Chamber**: a cold black pool the [[Witchwood Cult]] uses for their initiation rite. Anyone immersed gains advantage on Insight checks for an hour but disadvantage on Wisdom saves for a week.
 3. **The Sealed Door**: the cult hasn't been able to open it. Whatever
    they're trying to wake is on the other side.
 

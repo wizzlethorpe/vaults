@@ -118,7 +118,7 @@ export async function patreonConfigure(vaultPath: string): Promise<void> {
             const t = detectedTiers[i]!;
             console.log(`    ${i + 1}. ${t.title} (${formatAmount(t.amountCents)}, id ${t.id})`);
           }
-          console.log(`    0. None — keep ${role} password-only`);
+          console.log(`    0. None (keep ${role} password-only)`);
           const ans = (await rl.question(`  Pick [0-${detectedTiers.length}]${current ? ` (Enter = keep)` : ""}: `)).trim();
           if (ans === "" && current) continue; // keep existing
           if (ans === "" || ans === "0") { delete newTiers[role]; continue; }

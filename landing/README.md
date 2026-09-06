@@ -1,125 +1,85 @@
-# Wizzlethorpe Vaults
+# Wizzlethorpe Vaults landing vault
 
-> **🌐 Live at: [vaults.wizzlethorpe.com](https://vaults.wizzlethorpe.com)**
+Live at [vaults.wizzlethorpe.com](https://vaults.wizzlethorpe.com).
 
-This repo is the source of the Vaults landing page — and **it's a Vault
-itself.** Every feature shown on the live site is rendered live from the
-markdown in this repo by [Wizzlethorpe Vaults](https://github.com/wizzlethorpe/vaults),
-the CLI that publishes Obsidian vaults as self-hosted, role-gated wikis
-on Cloudflare Pages.
-
-The page doubles as documentation: visit the live site, read every
-explainer page, log in at higher tiers to see role gating, then read
-the source `.md` here to learn the authoring patterns.
+This folder is the source of the Vaults landing page, and it is a vault itself. Every page on the live site is rendered from the markdown here by [Wizzlethorpe Vaults](https://github.com/wizzlethorpe/vaults), the CLI in `../cli`. It doubles as documentation: read the live site, sign in at higher tiers to see role gating, then read the source here for the authoring patterns.
 
 ## Try the role gating
 
-The deployed site has three access tiers. Use the auth box in the
-sidebar:
+The deployed site has three tiers. Use the auth box in the sidebar.
 
 | Role | Password | Unlocks |
 |---|---|---|
-| `public` | _(no password — default)_ | Everything you see without signing in |
-| `patron` | `patron-pass` | The Witchwood Cult page + a callout in Aelar's bio + Bixby's "Tower" lore |
-| `dm` | `dm-pass` | All of the above, plus Hidden Caves + DM-only callouts |
+| `public` | none (default) | Everything visible without signing in |
+| `patron` | `patron-pass` | The Witchwood Cult page and a callout on Aelar's page |
+| `dm` | `dm-pass` | All of the above, plus Hidden Caves and the DM-only callouts |
 
-Higher tiers see everything below them. Lower-tier visitors get
-**structurally** redacted content (no HTML, no manifest entry, broken
-wikilinks instead of working anchors), not CSS-hidden content.
+Higher tiers see everything below them. A lower tier gets structurally redacted output: no HTML, no search-index entry, no Foundry entry, and links that render unresolved. Nothing is hidden with CSS.
 
-## What this repo demonstrates
+## What this vault demonstrates
 
 | Feature | Where |
 |---|---|
-| Wikilinks (bare names + aliases + folders) | Every cross-link; deep-dive at `Features/Wikilinks.md` |
+| Wikilinks (bare names, aliases, folders) | every cross-link; `Features/Wikilinks.md` |
 | Obsidian-style callouts | `Features/Callouts.md` |
-| Image handling, social meta, auto-discovery | `Features/Images.md` |
-| Bases (filtered card / table / list views) | `Features/Bases.md`, embedded on the homepage |
-| Role gating (page-level + callout-level) | `Features/Role gating.md` |
-| Foundry VTT integration + `foundry.source` clones | `Features/Foundry integration.md` |
-| Audio / video / PDF passthroughs (per-variant gated) | `Features/Passthrough files.md` |
-| Frontmatter dialog (`{}` button) | Every page's top-right corner |
-| Per-page OG / Twitter card meta | View source on any page |
-| Custom theme colors via `settings.md` | `settings.md` |
-| Auto-generated folder indexes | `Mossfoot/NPCs/`, `Mossfoot/Items/`, `Mossfoot/Lore/`, `Features/` |
+| Image handling, social meta, cover discovery | `Features/Images.md` |
+| Bases (filtered card and table views) | `Features/Bases.md`; `Mossfoot/index.md` embeds one |
+| Role gating, per page and per callout | `Features/Role gating.md` |
+| Foundry VTT integration and `foundry.source` documents | `Features/Foundry integration.md` |
+| Audio, video, PDF and JSON passthroughs, gated per variant | `Features/Passthrough files.md` |
+| Frontmatter dialog (`{}` button) | any page with frontmatter |
+| Per-page OG and Twitter meta | view source on any page |
+| Theme colours through `settings.md` | `settings.md` |
+| Generated folder indexes | `Mossfoot/NPCs/`, `Mossfoot/Items/`, `Mossfoot/Lore/` |
 
-## Repo layout
+## Layout
 
 ```
-vaults/                    ← this repo (a working Vault, not a static site)
-├── settings.md            ← user-editable settings (theme, vault name, ignore patterns)
-├── .vaults/config.json    ← CLI-managed: roles + password hashes (test passwords; safe)
-├── index.md               ← homepage at vaults.wizzlethorpe.com
-├── README.md              ← this file (excluded from the wiki via settings.md `ignore`)
-├── attachments/           ← images (compressed to webp at build time)
-├── Features/              ← documentation pages: one per CLI feature
-└── Mossfoot/              ← the sample campaign, one folder per content kind
-    ├── NPCs.base          ← cards-view config embedded on the Mossfoot index
-    ├── Audio/             ← passthrough files (audio/video/pdf, role-gated like images)
-    ├── NPCs/              ← Aelar (SRD Scout), Bram (SRD Commoner), Dr. Bixby Wizzlethorpe (SRD Archmage)
-    ├── Items/             ← Healing Potion (SRD Potion of Healing)
-    ├── Lore/              ← The Mossfoot Inn (public), Witchwood Cult (patron), Hidden Caves (dm)
-    └── …                  ← Scenes, Decks, Playlists, Macros, Tables, sheets
+landing/                 this folder, inside the wizzlethorpe/vaults monorepo
+  settings.md            user-editable settings: theme, name, ignore patterns, Foundry
+  .vaults/config.json    CLI-managed: roles and password hashes (throwaway passwords)
+  index.md               the homepage
+  README.md              this file, excluded from the wiki by `ignore` in settings.md
+  attachments/           images, compressed to WebP at build time
+  Features/              one documentation page per feature
+  Mossfoot/              the sample campaign, one folder per content kind
+    NPCs.base            cards and table views embedded on the Mossfoot index
+    Audio/               passthrough files
+    NPCs/                Aelar (SRD Scout), Bram (SRD Commoner), Dr. Bixby Wizzlethorpe (SRD Archmage), Mossroot (blank npc)
+    Items/               Healing Potion (SRD Potion of Healing)
+    Lore/                The Mossfoot Inn (public), Witchwood Cult (patron), Hidden Caves (dm)
+    Scenes/ Decks/ Playlists/ Macros/ Tables/ sheets/
 ```
 
 ## Build it yourself
 
 ```bash
-# install the CLI
 npm install -g @wizzlethorpe/vaults
-
-# clone this repo
 git clone https://github.com/wizzlethorpe/vaults.git
-cd vaults
-
-# preview locally on http://localhost:8788
-vaults preview
-
-# or build to a directory
-vaults build --output ./dist
+cd vaults/landing
+vaults preview                 # http://localhost:4173
+vaults build --output ./dist   # or build to a directory
+vaults push                    # deploy to your own Cloudflare Pages project
 ```
 
-For a real Cloudflare deploy:
+## Authoring patterns
 
-```bash
-vaults push    # one-shot wrangler pages deploy
-```
+- A plain article: `Mossfoot/Lore/The Mossfoot Inn.md`. Title, image, body text and wikilinks.
+- A page-gated article: `Mossfoot/Lore/Witchwood Cult.md` (patron) and `Mossfoot/Lore/Hidden Caves.md` (dm), through `role:` frontmatter.
+- Role-gated callouts inside a public page: `Mossfoot/NPCs/Aelar.md`. The patron and dm callouts are stripped below their tier.
+- An NPC built from a compendium document: `Mossfoot/NPCs/Dr. Bixby Wizzlethorpe.md`, with `foundry.source` naming the SRD Archmage and a `foundry.patch` block for HP, CR and token name. `Aelar.md` (SRD Scout) and `Bram.md` (SRD Commoner) follow the same pattern.
+- A blank NPC with a statblock: `Mossfoot/NPCs/Mossroot.md`, `foundry.source: Actor:npc`, with the wiki statblock reading its numbers from the same frontmatter.
+- An item built from a compendium document: `Mossfoot/Items/Healing Potion.md`, the SRD Potion of Healing.
 
-## Authoring patterns showcased here
+## The test passwords
 
-Each page in this repo is intentionally minimal so you can see the
-patterns at a glance:
+`.vaults/config.json` holds hashes of throwaway passwords, and this README publishes the passwords themselves, because this is a public demo. Do not reuse them on a vault that hosts real content.
 
-- **A plain article** — `Mossfoot/Lore/The Mossfoot Inn.md`. Just title, image,
-  body text, and wikilinks.
-- **A page-gated article** — `Mossfoot/Lore/Witchwood Cult.md` (patron) and
-  `Mossfoot/Lore/Hidden Caves.md` (dm). Shows `role:` frontmatter.
-- **A page with role-gated callouts** — `Mossfoot/NPCs/Aelar.md`. Visible to
-  everyone; the patron + dm paragraphs strip per tier.
-- **An NPC clone** — `Mossfoot/NPCs/Dr. Bixby Wizzlethorpe.md` with `foundry.source:`
-  pointing at the SRD Archmage. Foundry clones it; the `foundry:` block
-  patches HP/CR/token name. Same pattern for `Mossfoot/NPCs/Aelar.md` (SRD Scout)
-  and `Mossfoot/NPCs/Bram.md` (SRD Commoner).
-- **An item clone** — `Mossfoot/Items/Healing Potion.md` doing the same thing for
-  the SRD Potion of Healing.
+For your own vault, run `vaults role add <name>` and set a password at the prompt; the CLI stores a salted PBKDF2 hash. The generated `SESSION_SECRET` lives in `.env` at the vault root, and `vaults init` adds `.env` to the vault's `.gitignore`.
 
-## ⚠️ A note on the test passwords
+## Bugs and feature requests
 
-`.vaults/config.json` includes with throwaway passwords (`patron-pass`, `dm-pass`)
-because this is a **public demo + landing page**. Do not reuse these on
-any vault that hosts real content.
-
-For your own vault, run `vaults role add <name>` and set a real password —
-the CLI prompts for one and stores a salted PBKDF2 hash. The generated
-`SESSION_SECRET` lives in `.vaults/.env` and should stay out of git
-(the auto-generated `.vaults/.gitignore` covers this).
-
-## Reporting bugs / feature requests
-
-This is a demo of the [vaults-cli](https://github.com/wizzlethorpe/vaults)
-project. File issues there. PRs to this repo are welcome if you spot a
-typo, want to demonstrate a feature better, or have an idea for additional
-content.
+File issues on [wizzlethorpe/vaults](https://github.com/wizzlethorpe/vaults). Pull requests that fix a typo, demonstrate a feature better, or add content are welcome.
 
 ## License
 

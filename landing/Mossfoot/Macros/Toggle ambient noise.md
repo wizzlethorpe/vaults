@@ -16,11 +16,7 @@ foundry:
       ui.notifications.info(`Mossfoot Great Hall ambient ${newVolume ? "enabled" : "muted"}.`);
 ---
 
-Mutes / unmutes the ambient `great-hall.ogg` track in the
-[[Mossfoot Great Hall]] scene by addressing the AmbientSound document
-via its pinned `_id` (`mossfootHallAmb1`). The audio file itself is
-pulled into the per-vault Foundry cache via the `@vault/Mossfoot/Audio/great-hall.ogg`
-reference in the scene's `sounds[]`, so playback works offline.
+Mutes and unmutes the ambient `great-hall.ogg` track in the [[Mossfoot Great Hall]] scene through the AmbientSound's pinned `_id` (`mossfootHallAmb1`). The audio file reaches the per-vault Foundry cache through the `@vault/Mossfoot/Audio/great-hall.ogg` reference in the scene's `sounds`, so playback works offline. The macro reads `game.scenes`, so the scene must have been imported into the world with **Keep Document IDs** checked.
 
 > [!quote] Macro body
 > ```fm javascript
