@@ -40,6 +40,13 @@
           "minimum": "0.9.0"
         }
       }
+    ],
+    "recommends": [
+      {
+        "id": "graft-moulinette",
+        "type": "module",
+        "manifest": "https://github.com/wizzlethorpe/graft-moulinette/releases/latest/download/module.json"
+      }
     ]
   },
   "flags": {

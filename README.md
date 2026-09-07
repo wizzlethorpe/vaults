@@ -4,6 +4,7 @@
 [![npm](https://img.shields.io/npm/v/%40wizzlethorpe%2Fvaults)](https://www.npmjs.com/package/@wizzlethorpe/vaults)
 [![license](https://img.shields.io/github/license/wizzlethorpe/vaults)](LICENSE)
 [![release](https://img.shields.io/github/v/release/wizzlethorpe/vaults?display_name=tag&sort=semver)](https://github.com/wizzlethorpe/vaults/releases/latest)
+[![foundry](https://img.shields.io/endpoint?url=https://foundryshields.com/version?url=https://github.com/wizzlethorpe/vaults/releases/latest/download/module.json&style=flat)](https://foundryvtt.com/packages/vaults)
 
 > **🌐 Documentation and live demo: [vaults.wizzlethorpe.com](https://vaults.wizzlethorpe.com)**
 

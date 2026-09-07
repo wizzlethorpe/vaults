@@ -16,7 +16,7 @@ The box above is the `foundry-install` code block. It shows the vault's own inst
 ## How a vault reaches Foundry
 
 1. `vaults push` deploys the wiki and, beside it, `_foundry/module.json`: a module for the vault holding a manifest, its pack declarations, and one line naming the deploy. It contains no content.
-2. The reader installs Graft, Wizzlethorpe Vaults, and the vault's module from that link, and enables all three in a world.
+2. The reader installs the vault's module from that link. It requires Graft and Wizzlethorpe Vaults, both in Foundry's package directory, so Foundry offers to install and enable them alongside it.
 3. Wizzlethorpe Vaults offers to build. It fetches the vault's entry list and page bodies, downloads images and audio into `worlds/<world>/vaults-cache/<deploy>/<role>/`, and hands the entries to graft, which resolves each source and writes the packs.
 4. A role-gated vault asks the reader to connect first: open the vault's `/connect` page, sign in, approve access for Foundry VTT, and paste the token back. The build reads the vault at that role. **Reconnect Vault**, in the header of any of the vault's compendium windows, forgets the token and the cache and offers to build again, which is how a reader changes role.
 5. On later world loads the module compares the deploy's content hash with the last build and offers a rebuild when the vault has changed. Pushing new content never means reinstalling anything.

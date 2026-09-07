@@ -3,7 +3,7 @@
 # and (optionally) publishes to the FoundryVTT package registry.
 #
 # Usage:
-#   ./release.sh           # interactive; prompts for new version
+#   ./release.sh           # interactive; pick a patch/minor/major bump
 #   ./release.sh 0.2.0     # one-shot; bumps to 0.2.0
 #
 # Prereqs:
@@ -44,9 +44,20 @@ gh auth status >/dev/null 2>&1  || { echo -e "${RED}Error: GitHub CLI not authen
 if [ -n "$1" ]; then
   NEW_VERSION="$1"
 else
-  echo -e "${YELLOW}Enter new version (or press Enter to keep $CURRENT_VERSION):${NC}"
-  read -r NEW_VERSION
-  [ -z "$NEW_VERSION" ] && NEW_VERSION="$CURRENT_VERSION"
+  IFS='.' read -r MAJOR MINOR PATCH <<< "${CURRENT_VERSION%%-*}"
+  echo -e "${YELLOW}Select the new version:${NC}"
+  echo "  1) patch  $MAJOR.$MINOR.$((PATCH + 1))"
+  echo "  2) minor  $MAJOR.$((MINOR + 1)).0"
+  echo "  3) major  $((MAJOR + 1)).0.0"
+  echo "  4) custom"
+  read -rp "Choice [1-4]: " CHOICE
+  case "$CHOICE" in
+    1) NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))" ;;
+    2) NEW_VERSION="$MAJOR.$((MINOR + 1)).0" ;;
+    3) NEW_VERSION="$((MAJOR + 1)).0.0" ;;
+    4) read -rp "Version: " NEW_VERSION ;;
+    *) echo -e "${RED}Aborted.${NC}" >&2; exit 1 ;;
+  esac
 fi
 
 if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -59,14 +70,10 @@ if [ "$NEW_VERSION" != "$CURRENT_VERSION" ]; then
   jq --arg v "$NEW_VERSION" '.version = $v' module.json > module.json.tmp && mv module.json.tmp module.json
 fi
 
-# Rewrite manifest/download to versioned URLs for the released artifact.
-# Foundry's package registry caches manifest responses, so /releases/latest/
-# URLs would let stale versions linger in the in-app browser. Versioned URLs
-# are immutable, so each release gets a fresh, uncacheable URL. The repo's
-# module.json gets reset back to /releases/latest/ at the end of this script.
+# Pin the zip to its own tag, so a manifest and the bytes it names cannot
+# disagree. `manifest` stays on /latest/: an installed copy polls it for updates.
 jq --arg v "$NEW_VERSION" --arg repo "$GITHUB_REPO" \
-   '.download = "https://github.com/" + $repo + "/releases/download/v" + $v + "/module.zip" |
-    .manifest = "https://github.com/" + $repo + "/releases/download/v" + $v + "/module.json"' \
+   '.download = "https://github.com/" + $repo + "/releases/download/v" + $v + "/module.zip"' \
    module.json > module.json.tmp && mv module.json.tmp module.json
 
 BUILD_DIR=$(mktemp -d)
@@ -122,6 +129,8 @@ if [ -z "$FOUNDRY_TOKEN" ]; then
   echo -e "${YELLOW}Skipping FoundryVTT publish (no FOUNDRY_RELEASE_TOKEN in .env)${NC}"
 else
   echo -e "${YELLOW}Publishing to FoundryVTT Package Registry...${NC}"
+  # A versioned manifest URL, never /latest/: the registry caches by URL, and
+  # reusing one left the in-app browser serving an already-superseded version.
   MANIFEST_URL="https://github.com/$GITHUB_REPO/releases/download/$TAG/module.json"
   RESPONSE=$(curl -s -X POST \
     "https://foundryvtt.com/_api/packages/release_version/" \
@@ -151,13 +160,9 @@ fi
 
 rm -rf "$BUILD_DIR"
 
-# Reset the repo's module.json back to /releases/latest/ URLs. The released
-# zip already shipped with versioned URLs (committed above for the build);
-# the repo working copy floats on /latest/ for dev installs and as the
-# source-of-truth between releases.
+# Back to /latest/ in the repo, so what is committed is never a stale pin.
 jq --arg repo "$GITHUB_REPO" \
-   '.download = "https://github.com/" + $repo + "/releases/latest/download/module.zip" |
-    .manifest = "https://github.com/" + $repo + "/releases/latest/download/module.json"' \
+   '.download = "https://github.com/" + $repo + "/releases/latest/download/module.zip"' \
    module.json > module.json.tmp && mv module.json.tmp module.json
 
 echo ""
