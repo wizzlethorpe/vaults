@@ -3,7 +3,7 @@
 
 /**
  * Per-vault theme overrides. When any of `accent_color`, `bg_color`,
- * `accent_color_dark`, `bg_color_dark` are set in settings.md, append this
+ * `accent_color_dark`, `bg_color_dark` are set in the vault settings, append this
  * block after DEFAULT_CSS so it wins. The derived shades (--accent-soft,
  * --wikilink-bg, --rule, etc) are recomputed via color-mix so they stay
  * coherent with whatever colors the user picked.
@@ -30,7 +30,7 @@ export function renderThemeOverride(opts: {
     blocks.push(`@media (prefers-color-scheme: dark) {\n${bgBlock(`  :root[data-theme="auto"]`, opts.darkBg, "dark")}\n}`);
   }
   if (!blocks.length) return "";
-  return "\n\n/* User theme overrides (settings.md) */\n" + blocks.join("\n");
+  return "\n\n/* User theme overrides */\n" + blocks.join("\n");
 }
 
 /** `--rule` is a slightly off-bg shade for hairlines + borders. In light

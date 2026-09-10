@@ -3,24 +3,26 @@
 // This setting is the one that decides what a page's role is when the page
 // does not say. Rejecting a valid value here does not fail the build: the
 // schema substitutes its own default (`role: public`), the canonical rewriter
-// then writes that default back over the vault's settings.md, and every
+// then writes that default back over the vault's settings file, and every
 // unmarked page in a private vault becomes world-readable. The build says
-// only that it "rewrote settings.md to canonical format".
+// only that it "rewrote settings.yaml to canonical format".
 //
 // So the thing under test is not really the predicate. It is that a vault
 // which says `role: DM` still says `role: DM` after being read.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadSettings, writeSettings } from "../src/settings.js";
+import { settingsPath } from "../src/paths.js";
+import { writeSettingsFile } from "./settings-helpers.js";
 
-async function vaultWith(frontmatter: string): Promise<string> {
+async function vaultWith(yaml: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
-  await writeFile(join(dir, "settings.md"), `---\n${frontmatter}\n---\n\n# Vault settings\n`);
+  await writeSettingsFile(dir, `${yaml}\n`);
   return dir;
 }
 
@@ -45,7 +47,7 @@ describe("default_frontmatter round trip", () => {
   });
 
   it("settles: a canonical write reloads unchanged, with the value intact", async () => {
-    // `changed` is what makes the build write settings.md back. A canonical
+    // `changed` is what makes the build write the settings file back. A canonical
     // file still reporting changed would rewrite on every build, and a
     // substituted default reaching the rewriter is how a private baseline
     // lands on disk as public.
@@ -53,7 +55,7 @@ describe("default_frontmatter round trip", () => {
     const first = await loadSettings(dir);
     await writeSettings(dir, first.values);
     const second = await loadSettings(dir);
-    assert.equal(second.changed, false, await readFile(join(dir, "settings.md"), "utf8"));
+    assert.equal(second.changed, false, await readFile(settingsPath(dir), "utf8"));
     assert.equal(second.values.default_frontmatter[0]!.data["role"], "DM");
   });
 

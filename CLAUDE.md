@@ -49,9 +49,9 @@ When the user gives you a task, default to assuming it's about `cli/` unless the
 
 ```
 ~/Documents/MyVault/        ← user's Obsidian vault (source of truth)
-├── settings.md             ← user-editable (Obsidian Properties UI)
 ├── …content…
 └── .vaults/                ← all CLI-managed internal state
+    ├── settings.yaml       ← vault settings, written by `vaults set`
     ├── config.json         ← CLI-managed: roles, password hashes, project name, OAuth (Patreon / OIDC) config
     ├── cache/              ← build cache (rendered HTML, image webp cache)
     └── handlers/           ← optional custom inline / code-block handlers
@@ -105,7 +105,9 @@ Single-role builds collapse `_variants/public/...` straight to the deploy root, 
 
 ### Settings schema
 
-The single source of truth is the `SCHEMA` constant in `cli/src/settings.ts`. To add a setting: add an entry there. The schema drives `init`, parsing, validation, the canonical-format rewriter, and warnings for unknown keys. Any existing `settings.md` files auto-pick-up new fields with their defaults on next `vaults build`.
+The single source of truth is the `SCHEMA` constant in `cli/src/settings.ts`. To add a setting: add an entry there. The schema drives `init`, `vaults set` / `vaults get`, parsing, validation, the canonical-format rewriter, and warnings for unknown keys. Existing vaults pick up a new field with its default on the next `vaults build`.
+
+Settings live in `.vaults/settings.yaml`, out of Obsidian's sight (it hides dot-folders), and are meant to be changed with `vaults set`. `.vaults/config.json` beside it is gitignored because it holds password hashes; settings are not, and must stay readable from a fresh clone.
 
 ### Render pipeline
 

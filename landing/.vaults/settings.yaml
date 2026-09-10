@@ -1,4 +1,7 @@
----
+# Vault settings, managed by `vaults set`.
+# Hand edits survive, but unknown keys are removed and the file is
+# reformatted on the next build.
+
 # Display name for the wiki. Shown in the header and in page titles.
 vault_name: Wizzlethorpe Vaults
 
@@ -25,6 +28,9 @@ default_frontmatter:
 # Glob patterns of files to skip, e.g. 'Templates/**' or '*.draft.md'. Wildcards cross hidden segments, so 'tools/**' also covers 'tools/.venv/**'.
 ignore:
   - README.md
+
+# Treat a note named after the folder it sits in ('Places/Places.md') as that folder's page, the Obsidian folder-note convention. It is served at the folder's URL ('/Places') and replaces the index the build would otherwise generate there.
+folder_notes: false
 
 # Inject the page title as an <h1>. Set false if your notes already start with their own '# Title'.
 inline_title: true
@@ -65,7 +71,7 @@ auto_image: true
 # Ship files with unrecognized extensions. Default false skips them with a warning, so a stray file cannot bypass role gating. Recognized media (audio, video, pdf, epub) is reference-gated either way.
 include_unknown_files: false
 
-# Foundry VTT integration. 'package': 'adventure' ships the vault as one Adventure document you import once, 'compendium' (the default) as browsable packs, one per document type, 'none' ships nothing. 'player_role': the highest role players may read. Pages at or below it arrive player-visible; empty (the default) means none are. 'system': the game system your Actor and Item content targets, e.g. dnd5e. 'core_version': the full quoted Foundry version your exported Scene / Actor JSON came from, e.g. '14.359'. A bare '14' sorts before every release in that generation and costs a Scene its levels. 'module': extra keys merged into the module.json the vault serves, such as 'authors'.
+# Foundry VTT integration. 'package': 'adventure' ships the vault as one Adventure document you import once, 'compendium' (the default) as browsable packs, one per document type, 'none' ships nothing. 'player_role': the highest role players may read. Pages at or below it arrive player-visible; empty (the default) means none are. 'system': the game system your Actor and Item content targets, e.g. dnd5e. 'core_version': the full quoted Foundry version your exported Scene / Actor JSON came from, e.g. '14.359'. A bare '14' sorts before every release in that generation and costs a Scene its levels. 'module': extra keys merged into the module.json the vault serves, such as 'authors'. A quoted 'version' there takes over the numbering, and must rise on every release or Foundry stops offering updates; leave it out to have the build stamp a date.
 foundry:
   package: compendium
   player_role: ''
@@ -78,9 +84,3 @@ site_url: "https://vaults.wizzlethorpe.com"
 
 # Markdown rendered in a <footer> on every page. Inline markdown works. Empty hides the footer.
 footer: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com)."
----
-
-# Vault settings
-
-This file is managed by `vaults`. Edit values above (in the frontmatter).
-Unknown keys are removed on the next sync.

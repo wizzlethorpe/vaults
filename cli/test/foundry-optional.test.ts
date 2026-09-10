@@ -12,6 +12,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildSite } from "../src/build.js";
+import { writeSettingsFile } from "./settings-helpers.js";
 
 async function build(settings: string, extra: Record<string, string> = {}): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "vault-fo-"));
@@ -80,7 +81,7 @@ describe("foundry.package validation", () => {
     // ask for, with links baked to match.
     const { loadSettings } = await import("../src/settings.js");
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
-    await writeFile(join(dir, "settings.md"), "---\nfoundry:\n  package: adventurte\n---\n");
+    await writeSettingsFile(dir, "foundry:\n  package: adventurte\n");
     const parsed = await loadSettings(dir);
     assert.equal(parsed.values.foundry.package, "compendium");
     assert.match(parsed.warnings.join("\n"), /one of none, compendium, adventure/);
@@ -90,7 +91,7 @@ describe("foundry.package validation", () => {
     const { loadSettings } = await import("../src/settings.js");
     for (const want of ["none", "compendium", "adventure"] as const) {
       const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
-      await writeFile(join(dir, "settings.md"), `---\nfoundry:\n  package: ${want}\n---\n`);
+      await writeSettingsFile(dir, `foundry:\n  package: ${want}\n`);
       const parsed = await loadSettings(dir);
       assert.equal(parsed.values.foundry.package, want);
       assert.deepEqual(parsed.warnings, []);
@@ -102,7 +103,7 @@ describe("the foundry block", () => {
   it("takes defaults for the keys a vault does not state", async () => {
     const { loadSettings } = await import("../src/settings.js");
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
-    await writeFile(join(dir, "settings.md"), "---\nfoundry:\n  player_role: dm\n---\n");
+    await writeSettingsFile(dir, "foundry:\n  player_role: dm\n");
     const { values, warnings } = await loadSettings(dir);
     assert.equal(values.foundry.player_role, "dm");
     assert.equal(values.foundry.package, "compendium", "unstated keys keep their default");
@@ -116,7 +117,7 @@ describe("the foundry block", () => {
     // `player_roll: dm` would silently share nothing.
     const { loadSettings } = await import("../src/settings.js");
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
-    await writeFile(join(dir, "settings.md"), "---\nfoundry:\n  player_roll: dm\n---\n");
+    await writeSettingsFile(dir, "foundry:\n  player_roll: dm\n");
     const { values, warnings } = await loadSettings(dir);
     assert.match(warnings.join("\n"), /unknown key 'foundry\.player_roll'/);
     assert.equal(values.foundry.player_role, "");
@@ -126,8 +127,8 @@ describe("the foundry block", () => {
     // Whatever Foundry accepts in a module.json, since that is what it becomes.
     const { loadSettings } = await import("../src/settings.js");
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
-    await writeFile(join(dir, "settings.md"),
-      "---\nfoundry:\n  module:\n    id: x\n    relationships:\n      requires:\n        - id: dnd5e\n---\n");
+    await writeSettingsFile(dir,
+      "foundry:\n  module:\n    id: x\n    relationships:\n      requires:\n        - id: dnd5e\n");
     const { values } = await loadSettings(dir);
     assert.equal(values.foundry.module["id"], "x");
     assert.ok(values.foundry.module["relationships"], "nested structure survives the round trip");

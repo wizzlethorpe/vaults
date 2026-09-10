@@ -29,17 +29,17 @@ Higher tiers see everything below them. A lower tier gets structurally redacted 
 | Audio, video, PDF and JSON passthroughs, gated per variant | `Features/Passthrough files.md` |
 | Frontmatter dialog (`{}` button) | any page with frontmatter |
 | Per-page OG and Twitter meta | view source on any page |
-| Theme colours through `settings.md` | `settings.md` |
+| Theme colours through `.vaults/settings.yaml` | `.vaults/settings.yaml` |
 | Generated folder indexes | `Mossfoot/NPCs/`, `Mossfoot/Items/`, `Mossfoot/Lore/` |
 
 ## Layout
 
 ```
 landing/                 this folder, inside the wizzlethorpe/vaults monorepo
-  settings.md            user-editable settings: theme, name, ignore patterns, Foundry
+  .vaults/settings.yaml  vault settings: theme, name, ignore patterns, Foundry
   .vaults/config.json    CLI-managed: roles and password hashes (throwaway passwords)
   index.md               the homepage
-  README.md              this file, excluded from the wiki by `ignore` in settings.md
+  README.md              this file, excluded from the wiki by `ignore` in `.vaults/settings.yaml`
   attachments/           images, compressed to WebP at build time
   Features/              one documentation page per feature
   Mossfoot/              the sample campaign, one folder per content kind

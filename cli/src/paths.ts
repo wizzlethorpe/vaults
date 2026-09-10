@@ -11,8 +11,8 @@ import { join } from "node:path";
 /** Top-level dotfolder owning all vaults-cli state. */
 export const VAULTS_DIR = ".vaults";
 
-/** Settings.md stays at the vault root (Obsidian-editable). */
-export const SETTINGS_FILE = "settings.md";
+/** Vault settings, CLI-managed via `vaults set`. Inside .vaults/ so Obsidian, which hides dot-folders, does not offer it as a note. */
+export const SETTINGS_FILE = "settings.yaml";
 
 /** Config (CLI-managed: roles, password hashes, project name, patreon, …). */
 export const CONFIG_FILE = "config.json";
@@ -22,6 +22,11 @@ export const CACHE_DIR = "cache";
 
 /** Internal .gitignore so cache + secrets stay out of git when the vault becomes a git repo. */
 export const VAULTS_GITIGNORE = ".gitignore";
+
+/** Fully-qualified settings file path. */
+export function settingsPath(vaultPath: string): string {
+  return join(vaultPath, VAULTS_DIR, SETTINGS_FILE);
+}
 
 /** Fully-qualified config file path. */
 export function configPath(vaultPath: string): string {
@@ -45,22 +50,35 @@ export function vaultsGitignore(vaultPath: string): string {
 
 /**
  * Throw with a friendly error if `vaultPath` doesn't look like an
- * initialised vault. The marker is `settings.md` at the vault root —
- * `vaults init` writes it; the rest of the CLI (build / preview / push /
- * role / patreon / password) reads it.
+ * initialised vault. The marker is the settings file — `vaults init` writes
+ * it; the rest of the CLI (build / preview / push / role / patreon /
+ * password) reads it.
  *
- * Catches the common confused-cwd case — `vaults preview` from $HOME or
- * a parent directory — with a clear next step instead of an opaque
- * "wrangler exited 1" / blank build a few seconds later.
+ * Catches the common confused-cwd case (`vaults preview` from $HOME or a
+ * parent directory) with a clear next step instead of an opaque "wrangler
+ * exited 1" a few seconds later.
+ *
+ * The legacy root settings.md counts: callers migrate straight after this
+ * check, so refusing an unmigrated vault would send the reader off to re-run
+ * `init` over their own settings.
  */
 export async function requireInitialisedVault(vaultPath: string): Promise<void> {
-  const marker = join(vaultPath, SETTINGS_FILE);
-  try { await stat(marker); }
-  catch {
-    throw new Error(
-      `Not a vaults-initialised directory: ${vaultPath}\n` +
-      `Missing ${SETTINGS_FILE}. Run \`vaults init\` here first, or pass the vault path as the first argument.`,
-    );
+  if (await exists(settingsPath(vaultPath))) return;
+  if (await exists(legacySettingsPath(vaultPath))) return;
+  throw new Error(
+    `Not a vaults-initialised directory: ${vaultPath}\n` +
+    `Missing ${VAULTS_DIR}/${SETTINGS_FILE}. Run \`vaults init\` here first, or pass the vault path as the first argument.`,
+  );
+}
+
+/** Does this path exist? A missing path is the answer; anything else throws. */
+export async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
   }
 }
 
@@ -69,6 +87,7 @@ export async function requireInitialisedVault(vaultPath: string): Promise<void> 
 // Runtime code must NOT read from these.
 
 export const LEGACY_CONFIG_FILE = ".vaultrc.json";
+export const LEGACY_SETTINGS_FILE = "settings.md";
 export const LEGACY_CACHE_DIR = ".vault-cache";
 
 export function legacyConfigPath(vaultPath: string): string {
@@ -77,4 +96,8 @@ export function legacyConfigPath(vaultPath: string): string {
 
 export function legacyCacheDir(vaultPath: string): string {
   return join(vaultPath, LEGACY_CACHE_DIR);
+}
+
+export function legacySettingsPath(vaultPath: string): string {
+  return join(vaultPath, LEGACY_SETTINGS_FILE);
 }

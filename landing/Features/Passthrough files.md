@@ -42,13 +42,13 @@ A file outside the recognised list is dropped from the deploy, with a warning at
 ```
   skipping 1 file(s) with unrecognized extensions:
     handouts/data.bin
-    Set 'include_unknown_files: true' in settings.md to ship them.
+    Run `vaults set include_unknown_files true` to ship them.
 ```
 
-The warning lists ten paths at most. This default keeps a stray file from bypassing role gating. To opt in, add this to `settings.md`:
+The warning lists ten paths at most. This default keeps a stray file from bypassing role gating. To opt in:
 
-```yaml
-include_unknown_files: true
+```bash
+vaults set include_unknown_files true
 ```
 
 Unknown-extension files then join the passthrough pool. They still need a reference from a visible page in the target variant to ship.

@@ -24,7 +24,7 @@ Smaller features, without a page of their own:
 
 - **Frontmatter dialog**: the `{}` button in the top-right of any page with frontmatter shows the raw YAML in a copyable box.
 - **Generated folder indexes**: a folder without an `index.md` gets one, a Bases table of its contents with a list of subfolders above it. See `Mossfoot/NPCs/index`, `Mossfoot/Items/index` and `Mossfoot/Lore/index`.
-- **Dark mode**: the theme picker in the sidebar offers auto, light and dark. `accent_color_dark` and `bg_color_dark` in `settings.md` set the dark palette; `accent_color` and `bg_color` set the light one.
+- **Dark mode**: the theme picker in the sidebar offers auto, light and dark. `accent_color_dark` and `bg_color_dark` in `.vaults/settings.yaml` set the dark palette; `accent_color` and `bg_color` set the light one.
 - **Social meta**: every page emits `og:title`, `og:type` and `og:site_name`. A page with a cover image also emits `og:image` and `twitter:image`, with a `summary_large_image` card.
 - **Search**: every variant ships its own `_search-index.json`. The search box in the sidebar matches substrings of titles, paths and body text, ranking title matches first.
 - **Hover previews**: desktop browsers preview a page on hover, fetching `<path>.preview.json` on demand. `preview_mode` selects the behaviour: `normal` (the default) shows a popover and navigates on click; `sticky` pins the popover open on click, with a "Go to page" link; `none` disables previews.
@@ -32,5 +32,5 @@ Smaller features, without a page of their own:
 - **External links open in a new tab**: links off-host get `target="_blank" rel="noopener noreferrer"`.
 - **Obsidian snippets**: `.obsidian/snippets/*.css` ships as `user.css`, loaded after the default theme. When `.obsidian/appearance.json` exists, only the snippets it enables are included.
 - **Page transclusion**: `![[Some Page]]` on its own line inlines that page's rendered body; `![[Some Page#Section]]` inlines one section. See [[Wikilinks]].
-- **Sitemap and robots**: with `site_url` set in `settings.md`, the build writes `sitemap.xml` and `robots.txt` listing the default-role pages.
+- **Sitemap and robots**: with `site_url` set in `.vaults/settings.yaml`, the build writes `sitemap.xml` and `robots.txt` listing the default-role pages.
 - **Schema migrations**: `vaults migrate` applies pending vault layout changes when the CLI's internal format moves. `--list` shows what exists, `--dry-run` what would change.

@@ -10,7 +10,7 @@ This page has `image: moss-tavern.webp` in its frontmatter. Open the `{}` button
 ## Inline body embeds
 
 ```markdown
-![[aelar-portrait.webp]]              # default_image_width from settings.md, 300px unless changed
+![[aelar-portrait.webp]]              # default_image_width from settings, 300px unless changed
 ![[aelar-portrait.webp|400]]          # explicit pixel width
 ![[aelar-portrait.webp|400x300]]      # width and height
 ```
@@ -35,11 +35,11 @@ Setting `image:` in a page's frontmatter does three things:
 
 ## Cover discovery
 
-A page with no `image:` takes the first image embed in its body as its cover. [[Bram]]'s page has no `image:` and still gets one, from the portrait in his body. Embeds inside code spans and code blocks do not count, so a page that quotes an embed as an example does not adopt it. Turn discovery off with `auto_image: false` in `settings.md`.
+A page with no `image:` takes the first image embed in its body as its cover. [[Bram]]'s page has no `image:` and still gets one, from the portrait in his body. Embeds inside code spans and code blocks do not count, so a page that quotes an embed as an example does not adopt it. Turn discovery off with `auto_image: false` in `.vaults/settings.yaml`.
 
 ## Compression and format conversion
 
-PNG, JPEG, WebP, AVIF, TIFF and GIF inputs are re-encoded to WebP at build time, at the quality `image_quality` sets in `settings.md` (85 by default; `0` disables compression and ships files as they are). SVG passes through untouched. The result lands under `attachments/` or wherever the source lives, mirroring the source path. The source file is not modified; only the deploy carries the recoded copy.
+PNG, JPEG, WebP, AVIF, TIFF and GIF inputs are re-encoded to WebP at build time, at the quality `image_quality` sets in `.vaults/settings.yaml` (85 by default; `0` disables compression and ships files as they are). SVG passes through untouched. The result lands under `attachments/` or wherever the source lives, mirroring the source path. The source file is not modified; only the deploy carries the recoded copy.
 
 ## Caching
 

@@ -17,7 +17,7 @@ From any Obsidian vault:
 ```bash
 cd ~/Documents/MyVault
 
-vaults init                          # write a settings.md the renderer will read
+vaults init                          # write the settings the renderer will read
 vaults role add public               # default tier (anyone can read)
 vaults role add patron               # tier above public, password-gated
 vaults role add dm                   # top tier
@@ -56,7 +56,9 @@ Cloudflare Pages           ← per-user, your account
 
 | Command | What it does |
 |---|---|
-| `vaults init` | Write a `settings.md` with sensible defaults. |
+| `vaults init` | Write a `.vaults/settings.yaml` with sensible defaults. |
+| `vaults get [key]` | Show one setting, or every setting. |
+| `vaults set <key> <value>` | Change a setting, e.g. `vaults set foundry.system pf2e`. |
 | `vaults build` | Render the vault to a local directory (no deploy). |
 | `vaults preview` | Render + serve locally via `wrangler pages dev` so you can click around with auth working. |
 | `vaults push` | Render + deploy to Cloudflare Pages. |
@@ -106,27 +108,22 @@ Run any command with `--help` for the full flag list.
 
 ## Settings
 
-`settings.md` lives at the root of your vault and is the single user-editable config:
+Everything about how a vault renders lives in `.vaults/settings.yaml`. Change it with the CLI:
 
-```yaml
----
-vault_name: My Wiki
-default_role: public
-accent_color: "#7a4a8c"
-bg_color: "#1a1a2e"
-favicon: assets/icons/wiki.png
-inline_title: true
-default_image_width: 300px
-center_images: true
-auto_image: true
-include_unknown_files: false
-ignore:
-  - Templates/**
-  - "*.draft.md"
----
+```bash
+vaults get                                  # every setting and its current value
+vaults get foundry.system                   # one value, bare, so it pipes
+vaults set vault_name "My Wiki"
+vaults set accent_color "#7a4a8c"
+vaults set ignore '[Templates/**, "*.draft.md"]'
 ```
 
-Open it in Obsidian; the frontmatter shows up as a Properties form. Unknown keys are warned about and stripped on next push, so the file stays canonical. Auth config (roles, passwords, OAuth credentials) is **not** in `settings.md`; it lives in `.vaults/config.json` (with secrets in `.vaults/.env`) and is managed by the CLI.
+A string setting takes the value verbatim; anything else is read as YAML, which is how a list or a nested object reaches it. A value the schema rejects is refused rather than quietly replaced by a default, and every write reformats the whole file, so it stays canonical and unknown keys are dropped.
+
+The file is a normal YAML file with a comment above each key, and hand-editing works. It sits under `.vaults/` because Obsidian hides dot-folders, which keeps it out of the note list, the quick switcher and the graph.
+
+Auth config (roles, passwords, OAuth credentials) is separate, in `.vaults/config.json` with secrets in `.vaults/.env`. That file is gitignored because it holds password hashes; `settings.yaml` is not, and belongs in the repo with the vault.
+
 
 ## Page frontmatter
 
@@ -227,17 +224,17 @@ Single-role (public-only) deploys skip the middleware entirely; everything serve
 
 ```
 MyVault/
-├── settings.md          ← user-editable settings (Obsidian Properties UI)
 ├── …content…
 ├── .env                 ← secrets only (SESSION_SECRET, PATREON_CLIENT_SECRET, OAUTH_CLIENT_SECRET) — gitignored
 └── .vaults/             ← all vaults-cli internal state lives here
     ├── .gitignore       ← keeps cache + config out of git automatically
+    ├── settings.yaml    ← vault settings; `vaults set` writes it, and it belongs in git
     ├── config.json      ← CLI-managed: roles, password hashes, project name, OAuth (Patreon / OIDC) config
     ├── cache/           ← build cache (rendered HTML, image webp cache)
     └── handlers/        ← optional: custom inline / code-block handlers
 ```
 
-`settings.md` lives at the vault root (and only there) so Obsidian renders it as an editable Properties form. Everything else is internal and tucked under `.vaults/`. `vaults init` writes `.vaults/.gitignore` automatically; if your vault is a git repo, this is enough to keep the cache + secrets-bearing config from being tracked.
+Nothing the CLI manages sits in the vault proper, so Obsidian shows your notes and only your notes. `vaults init` writes `.vaults/.gitignore` automatically; if your vault is a git repo, that keeps the cache and the secrets-bearing config out while leaving `settings.yaml` tracked.
 
 ## Migrations
 

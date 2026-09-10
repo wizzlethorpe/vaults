@@ -1,7 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { dump as dumpYaml } from "js-yaml";
-import { join } from "node:path";
-import matter from "gray-matter";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { dump as dumpYaml, load as loadYaml } from "js-yaml";
 
 // Single source of truth for user-editable settings: name, type, default,
 // description. To add a setting, add a line here. The schema drives parsing,
@@ -50,9 +49,8 @@ export type FoundryPackage = "none" | "compendium" | "adventure";
 /**
  * Everything this vault says about Foundry, under one key.
  *
- * Named the way a page names it. `foundry:` in frontmatter already means "the
- * Foundry facts about this thing", and three `foundry_*` scalars scattered
- * through settings.md were the same idea spelled differently.
+ * Named the way a page names it: `foundry:` in frontmatter already means "the
+ * Foundry facts about this thing".
  */
 export interface FoundrySettings {
   /** How the vault is packaged: browsable packs, one Adventure, or nothing. */
@@ -80,7 +78,7 @@ export const FOUNDRY_DEFAULTS: FoundrySettings = {
 
 const FOUNDRY_PACKAGES: FoundryPackage[] = ["none", "compendium", "adventure"];
 
-interface SettingDef<K extends keyof Settings> {
+export interface SettingDef<K extends keyof Settings> {
   default: Settings[K];
   type: SettingType;
   description: string;
@@ -100,7 +98,7 @@ export interface FrontmatterRule {
   data: Record<string, unknown>;
 }
 
-const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
+export const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
   vault_name: {
     default: "Vault",
     type: "string",
@@ -236,11 +234,11 @@ const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
 };
 
 export { SETTINGS_FILE } from "./paths.js";
-import { SETTINGS_FILE } from "./paths.js";
+import { SETTINGS_FILE, settingsPath } from "./paths.js";
 
 export interface LoadedSettings {
   values: Settings;
-  /** Did settings.md exist on disk? If false, defaults were used. */
+  /** Did the settings file exist on disk? If false, defaults were used. */
   exists: boolean;
   /** Was the on-disk version already canonical? If false, callers may want to write back. */
   changed: boolean;
@@ -248,21 +246,28 @@ export interface LoadedSettings {
 }
 
 /**
- * Read settings.md from a vault, normalise its values against the schema,
- * fill defaults, and surface warnings for unknown keys.
+ * Read the settings file from a vault, normalise its values against the
+ * schema, fill defaults, and surface warnings for unknown keys.
  */
 export async function loadSettings(vaultPath: string): Promise<LoadedSettings> {
-  const path = join(vaultPath, SETTINGS_FILE);
   let raw: string;
   try {
-    raw = await readFile(path, "utf8");
+    raw = await readFile(settingsPath(vaultPath), "utf8");
   } catch {
     const values = defaults();
     return { values, exists: false, changed: false, warnings: [] };
   }
+  const { values, warnings } = normalizeSettings(loadYaml(raw));
+  return { values, warnings, exists: true, changed: renderSettingsFile(values) !== raw };
+}
 
-  const parsed = matter(raw);
-  const fm = (parsed.data ?? {}) as Record<string, unknown>;
+/**
+ * The schema pass: fill defaults, drop and report anything the schema does
+ * not know, and coerce the `foundry` block. Takes whatever a YAML (or, for
+ * the 0.22 migration, a frontmatter) parse produced.
+ */
+export function normalizeSettings(input: unknown): { values: Settings; warnings: string[] } {
+  const fm = (isPlainObject(input) ? input : {}) as Record<string, unknown>;
   const warnings: string[] = [];
   const values = defaults();
 
@@ -270,12 +275,12 @@ export async function loadSettings(vaultPath: string): Promise<LoadedSettings> {
     if (!(key in fm)) continue;
     const v = fm[key];
     if (!matchesType(v, def.type)) {
-      warnings.push(`settings.md: '${key}' should be a ${def.type}, got ${describeType(v)}. Using default.`);
+      warnings.push(`${SETTINGS_FILE}: '${key}' should be a ${def.type}, got ${describeType(v)}. Using default.`);
       continue;
     }
     if (def.choices && !def.choices.includes(v as string)) {
       warnings.push(
-        `settings.md: '${key}' should be one of ${def.choices.join(", ")}, got '${String(v)}'. Using default.`,
+        `${SETTINGS_FILE}: '${key}' should be one of ${def.choices.join(", ")}, got '${String(v)}'. Using default.`,
       );
       continue;
     }
@@ -286,25 +291,28 @@ export async function loadSettings(vaultPath: string): Promise<LoadedSettings> {
 
   for (const key of Object.keys(fm)) {
     if (!(key in SCHEMA)) {
-      warnings.push(`settings.md: unknown setting '${key}' will be removed on next sync.`);
+      warnings.push(`${SETTINGS_FILE}: unknown setting '${key}' will be removed on next sync.`);
     }
   }
 
-  const canonical = renderSettingsFile(values);
-  return { values, exists: true, changed: canonical !== raw, warnings };
+  return { values, warnings };
 }
 
 /**
- * Write settings.md to disk in canonical form. Used by `init` and by `push`
- * whenever the on-disk file drifts from canonical.
+ * Write the settings file to disk in canonical form. Used by `init`, by
+ * `vaults set`, and by `build` whenever the on-disk file drifts.
  */
 export async function writeSettings(vaultPath: string, values: Settings): Promise<void> {
-  await writeFile(join(vaultPath, SETTINGS_FILE), renderSettingsFile(values));
+  const path = settingsPath(vaultPath);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, renderSettingsFile(values));
 }
 
+/** Cloned: the schema's defaults are module-level, and `vaults set` writes
+ *  into the object this returns. */
 function defaults(): Settings {
   return Object.fromEntries(
-    Object.entries(SCHEMA).map(([k, def]) => [k, def.default]),
+    Object.entries(SCHEMA).map(([k, def]) => [k, structuredClone(def.default)]),
   ) as unknown as Settings;
 }
 
@@ -326,7 +334,7 @@ function normalizeFoundry(values: Settings, warnings: string[]): void {
   for (const key of Object.keys(raw)) {
     if (!(key in FOUNDRY_DEFAULTS)) {
       warnings.push(
-        `settings.md: unknown key 'foundry.${key}'. Known: ${Object.keys(FOUNDRY_DEFAULTS).join(", ")}.`,
+        `${SETTINGS_FILE}: unknown key 'foundry.${key}'. Known: ${Object.keys(FOUNDRY_DEFAULTS).join(", ")}.`,
       );
     }
   }
@@ -334,23 +342,23 @@ function normalizeFoundry(values: Settings, warnings: string[]): void {
   const pkg = raw["package"];
   if (pkg !== undefined && !FOUNDRY_PACKAGES.includes(pkg as FoundryPackage)) {
     warnings.push(
-      `settings.md: 'foundry.package' should be one of ${FOUNDRY_PACKAGES.join(", ")}, `
+      `${SETTINGS_FILE}: 'foundry.package' should be one of ${FOUNDRY_PACKAGES.join(", ")}, `
       + `got '${String(pkg)}'. Using '${FOUNDRY_DEFAULTS.package}'.`,
     );
   }
   const role = raw["player_role"];
   if (role !== undefined && typeof role !== "string") {
-    warnings.push(`settings.md: 'foundry.player_role' should be a role name, got ${describeType(role)}.`);
+    warnings.push(`${SETTINGS_FILE}: 'foundry.player_role' should be a role name, got ${describeType(role)}.`);
   }
   const core = raw["core_version"];
   if (core !== undefined && typeof core !== "string" && typeof core !== "number") {
-    warnings.push(`settings.md: 'foundry.core_version' should be a Foundry version like 14.359, got ${describeType(core)}.`);
+    warnings.push(`${SETTINGS_FILE}: 'foundry.core_version' should be a Foundry version like 14.359, got ${describeType(core)}.`);
   } else if (typeof core === "number") {
     // YAML reads an unquoted 14.350 as the number 14.35, which is a different
     // version, and 14 as a generation. Quoting is the only way to say either
     // one exactly.
     warnings.push(
-      `settings.md: 'foundry.core_version' is unquoted, so YAML read it as the number ${core}.`
+      `${SETTINGS_FILE}: 'foundry.core_version' is unquoted, so YAML read it as the number ${core}.`
       + ` Quote it, as '14.359': unquoted, a trailing zero is lost and a bare generation is ambiguous.`);
   } else if (typeof core === "string" && /^\d+$/.test(core.trim())) {
     // A bare generation sorts before every patch-level migration inside it, so
@@ -360,24 +368,24 @@ function normalizeFoundry(values: Settings, warnings: string[]): void {
     // rebuilds `levels` from a v13 root background that a v14 export does not
     // have.
     warnings.push(
-      `settings.md: 'foundry.core_version' is '${String(core)}', a generation rather than a version.`
+      `${SETTINGS_FILE}: 'foundry.core_version' is '${String(core)}', a generation rather than a version.`
       + ` Foundry sorts that before every release in it and runs migrations your data is already past,`
       + ` which costs a Scene its levels. Use the full version you exported from, e.g. 14.359.`);
   }
   const sys = raw["system"];
   if (sys !== undefined && typeof sys !== "string") {
-    warnings.push(`settings.md: 'foundry.system' should be a system id like dnd5e, got ${describeType(sys)}.`);
+    warnings.push(`${SETTINGS_FILE}: 'foundry.system' should be a system id like dnd5e, got ${describeType(sys)}.`);
   }
   const module = raw["module"];
   if (module !== undefined && !isPlainObject(module)) {
-    warnings.push(`settings.md: 'foundry.module' should be a manifest object, got ${describeType(module)}.`);
+    warnings.push(`${SETTINGS_FILE}: 'foundry.module' should be a manifest object, got ${describeType(module)}.`);
   }
   // Quoted or the YAML scalar decides: 1.4.0 is a string, 1.4 is a number, and
   // only a string suppresses the date stamp.
   const moduleVersion = isPlainObject(module)
     ? (module as Record<string, unknown>)["version"] : undefined;
   if (moduleVersion !== undefined && typeof moduleVersion !== "string") {
-    warnings.push(`settings.md: 'foundry.module.version' should be a quoted string, got ${describeType(moduleVersion)}. Ignoring it and stamping a date.`);
+    warnings.push(`${SETTINGS_FILE}: 'foundry.module.version' should be a quoted string, got ${describeType(moduleVersion)}. Ignoring it and stamping a date.`);
   }
 
   values.foundry = {
@@ -411,7 +419,12 @@ function describeType(v: unknown): string {
 }
 
 function renderSettingsFile(values: Settings): string {
-  const lines: string[] = ["---"];
+  const lines: string[] = [
+    "# Vault settings, managed by `vaults set`.",
+    "# Hand edits survive, but unknown keys are removed and the file is",
+    "# reformatted on the next build.",
+    "",
+  ];
   for (const [key, def] of Object.entries(SCHEMA) as [keyof Settings, SettingDef<keyof Settings>][]) {
     lines.push(`# ${def.description}`);
     const value = (values as unknown as Record<string, unknown>)[key];
@@ -449,11 +462,6 @@ function renderSettingsFile(values: Settings): string {
     lines.push("");
   }
   while (lines[lines.length - 1] === "") lines.pop();
-  lines.push("---", "");
-  lines.push("# Vault settings");
-  lines.push("");
-  lines.push("This file is managed by `vaults`. Edit values above (in the frontmatter).");
-  lines.push("Unknown keys are removed on the next sync.");
   lines.push("");
   return lines.join("\n");
 }

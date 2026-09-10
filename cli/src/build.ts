@@ -57,7 +57,7 @@ export interface BuildOptions {
   allWarnings?: boolean;
 }
 
-/** BuildOptions plus the vault properties read out of settings.md. */
+/** BuildOptions plus the vault properties read out of the settings file. */
 type ResolvedOptions = BuildOptions & {
   siteUrl: string;
   vaultName: string;
@@ -179,7 +179,7 @@ function warnUnknownRoles(
     const role = rule.data?.["role"];
     if (typeof role === "string" && role && !known.has(role)) {
       console.warn(
-        `  settings.md: default_frontmatter rule '${rule.match}' assigns role `
+        `  ${SETTINGS_FILE}: default_frontmatter rule '${rule.match}' assigns role `
         + `"${role}", which is not one of [${roles.join(", ")}]. Pages matching it `
         + `fall back to "${roles[0]}".`,
       );
@@ -203,7 +203,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     await writeSettings(input.vaultPath, settings.values);
     console.log(`  rewrote ${SETTINGS_FILE} to canonical format`);
   }
-  // settings.md is the single source of truth for vault properties (see the
+  // The settings file is the single source of truth for vault properties (see the
   // SCHEMA in settings.ts). These used to also be CLI flags, with "was the
   // flag passed?" inferred by comparing against the flag's default — and the
   // defaults matched the schema's, so `build -q 85` against an
@@ -264,8 +264,8 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // writes one hoping it will keep the hidden files.
   const ignoreMatchers = settings.values.ignore.map((p) => picomatch(p, { dot: true }));
   const isIgnored = (path: string) => ignoreMatchers.some((m) => m(path));
-  const files = allFiles.filter((f) => f.path !== SETTINGS_FILE && !isIgnored(f.path));
-  const ignoredCount = allFiles.length - files.length - 1;
+  const files = allFiles.filter((f) => !isIgnored(f.path));
+  const ignoredCount = allFiles.length - files.length;
   console.log(`  found ${files.length} files in ${formatDuration(Date.now() - scanStart)}`
     + (ignoredCount > 0 ? ` (${ignoredCount} ignored by patterns)` : ""));
 
@@ -330,7 +330,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       if (unknownFiles.length > shown.length) {
         console.warn(`    … and ${unknownFiles.length - shown.length} more`);
       }
-      console.warn(`    Set 'include_unknown_files: true' in settings.md to ship them.`);
+      console.warn(`    Run \`vaults set include_unknown_files true\` to ship them.`);
     }
   }
   // Effective passthrough list: recognised media plus (optionally) unknowns.
@@ -817,7 +817,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       const published = cfg.foundryModule?.version;
       if (published && !ordersAbove(authored, published)) {
         throw new Error(
-          `settings.md: foundry.module.version "${authored}" does not order above the `
+          `${SETTINGS_FILE}: foundry.module.version "${authored}" does not order above the `
           + `"${published}" this vault already published, so Foundry will never offer the `
           + "update. Raise it, or remove it to go back to date stamping.");
       }

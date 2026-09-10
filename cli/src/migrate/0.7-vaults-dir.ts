@@ -6,11 +6,8 @@
 // Also writes .vaults/.gitignore so the cache + config (the latter holds
 // hashed passwords and session secret pointers) stay out of git when the
 // vault later becomes a git repo.
-//
-// settings.md stays at the vault root: it's user-edited from Obsidian, and
-// dotfolders are hidden from Obsidian's file pane by default.
 
-import { mkdir, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Migration } from "./types.js";
 import {
@@ -21,6 +18,7 @@ import {
   legacyCacheDir,
   CACHE_DIR,
   CONFIG_FILE,
+  exists,
 } from "../paths.js";
 
 export const vaultsDirMigration: Migration = {
@@ -77,12 +75,3 @@ export async function ensureVaultsGitignore(vaultPath: string): Promise<void> {
   await writeFile(path, lines);
 }
 
-async function exists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw err;
-  }
-}

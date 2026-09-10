@@ -613,7 +613,7 @@ export interface ManifestOptions {
   vaultUrl: string;
   /** The game system whose Actor and Item packs this vault targets. */
   systemId?: string;
-  /** Extra manifest keys from `foundry.module` in settings.md. */
+  /** Extra manifest keys from `foundry.module` in the vault settings. */
   extra?: Record<string, unknown>;
   packaging?: Packaging;
 }

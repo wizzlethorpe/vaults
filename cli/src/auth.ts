@@ -68,7 +68,7 @@ function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 /**
  * Generate a random secret used to sign session tokens. Stored as a wrangler
- * secret on push, never in settings.md or the static deployment.
+ * secret on push, never in the vault settings or the static deployment.
  */
 export function generateSessionSecret(): string {
   const bytes = webcrypto.getRandomValues(new Uint8Array(32));

@@ -49,7 +49,7 @@ note: Needs the Graft and Wizzlethorpe Vaults modules
 > 3. The content lands in compendium packs named after the vault. Right-click a pack and choose **Import All** with **Keep Document IDs** checked to bring documents into the world.
 > 4. To read a different tier, use **Reconnect Vault** in the header of one of the vault's compendium windows and build again. Signed in as `dm`, [[Hidden Caves]] and the DM callouts arrive.
 
-Nothing a vault builds is player-visible by default. `foundry.player_role` in `settings.md` names the highest tier players may read: set to `patron`, public and patron pages import with Observer ownership and `dm` pages stay GM-only. See [[Features/Foundry integration]].
+Nothing a vault builds is player-visible by default. `foundry.player_role` in `.vaults/settings.yaml` names the highest tier players may read: set to `patron`, public and patron pages import with Observer ownership and `dm` pages stay GM-only. See [[Features/Foundry integration]].
 
 ## Set up your own vault
 

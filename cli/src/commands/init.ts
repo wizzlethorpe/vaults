@@ -1,6 +1,7 @@
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { loadSettings, writeSettings, SETTINGS_FILE } from "../settings.js";
+import { loadSettings, writeSettings } from "../settings.js";
+import { settingsPath } from "../paths.js";
 import { ensureVaultsGitignore } from "../migrate/0.7-vaults-dir.js";
 
 interface InitOptions {
@@ -8,7 +9,7 @@ interface InitOptions {
 }
 
 export async function init(vaultPath: string, opts: InitOptions): Promise<void> {
-  const target = join(vaultPath, SETTINGS_FILE);
+  const target = settingsPath(vaultPath);
 
   // Verify the path is actually a directory before scribbling on it.
   try {
@@ -44,7 +45,7 @@ export async function init(vaultPath: string, opts: InitOptions): Promise<void> 
   // the .vaults/ dir) only when the vault is already versioned.
   await ensureRootGitignoreEntries(vaultPath, [".env"]);
 
-  console.log("Open it in Obsidian to edit the frontmatter; it'll show as a settings form.");
+  console.log("Edit it with `vaults set <key> <value>`, or `vaults get` to see every setting.");
 }
 
 /**

@@ -10,6 +10,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildSite } from "../src/build.js";
+import { writeSettingsFile } from "./settings-helpers.js";
 import {
   MANIFEST_PATH, foundryInstallHandler, hasFoundryInstall, parseInstallBlock,
 } from "../src/render/handlers/builtin/foundry-install.js";
@@ -45,8 +46,8 @@ describe("foundry-install", () => {
 
 /** Write a vault's files into `dir`, creating it if it is not there yet. */
 async function writeVault(dir: string, settings: string, pages: Record<string, string>) {
-  const files = { "settings.md": `---\nimage_quality: 0\n${settings}---\n`, ...pages };
-  for (const [p, c] of Object.entries(files)) {
+  await writeSettingsFile(dir, `image_quality: 0\n${settings}`);
+  for (const [p, c] of Object.entries(pages)) {
     const full = join(dir, p);
     await mkdir(dirname(full), { recursive: true });
     await writeFile(full, c);

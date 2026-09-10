@@ -2,7 +2,7 @@
 title: Foundry VTT integration
 ---
 
-A deployed vault is also a Foundry VTT module. The **Wizzlethorpe Vaults** Foundry module, built on [graft](https://github.com/wizzlethorpe/graft), reads the vault's deploy and builds its content on the reader's machine: journals from the pages, Foundry document links from the wikilinks, images and audio into the world's data directory, and real Actors, Items, Scenes and other documents from pages that ask for them. What it builds depends on `foundry.package` in `settings.md`: **compendium** packs, one per document type, or one **Adventure** document.
+A deployed vault is also a Foundry VTT module. The **Wizzlethorpe Vaults** Foundry module, built on [graft](https://github.com/wizzlethorpe/graft), reads the vault's deploy and builds its content on the reader's machine: journals from the pages, Foundry document links from the wikilinks, images and audio into the world's data directory, and real Actors, Items, Scenes and other documents from pages that ask for them. What it builds depends on `foundry.package` in `.vaults/settings.yaml`: **compendium** packs, one per document type, or one **Adventure** document.
 
 Nothing a vault ships is content the reader does not already own. A page that builds an Actor names a compendium document; the reader's Foundry resolves it, and the vault supplies only the patch.
 
@@ -11,7 +11,7 @@ label: Install this vault in Foundry
 note: Needs the Graft and Wizzlethorpe Vaults modules
 ```
 
-The box above is the `foundry-install` code block. It shows the vault's own install link and copies it; the build requires `site_url` in `settings.md` to write the module it points at.
+The box above is the `foundry-install` code block. It shows the vault's own install link and copies it; the build requires `site_url` in `.vaults/settings.yaml` to write the module it points at.
 
 ## How a vault reaches Foundry
 
@@ -232,7 +232,7 @@ Under `package: adventure` the vault builds one Adventure document, named after 
 
 ## Everything Foundry, under `foundry:`
 
-A vault's Foundry settings live in `settings.md`, in the same vocabulary a page uses for its own `foundry:` block:
+A vault's Foundry settings live in `.vaults/settings.yaml`, in the same vocabulary a page uses for its own `foundry:` block:
 
 ```yaml
 foundry:
@@ -274,7 +274,7 @@ Any HTML element carrying the `vaults-web-only` class is stripped from the journ
 
 ## `foundry.player_role`: what your players can read
 
-Set it in `settings.md` to the **highest role your Foundry players may read**. Pages at that role or below import with `OBSERVER` ownership; everything above stays GM-only. Empty, the default, makes none of the vault player-visible.
+Set it in `.vaults/settings.yaml` to the **highest role your Foundry players may read**. Pages at that role or below import with `OBSERVER` ownership; everything above stays GM-only. Empty, the default, makes none of the vault player-visible.
 
 ```yaml
 foundry:
@@ -329,4 +329,4 @@ The page still renders on the wiki. It never reaches Foundry: no journal page, a
 
 Setting the flag on a page that has already been built removes its journal page and its document from the pack on the next build, the same as deleting the page. A copy already imported into the world stays.
 
-The alternative is `ignore:` in `settings.md`, which drops the page from the build entirely, so it reaches neither the wiki nor Foundry. Use `ignore:` for files that are not content. Use `foundry.sync: false` for pages that belong on the wiki only.
+The alternative is `ignore:` in `.vaults/settings.yaml`, which drops the page from the build entirely, so it reaches neither the wiki nor Foundry. Use `ignore:` for files that are not content. Use `foundry.sync: false` for pages that belong on the wiki only.

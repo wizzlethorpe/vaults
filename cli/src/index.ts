@@ -8,6 +8,7 @@ import { password } from "./commands/password.js";
 import { roleAdd, roleDemote, roleList, rolePromote, roleRemove } from "./commands/role.js";
 import { patreonClear, patreonConfigure, patreonLink, patreonStatus, patreonUnlink } from "./commands/patreon.js";
 import { oidcClear, oidcConfigure, oidcStatus } from "./commands/oidc.js";
+import { settingsGet, settingsSet } from "./commands/settings.js";
 import { listMigrations, runMigrations } from "./migrate/run.js";
 import { CLI_VERSION } from "./version.js";
 
@@ -173,10 +174,25 @@ oidc
 
 program
   .command("init")
-  .description("Initialise a vault with a settings.md file")
+  .description("Initialise a vault with a .vaults/settings.yaml file")
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
-  .option("-f, --force", "Overwrite an existing settings.md")
+  .option("-f, --force", "Overwrite existing settings")
   .action(wrap(init));
+
+program
+  .command("set")
+  .description("Set a vault setting, e.g. `vaults set foundry.system dnd5e`")
+  .argument("<key>", "Setting name; dotted for nested keys (foundry.system)")
+  .argument("<value>", "New value. Strings are taken verbatim; anything else is read as YAML")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(wrap(settingsSet));
+
+program
+  .command("get")
+  .description("Show a vault setting, or every setting when given no key")
+  .argument("[key]", "Setting name; dotted for nested keys (foundry.system)")
+  .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
+  .action(wrap(settingsGet));
 
 program
   .command("build")
