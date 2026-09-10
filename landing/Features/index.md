@@ -24,6 +24,7 @@ Smaller features, without a page of their own:
 
 - **Frontmatter dialog**: the `{}` button in the top-right of any page with frontmatter shows the raw YAML in a copyable box.
 - **Generated folder indexes**: a folder without an `index.md` gets one, a Bases table of its contents with a list of subfolders above it. See `Mossfoot/NPCs/index`, `Mossfoot/Items/index` and `Mossfoot/Lore/index`.
+- **Folder notes**: with `folder_notes: true` in `.vaults/settings.yaml`, a note named after the folder it sits in is that folder's page, the convention Obsidian's folder-note plugins use. See [[Mossfoot/Decks]], which is written as `Mossfoot/Decks/Decks.md` and served at `/Mossfoot/Decks`. An `index.md` wins if a folder has both.
 - **Dark mode**: the theme picker in the sidebar offers auto, light and dark. `accent_color_dark` and `bg_color_dark` in `.vaults/settings.yaml` set the dark palette; `accent_color` and `bg_color` set the light one.
 - **Social meta**: every page emits `og:title`, `og:type` and `og:site_name`. A page with a cover image also emits `og:image` and `twitter:image`, with a `summary_large_image` card.
 - **Search**: every variant ships its own `_search-index.json`. The search box in the sidebar matches substrings of titles, paths and body text, ranking title matches first.

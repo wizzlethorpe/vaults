@@ -115,6 +115,7 @@ vaults get                                  # every setting and its current valu
 vaults get foundry.system                   # one value, bare, so it pipes
 vaults set vault_name "My Wiki"
 vaults set accent_color "#7a4a8c"
+vaults set folder_notes true
 vaults set ignore '[Templates/**, "*.draft.md"]'
 ```
 
@@ -124,6 +125,7 @@ The file is a normal YAML file with a comment above each key, and hand-editing w
 
 Auth config (roles, passwords, OAuth credentials) is separate, in `.vaults/config.json` with secrets in `.vaults/.env`. That file is gitignored because it holds password hashes; `settings.yaml` is not, and belongs in the repo with the vault.
 
+Every folder gets a page. By default the build generates one, listing the folder's subfolders and a table of its notes. Two ways to write your own instead: put an `index.md` in the folder, or set `folder_notes: true` and name the note after the folder it sits in (`Places/Places.md`), which is the convention Obsidian's folder-note plugins use. Either way the note is served at the folder's URL, and `[[Places]]` reaches it. An `index.md` wins if a folder somehow has both.
 
 ## Page frontmatter
 

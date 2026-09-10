@@ -1,6 +1,10 @@
 export interface PageMeta {
   /** Vault-relative path (e.g. "NPCs/Aldric.md"). */
   path: string;
+  /** Where the page was authored, when the build renamed it. A folder note is
+   *  built as its folder's index.md and must still answer to the name a reader
+   *  can see on disk. */
+  authoredPath?: string;
   /** Display title. */
   title: string;
   /** Minimum role required to view this page. Default = first role in settings.roles. */

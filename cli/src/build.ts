@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { availableParallelism } from "node:os";
 import picomatch from "picomatch";
 import { scanVault, type ScannedFile } from "./scan.js";
@@ -287,7 +287,13 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   await mkdir(workOutputDir, { recursive: true });
   opts = { ...opts, outputDir: workOutputDir };
 
-  const markdownFiles = withinLimit.filter((f) => /\.md$/i.test(f.path));
+  const mdFiles = withinLimit.filter((f) => /\.md$/i.test(f.path));
+  const folderNotes = settings.values.folder_notes
+    ? asFolderIndexes(mdFiles, basename(resolve(opts.vaultPath)))
+    : { files: mdFiles, renamed: new Map<string, string>() };
+  const markdownFiles = folderNotes.files;
+  /** The path a page was authored at, which is the one globs and links use. */
+  const authoredPath = (path: string) => folderNotes.renamed.get(path) ?? path;
   const imageFiles = withinLimit.filter((f) => IMAGE_EXT_RE.test(f.path));
   // .base files are consumed at build time (rendered into HTML where embedded)
   // and never shipped to the deploy.
@@ -386,7 +392,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     // the module compiler all see the same page. A default that only some of
     // them honoured would be a way for a synced vault and an installed module
     // to disagree about the same file.
-    applyFrontmatterDefaults(f.path, parsed.data, frontmatterRules);
+    applyFrontmatterDefaults(authoredPath(f.path), parsed.data, frontmatterRules);
     parsedSources.set(f.path, parsed);
   }
 
@@ -406,11 +412,12 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     }
     const title = (typeof fm.title === "string" ? fm.title
       : fm.title != null ? String(fm.title) : undefined)
-      ?? extractH1(src) ?? basenameNoExt(f.path);
+      ?? extractH1(src) ?? fallbackTitle(authoredPath(f.path));
     const aliases = toStringArray(fm.aliases);
 
     return {
       path: f.path,
+      ...(authoredPath(f.path) !== f.path ? { authoredPath: authoredPath(f.path) } : {}),
       title,
       role,
       ...(aliases.length > 0 ? { aliases } : {}),
@@ -1023,6 +1030,17 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     }
     markdownContent.set(basenameSlug, visibleSources.get(p.path)!);
     markdownContent.set(pathSlug, visibleSources.get(p.path)!);
+    // A renamed page answers to the name on disk too, so links and
+    // transclusions resolve without either resolver knowing about folder notes.
+    if (p.authoredPath) {
+      for (const slug of [
+        slugify(p.authoredPath.split("/").pop()!),
+        slugify(p.authoredPath.replace(/\.md$/i, "")),
+      ]) {
+        if (!pageIndex.has(slug)) pageIndex.set(slug, p);
+        if (!markdownContent.has(slug)) markdownContent.set(slug, visibleSources.get(p.path)!);
+      }
+    }
   }
 
   // Pre-compute outlinks per page so the Bases plugin can answer
@@ -1053,7 +1071,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     const result = await renderMarkdown(
       visibleSources.get(p.path)!,
       context,
-      basenameNoExt(p.path),
+      fallbackTitle(p.authoredPath ?? p.path),
       a.parsedSources.get(p.path),
     );
     rendered.set(p.path, {
@@ -1546,6 +1564,48 @@ function toStringArray(v: unknown): string[] {
 
 function basenameNoExt(path: string): string {
   return path.split("/").pop()!.replace(/\.md$/i, "");
+}
+
+/**
+ * Title for a page that states none and has no `# Heading`: the name it was
+ * authored under. A hand-written index page has only the folder's name to
+ * take, since "index" names nothing.
+ */
+function fallbackTitle(path: string): string {
+  const parts = path.split("/");
+  const base = basenameNoExt(parts.pop()!);
+  if (base.toLowerCase() !== "index") return base;
+  return parts.pop() ?? "Home";
+}
+
+/**
+ * Obsidian's folder-note convention: a note named after the folder it sits in
+ * is that folder's page, and a note named after the vault is its homepage.
+ * The rename is the whole feature, since every pass downstream already treats
+ * an index.md as the folder's page. `renamed` maps the new path back to the
+ * authored one, which is the name globs match and readers write.
+ */
+function asFolderIndexes(
+  files: ScannedFile[], vaultDirName: string,
+): { files: ScannedFile[]; renamed: Map<string, string> } {
+  const taken = new Set(files.map((f) => f.path.toLowerCase()));
+  const renamed = new Map<string, string>();
+  const out = files.map((f) => {
+    const parts = f.path.split("/");
+    // The vault's own directory name is not part of a vault-relative path, so
+    // the root note is compared against it rather than against a parent.
+    const folder = parts.length > 1 ? parts[parts.length - 2]! : vaultDirName;
+    if (basenameNoExt(parts[parts.length - 1]!).toLowerCase() !== folder.toLowerCase()) return f;
+    const indexPath = [...parts.slice(0, -1), "index.md"].join("/");
+    if (taken.has(indexPath.toLowerCase())) {
+      console.warn(`  folder note '${f.path}' left as a normal page: '${indexPath}' already exists.`);
+      return f;
+    }
+    taken.add(indexPath.toLowerCase());
+    renamed.set(indexPath, f.path);
+    return { ...f, path: indexPath };
+  });
+  return { files: out, renamed };
 }
 
 /**

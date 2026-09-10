@@ -19,7 +19,8 @@ import type { RenderContext } from "../types.js";
  * Context passed to a handler's render() function.
  */
 export interface HandlerContext {
-  /** Basename of the page being rendered, without its extension (e.g. "Aldric"). */
+  /** The page's title fallback: its basename without the extension, or the
+   *  folder's name for an index page (e.g. "Aldric"). Not a path. */
   pagePath: string;
   /** The rendering page's parsed frontmatter. */
   frontmatter: Record<string, unknown>;

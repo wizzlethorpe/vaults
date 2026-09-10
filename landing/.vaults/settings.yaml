@@ -30,7 +30,7 @@ ignore:
   - README.md
 
 # Treat a note named after the folder it sits in ('Places/Places.md') as that folder's page, the Obsidian folder-note convention. It is served at the folder's URL ('/Places') and replaces the index the build would otherwise generate there.
-folder_notes: false
+folder_notes: true
 
 # Inject the page title as an <h1>. Set false if your notes already start with their own '# Title'.
 inline_title: true

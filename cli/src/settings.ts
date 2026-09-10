@@ -16,6 +16,7 @@ export interface Settings {
   max_file_bytes: number;
   ignore: string[];
   default_frontmatter: FrontmatterRule[];
+  folder_notes: boolean;
   inline_title: boolean;
   default_image_width: string;
   center_images: boolean;
@@ -128,6 +129,12 @@ export const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     type: "string[]",
     description:
       "Glob patterns of files to skip, e.g. 'Templates/**' or '*.draft.md'. Wildcards cross hidden segments, so 'tools/**' also covers 'tools/.venv/**'.",
+  },
+  folder_notes: {
+    default: false,
+    type: "boolean",
+    description:
+      "Treat a note named after the folder it sits in ('Places/Places.md') as that folder's page, the Obsidian folder-note convention. It is served at the folder's URL ('/Places') and replaces the index the build would otherwise generate there.",
   },
   inline_title: {
     default: true,
