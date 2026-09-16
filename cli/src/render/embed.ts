@@ -194,7 +194,7 @@ function transcludePage(
 
   return {
     type: "blockquote",
-    data: { hName: "div", hProperties: { className: ["embed"] } },
+    data: { hName: "div", hProperties: { className: ["embed"], ...(page ? { dataVaultsRole: page.role } : {}) } },
     children,
   };
 }

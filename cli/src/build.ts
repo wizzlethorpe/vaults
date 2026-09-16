@@ -27,10 +27,10 @@ import { renderLayout, render404 } from "./render/layout.js";
 import { slugify } from "./render/slug.js";
 import { buildPreview } from "./render/preview.js";
 import { resolvePageImage } from "./render/cover.js";
-import { DEFAULT_CSS, renderThemeOverride } from "./render/styles.js";
+import { CONTENT_CSS, DEFAULT_CSS, renderThemeOverride } from "./render/styles.js";
 import { loadObsidianSnippets } from "./obsidian.js";
-import { loadSettings, writeSettings, SETTINGS_FILE, type Settings, type FrontmatterRule } from "./settings.js";
-import { loadConfig, saveConfig } from "./config.js";
+import { loadSettings, writeSettings, SETTINGS_FILE, type Settings, type FrontmatterRule, PAGES_FILE_BYTES } from "./settings.js";
+import { loadConfig } from "./config.js";
 import { applyFrontmatterDefaults, compileFrontmatterRules } from "./frontmatter-defaults.js";
 import matter from "gray-matter";
 import { renderAuthMiddleware, renderLoginPage } from "./render/auth-template.js";
@@ -43,11 +43,9 @@ import { bundleHandlerAssets } from "./render/handlers/assets.js";
 import { runMigrations } from "./migrate/run.js";
 import { cacheDir } from "./paths.js";
 import { formatDuration, pMap, Progress } from "./util.js";
-import { buildGrafts, contentHash, moduleManifest, moduleGrafts, packsFor, pagesFrom, withFolderIndexes } from "./foundry-grafts.js";
-import { toFoundryHtml, dualVariantBody } from "./foundry-html.js";
-import { zip } from "./zip.js";
-import type { ZipEntry } from "./zip.js";
-import { moduleVersion, ordersAbove } from "./foundry-version.js";
+import { buildGrafts, linkIndex, observable, pagesFrom, secretRoles, withFolderIndexes, type AssetFile, type GraftOptions } from "./foundry-grafts.js";
+import { chunkAssets, zip } from "./zip.js";
+import { toFoundryHtml } from "./foundry-html.js";
 import { loadDataJson } from "./foundry-meta.js";
 
 export interface BuildOptions {
@@ -387,11 +385,8 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   const parsedSources = new Map<string, PreParsedFrontmatter>();
   for (const f of markdownFiles) {
     const parsed = parsePageFrontmatter(sources.get(f.path)!, f.path);
-    // Applied here, at the one place a page's frontmatter is read, so that
-    // roles, the rendered wiki, the manifest the Foundry client syncs from and
-    // the module compiler all see the same page. A default that only some of
-    // them honoured would be a way for a synced vault and an installed module
-    // to disagree about the same file.
+    // Applied here, at the one place a page's frontmatter is read, so roles, the
+    // rendered wiki and the grafts.json build all see the same page.
     applyFrontmatterDefaults(authoredPath(f.path), parsed.data, frontmatterRules);
     parsedSources.set(f.path, parsed);
   }
@@ -542,20 +537,16 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     .digest("hex")
     .slice(0, 10);
 
-  const foundryEnabled = settings.values.foundry.package !== "none";
-  // The block promises a module this build is not writing, so the URL it shows
-  // would 404. Fail rather than deploy a dead install link. The module needs
-  // both a packaging and a URL to name; the warning below covers a vault with
-  // neither the block nor a site_url.
+  const foundryEnabled = settings.values.foundry.enabled;
+  // The block offers a download this build is not writing, so its link would
+  // 404. Fail rather than deploy a dead one.
   if (installPages.length > 0 && !(foundryEnabled && opts.siteUrl)) {
-    const why = foundryEnabled ? "site_url is not set" : 'foundry.package is "none"';
+    const why = foundryEnabled ? "site_url is not set" : "foundry.enabled is false";
     throw new Error(
       `foundry-install block on ${installPages.length} page(s), but ${why},`
-      + ` so this vault writes no module to install:\n${installPages.map((p) => `  ${p}`).join("\n")}`,
+      + ` so this vault writes nothing to import:\n${installPages.map((p) => `  ${p}`).join("\n")}`,
     );
   }
-  const foundryPackaging: "compendium" | "adventure" =
-    settings.values.foundry.package === "adventure" ? "adventure" : "compendium";
 
   // Favicon; either user-supplied via settings.favicon, or a generated
   // default with the vault's first letter in accent on the theme background.
@@ -609,12 +600,12 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     );
   }
 
-  // The module is only emitted when there is a URL to fetch the vault from,
-  // so without one the deploy carries content Foundry has no way to install.
+  // Every asset source is an absolute URL, so without one the entry list names
+  // no media and a build in Foundry arrives with none of its art.
   if (foundryEnabled && !opts.siteUrl) {
     console.warn(
-      "  site_url is not set, so no Foundry module is written."
-      + " The vault deploys, but there is nothing to install in Foundry."
+      "  site_url is not set, so the Foundry entry list names no media."
+      + " Pages still build, but their images and audio do not."
       + " Set it to the URL this vault is served from, e.g. https://notes.example.com.",
     );
   }
@@ -636,9 +627,10 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     foundryPatches.set(p.path, loaded as Record<string, unknown>);
   }));
 
-  // A module id from the vault name: stable, lowercase, no spaces. It names
-  // the packs too, so changing it orphans what a reader already built.
-  const foundryModuleId = opts.vaultName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+  // An id from the vault name: stable, lowercase, no spaces. It names the
+  // directory the reader's assets land in, so changing it strands the copies
+  // a reader already has.
+  const vaultId = opts.vaultName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
     || "vault";
 
   // ── Per-role variant builds ─────────────────────────────────────────────
@@ -646,22 +638,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   const collapseToRoot = roles.length === 1;
   let defaultRolePagePaths: string[] = [];
   let katexCopied = false;
-  // What the Foundry module compares a cached file against, so a rebuild
-  // re-fetches only what changed. Keyed "<variant>/<path>", and hashed once
-  // per asset rather than once per variant: every variant copies the same
-  // staged file. Roles run least privileged first, so by the time a variant
-  // writes its grafts.json the map holds every variant it can reference.
-  const assetHashes = new Map<string, string>();
-  const hashOf = new Map<string, string>();
-  const hashAsset = async (path: string, dir: string): Promise<string> => {
-    let digest = hashOf.get(path);
-    if (!digest) {
-      digest = createHash("md5").update(await readFile(join(dir, path))).digest("hex").slice(0, 16);
-      hashOf.set(path, digest);
-    }
-    return digest;
-  };
-
   for (const role of roles) {
     const variantDir = collapseToRoot
       ? opts.outputDir
@@ -703,9 +679,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       allWarnings: opts.allWarnings,
     });
     perRolePageCount[role] = stats.pageCount;
-    for (const path of stats.assetPaths) {
-      assetHashes.set(`${role}/${path}`, await hashAsset(path, variantDir));
-    }
     // Only the default (lowest) role feeds the sitemap; see writeSitemap.
     if (role === roles[0]) defaultRolePagePaths = stats.pagePaths;
     if (!collapseToRoot) console.log(`  variant '${role}': ${stats.pageCount} pages`);
@@ -722,123 +695,57 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     // auth middleware gates it: a role only ever receives the pages it may
     // read, and the GM's variant is the one that lists everything.
     if (foundryEnabled) {
+      const assetBase = `vaults/${vaultId}`;
+      // Every asset the entries end up naming, collected as they are written.
+      // Re-deriving it by searching the finished JSON missed any path holding
+      // a character the HTML attribute escaping rewrites.
+      const namedAssets = new Set<string>();
       const graftPages = withFolderIndexes(pagesFrom(allPageMetas, visibleRoles, foundryPatches), roles);
-      const grafts = buildGrafts(
-        graftPages,
-        {
-          vaultId: foundryModuleId,
-          roles,
-          playerRole: settings.values.foundry.player_role,
-          buildRole: role,
-          packs: packsFor(foundryModuleId),
-          coreVersion: settings.values.foundry.core_version,
-          system: settings.values.foundry.system,
-          packaging: foundryPackaging,
-          assets: Object.fromEntries(assetHashes),
+      // Read up front, rendered only when an entry asks: a rendered body names its
+      // images for shipping, so one no entry carries must not be rendered at all.
+      const articles = new Map(await pMap(graftPages.filter((p) => p.foundry?.sync !== false), concurrency,
+        async (page) => [page.path, await readFile(join(variantDir, `${page.path.replace(/\.md$/i, "")}.body.html`), "utf8")] as const));
+      const css = CONTENT_CSS + handlerAssets.css;
+      const rendered = new Map<string, string>();
+      const graftOpts: GraftOptions = {
+        vaultId,
+        roles,
+        playerRole: settings.values.foundry.player_role,
+        assetBase,
+        namedAssets,
+        coreVersion: settings.values.foundry.core_version,
+        system: settings.values.foundry.system,
+        // Once per page: a body can be both a journal page and a document's description.
+        body: (page) => {
+          let html = rendered.get(page.path);
+          if (html === undefined) {
+            html = toFoundryHtml(articles.get(page.path) ?? "", links, assetBase, namedAssets, {
+              // The rule the entry's ownership uses: a page players never open needs no secrets.
+              secretRoles: observable(page, graftOpts) ? hidden : new Set(),
+              css,
+            });
+            rendered.set(page.path, html);
+          }
+          return html;
         },
-      );
+      };
+      const links = linkIndex(graftPages, graftOpts);
+      const hidden = secretRoles(graftOpts);
+      const grafts = buildGrafts(graftPages, graftOpts);
       for (const warning of grafts.warnings) console.warn(`  warning: ${warning}`);
-
-      // A second body per page, with links resolved to UUIDs and media pointed
-      // at markers the Foundry module fills in. Foundry gets this one; the wiki keeps
-      // the plain `.body.html`, since the same HTML cannot serve both.
-      // A player-visible page's body carries both renders: the GM's inside a
-      // secret section, the player's in the open (see dualVariantBody). Roles
-      // build lowest first, so the player variant's body is already on disk.
-      const playerRole = settings.values.foundry.player_role;
-      const ceiling = roles.indexOf(playerRole);
-      const playerDir = collapseToRoot
-        ? opts.outputDir
-        : join(opts.outputDir, "_variants", playerRole);
-      // Only bodies an entry references: a page kept out of Foundry, or one
-      // whose prose goes nowhere, must not move the hash and prompt a rebuild.
-      const referenced = new Set(
-        [...JSON.stringify(grafts.file.entries).matchAll(/@vaults\/[^/"]+\/((?:[^"\\]|\\.)+?)\.foundry\.html/g)]
-          .map((m) => JSON.parse(`"${m[1]}"`) + ".md"));
-      const bodyHashes = new Map<string, string>();
-      await pMap(graftPages.filter((p) => referenced.has(p.path)), concurrency, async (page) => {
-        const base = page.path.replace(/\.md$/i, "");
-        const body = await readFile(join(variantDir, `${base}.body.html`), "utf8");
-        const gm = toFoundryHtml(body, grafts.links, role);
-        const observable = ceiling >= 0 && roles.indexOf(page.role) <= ceiling;
-        const dual = observable && roles.indexOf(role) > ceiling;
-        const out = dual
-          ? dualVariantBody(gm, toFoundryHtml(
-            await readFile(join(playerDir, `${base}.body.html`), "utf8"),
-            grafts.links, playerRole))
-          : gm;
-        await writeFile(join(variantDir, `${base}.foundry.html`), out);
-        bodyHashes.set(page.path, createHash("md5").update(out).digest("hex"));
-      });
-
-      grafts.file.contentHash = contentHash(grafts.file.entries, grafts.file.assets ?? {}, bodyHashes);
-
+      // Only what the entries name: a page kept out of Foundry, or media that
+      // only appears on the wiki, must not land in the reader's data directory.
+      const wanted = stats.assetPaths.filter((p) => namedAssets.has(p));
       await mkdir(join(variantDir, "_foundry"), { recursive: true });
-      await writeFile(
-        join(variantDir, "_foundry", "grafts.json"),
-        JSON.stringify(grafts.file, null, 2),
-      );
-      // The freshness signal, apart from the 1MB+ file it describes: the
-      // module reads this on world load to ask "anything new since I built?".
-      await writeFile(
-        join(variantDir, "_foundry", "version.json"),
-        JSON.stringify({ content: grafts.file.contentHash }),
-      );
+      const files = await assetFiles(wanted, variantDir, opts.siteUrl, assetBase, settings.values.zip_assets);
+      // The middleware fills in a token for each origin when a reader downloads the file.
+      if (files.length > 0) grafts.file.assets = { http: { auth: { [new URL(opts.siteUrl).origin]: "" }, files } };
+
+      const json = JSON.stringify(grafts.file, null, 2);
+      assertDeployable(`${role}'s grafts.json`, Buffer.byteLength(json));
+      await writeFile(join(variantDir, "_foundry", "grafts.json"), json);
     }
 
-  }
-
-  // The module a reader installs, served by the vault itself: no release, no
-  // zip, no registry — the GM sends players a link to their own vault. It is
-  // generated once and then inert, so pushing content never reinstalls it.
-  if (foundryEnabled && opts.siteUrl) {
-    const dir = join(opts.outputDir, "_foundry");
-    await mkdir(dir, { recursive: true });
-    const manifest = moduleManifest({
-      moduleId: foundryModuleId,
-      title: opts.vaultName,
-      vaultUrl: opts.siteUrl,
-      systemId: settings.values.foundry.system,
-      packaging: foundryPackaging,
-      extra: settings.values.foundry.module as Record<string, unknown>,
-    });
-
-    // The marker exists only inside the archive. graft reads a module's entry
-    // file from `modules/<id>/grafts.json` — the installed copy — so serving
-    // one at the deploy root would be a file nothing fetches, sharing a name
-    // with the per-variant entry list the middleware rewrites `/_foundry/` to.
-    const marker = Buffer.from(
-      JSON.stringify(moduleGrafts(opts.siteUrl, !collapseToRoot), null, 2) + "\n");
-
-    // What the module ships, named once: the same list is fingerprinted and
-    // archived, so a file can never reach one and miss the other. Pack
-    // directories are absent on purpose: Foundry creates them.
-    const serialize = () => Buffer.from(JSON.stringify(manifest, null, 2));
-    const shipped = (manifestJson: Buffer): ZipEntry[] => [
-      { name: `${foundryModuleId}/module.json`, data: manifestJson },
-      { name: `${foundryModuleId}/grafts.json`, data: marker },
-    ];
-
-    const authored = manifest["version"];
-    if (typeof authored === "string") {
-      const published = cfg.foundryModule?.version;
-      if (published && !ordersAbove(authored, published)) {
-        throw new Error(
-          `${SETTINGS_FILE}: foundry.module.version "${authored}" does not order above the `
-          + `"${published}" this vault already published, so Foundry will never offer the `
-          + "update. Raise it, or remove it to go back to date stamping.");
-      }
-    } else {
-      const stamped = moduleVersion(shipped(serialize()), cfg.foundryModule);
-      manifest["version"] = stamped.version;
-      if (stamped !== cfg.foundryModule) {
-        await saveConfig(input.vaultPath, { ...cfg, foundryModule: stamped });
-      }
-    }
-
-    const manifestJson = serialize();
-    await writeFile(join(dir, "module.json"), manifestJson);
-    await writeFile(join(dir, "module.zip"), zip(shipped(manifestJson)));
   }
 
   // ── Pages Functions ─────────────────────────────────────────────────────
@@ -955,7 +862,6 @@ interface VariantArgs {
   /** slugified basename → raw YAML for standalone `.base` files. */
   baseSources: Map<string, string>;
   imageIndex: Map<string, ImageEntry>;
-  /** Manifest path -> the file its own download field names; see copyReferencedPassthroughs. */
   /** Staging dir holding compressed images; we copy what's referenced. */
   imageStagingDir: string;
   /** Passthrough media (audio/video/pdf/epub) staged once, reference-copied per variant. */
@@ -1562,6 +1468,48 @@ function toStringArray(v: unknown): string[] {
   return [];
 }
 
+/**
+ * The media this variant ships, as files for graft's `http` handler. The content
+ * hash in each URL is how graft tells a changed file from one it has. No variant
+ * segment: the middleware serves a bare path from the caller's own variant.
+ */
+async function assetFiles(
+  paths: string[], variantDir: string, siteUrl: string, assetBase: string, zipMiB: number,
+): Promise<AssetFile[]> {
+  if (!siteUrl) return [];
+  const base = siteUrl.replace(/\/+$/, "");
+  const url = (path: string) => path.split("/").map(encodeURIComponent).join("/");
+  const md5 = (data: Buffer) => createHash("md5").update(data).digest("hex").slice(0, 16);
+
+  // Read once here for the hash and size; a chunk reads its own members again
+  // when it is built, so only one chunk is ever in memory.
+  const found: Array<{ path: string; size: number; hash: string }> = [];
+  for (const path of [...paths].sort()) {
+    const bytes = await readFile(join(variantDir, path));
+    found.push({ path, size: bytes.length, hash: md5(bytes) });
+  }
+
+  const zipOf = new Map<string, string>();
+  for (const chunk of zipMiB > 0 ? chunkAssets(found, zipMiB * 1024 * 1024) : []) {
+    const archive = zip(await Promise.all(chunk.map(async (f) =>
+      ({ name: f.path, data: await readFile(join(variantDir, f.path)) }))));
+    // Named by content, so an unchanged chunk keeps its URL across pushes.
+    const name = `_foundry/assets-${md5(archive)}.zip`;
+    await writeFile(join(variantDir, name), archive);
+    for (const f of chunk) zipOf.set(f.path, `${base}/${name}`);
+  }
+
+  return found.map((f) => {
+    const own = `${base}/${url(f.path)}?v=${f.hash}`;
+    const zipped = zipOf.get(f.path);
+    return {
+      source: zipped ? [`${zipped}#${url(f.path)}`, own] : own,
+      destination: `${assetBase}/${f.path}`,
+      size: f.size,
+    };
+  });
+}
+
 function basenameNoExt(path: string): string {
   return path.split("/").pop()!.replace(/\.md$/i, "");
 }
@@ -1687,4 +1635,11 @@ function htmlToText(html: string, max: number): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
+}
+
+/** Throws when a file is larger than Cloudflare Pages deploys, naming the file and its size. */
+export function assertDeployable(label: string, bytes: number): void {
+  if (bytes > PAGES_FILE_BYTES) {
+    throw new Error(`${label} is ${bytes} bytes, over the ${PAGES_FILE_BYTES} bytes Cloudflare Pages deploys as one file`);
+  }
 }

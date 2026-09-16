@@ -1,11 +1,6 @@
 // Normalise plain markdown image URLs (`![alt](path/to/foo.webp)`) to the
-// absolute, slugified URL the build emits for that image. Without this the
-// `<img src>` keeps the author's relative path verbatim — fine in a browser
-// loading the page from `/Features/Images.html` (which resolves
-// `../attachments/foo.webp` correctly), but broken anywhere else that loads
-// the rendered HTML out of context: most notably the Foundry module's
-// journal-page sheet, which runs from `/game` and ends up pointing at
-// `/attachments/foo.webp` as if it lived at the world root.
+// absolute, slugified URL the build emits for that image. A relative path only
+// resolves on the page it was written on; in a Foundry journal page it points nowhere.
 //
 // Wikilink-style image embeds (`![[foo.webp]]`) already resolve through the
 // embed plugin, which writes the absolute URL directly. This plugin is the

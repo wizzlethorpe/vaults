@@ -41,7 +41,7 @@ const sanitizeSchema = {
     // `download` asks the browser to save rather than navigate, which is what
     // the `download` handler's links are for. It carries no script and cannot
     // change where a link points, only what the browser does on arrival.
-    a: ["href", "title", "className", "id", "target", "rel", "download"],
+    a: ["href", "title", "className", "id", "target", "rel", "download", "dataVaultsRole"],
     div: ["className", "data*", "role"],
     span: ["className", "data*"],
     code: ["className", "title", "data*"],
@@ -49,6 +49,9 @@ const sanitizeSchema = {
     th: ["className", "data*", "tabindex"],
     td: ["className", "data*"],
     tr: ["className", "data*"],
+    // dataVaultsRole marks a bases item or an embed with the role it is gated
+    // to, which is how the Foundry build keeps it from players.
+    li: [...(defaultSchema.attributes?.["li"] ?? []), "dataVaultsRole"],
     input: ["type", "placeholder", "className", "ariaLabel"],
     button: ["type", "className", "data*", "role", "ariaSelected", "ariaLabel", "ariaHaspopup", "tabindex", "title"],
     // Foldable callouts emit <details open>; the default schema allows

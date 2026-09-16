@@ -3,7 +3,6 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DOC_TYPES } from "./foundry-types.js";
 import { documentFolder, documentTypeOf, firstBase } from "./foundry-grafts.js";
 import type { PageMeta } from "./render/types.js";
 
@@ -16,9 +15,9 @@ export function warnFoundryDocCollisions(pages: PageMeta[]): void {
     const spec = firstBase((fo as Record<string, unknown>)["source"]);
     if (!spec) continue;
     // The same reading the emitter uses, so a warning never describes a
-    // document that will not exist: a type with no pack produces nothing.
+    // document that will not exist.
     const docType = documentTypeOf(spec);
-    if (!docType || !DOC_TYPES[docType]) continue;
+    if (!docType) continue;
 
     const folder = documentFolder({ path: p.path, foundry: fo as { folder?: string } });
     const name = p.title || p.path.split("/").pop()!.replace(/\.md$/i, "");

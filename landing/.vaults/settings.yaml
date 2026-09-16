@@ -71,13 +71,15 @@ auto_image: true
 # Ship files with unrecognized extensions. Default false skips them with a warning, so a stray file cannot bypass role gating. Recognized media (audio, video, pdf, epub) is reference-gated either way.
 include_unknown_files: false
 
-# Foundry VTT integration. 'package': 'adventure' ships the vault as one Adventure document you import once, 'compendium' (the default) as browsable packs, one per document type, 'none' ships nothing. 'player_role': the highest role players may read. Pages at or below it arrive player-visible; empty (the default) means none are. 'system': the game system your Actor and Item content targets, e.g. dnd5e. 'core_version': the full quoted Foundry version your exported Scene / Actor JSON came from, e.g. '14.359'. A bare '14' sorts before every release in that generation and costs a Scene its levels. 'module': extra keys merged into the module.json the vault serves, such as 'authors'. A quoted 'version' there takes over the numbering, and must rise on every release or Foundry stops offering updates; leave it out to have the build stamp a date.
+# Also ship each role's Foundry assets as zips of at most this many MiB, so a first import is a few downloads instead of hundreds. 0 turns it off. At most 25, Cloudflare Pages' per-file limit. Smaller zips mean a rebuild that changes one file drags fewer others along.
+zip_assets: 0
+
+# Foundry VTT integration. 'enabled': write the grafts.json a reader downloads and imports into their world. 'player_role': the highest role players may read. Journal pages at or below it arrive player-visible; empty (the default) means none are. Documents a page builds, such as Actors and Items, are GM-only whatever the role, unless the page's foundry.patch sets their ownership. 'system': the game system your Actor and Item content targets, e.g. dnd5e. 'core_version': the full quoted Foundry version your exported Scene / Actor JSON came from, e.g. '14.359'. A bare '14' sorts before every release in that generation and costs a Scene its levels.
 foundry:
-  package: compendium
+  enabled: true
   player_role: ''
   system: dnd5e
   core_version: '14.359'
-  module: {}
 
 # Public base URL this vault is served from, e.g. 'https://notes.example.com'. Set it and the build writes sitemap.xml and robots.txt; leave it empty and neither is written. Only default-role pages are listed, so a sitemap cannot advertise gated ones.
 site_url: "https://vaults.wizzlethorpe.com"

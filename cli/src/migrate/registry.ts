@@ -5,10 +5,12 @@ import { vaultsDirMigration } from "./0.7-vaults-dir.js";
 import { foundryPatchKeysMigration } from "./0.15-foundry-patch-keys.js";
 import { foundryPinnedIdMigration } from "./0.15-foundry-pinned-id.js";
 import { settingsYamlMigration } from "./0.22-settings-yaml.js";
+import { foundryEnabledMigration } from "./0.23-foundry-enabled.js";
 
 export const MIGRATIONS: ReadonlyArray<Migration> = [
   vaultsDirMigration,
   foundryPatchKeysMigration,
   foundryPinnedIdMigration,
   settingsYamlMigration,
+  foundryEnabledMigration,
 ];

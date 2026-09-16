@@ -105,10 +105,10 @@ describe("vaults set", () => {
   it("takes a nested foundry key without disturbing its siblings", async () => {
     const dir = await initialised();
     try {
-      await quiet(() => settingsSet("foundry.package", "adventure", dir));
+      await quiet(() => settingsSet("foundry.enabled", "false", dir));
       await quiet(() => settingsSet("foundry.system", "pf2e", dir));
       const { values } = await loadSettings(dir);
-      assert.equal(values.foundry.package, "adventure");
+      assert.equal(values.foundry.enabled, false);
       assert.equal(values.foundry.system, "pf2e");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
@@ -123,13 +123,13 @@ describe("vaults set", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
-  it("refuses a value outside a setting's vocabulary instead of storing a default", async () => {
+  it("refuses a value of the wrong type inside the foundry block", async () => {
     const dir = await initialised();
     try {
-      await assert.rejects(() => settingsSet("foundry.package", "adventurte", dir),
-        /Refusing to set 'foundry.package'/);
+      await assert.rejects(() => settingsSet("foundry.enabled", "yes please", dir),
+        /Refusing to set 'foundry.enabled'/);
       const { values } = await loadSettings(dir);
-      assert.equal(values.foundry.package, "compendium");
+      assert.equal(values.foundry.enabled, true);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
@@ -141,14 +141,14 @@ describe("vaults set", () => {
   });
 
   it("refuses a value the schema warns about but does not replace", async () => {
-    // foundry.module.version only warns, so comparing the stored value against
-    // the input says nothing. Written, it is a number the build then ignores.
+    // A bare generation warns without being replaced, so comparing the stored
+    // value against the input says nothing. Written, it costs a Scene its levels.
     const dir = await initialised();
     try {
-      await assert.rejects(() => settingsSet("foundry.module.version", "1.4", dir),
-        /Refusing to set 'foundry.module.version'/);
+      await assert.rejects(() => settingsSet("foundry.core_version", "14", dir),
+        /Refusing to set 'foundry.core_version'/);
       const { values } = await loadSettings(dir);
-      assert.deepEqual(values.foundry.module, {});
+      assert.equal(values.foundry.core_version, "");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 

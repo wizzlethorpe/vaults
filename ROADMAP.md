@@ -21,14 +21,13 @@ foundry:
 Decided:
 
 - **A non-text page drops the article body.** An `image`, `video` or `pdf` page's content *is* its `src`, so there is nowhere for prose to live. Say so at build time rather than silently discarding it.
-- **A world without the type degrades to `text`, with a warning.** Same as a `foundry.source` rung that cannot resolve. Only the Foundry module can do this, since it runs inside the world and can ask what types exist; the compiled `grafts.json` carries what the vault declared and cannot know the reader's system.
-- **Divergence between package shapes is no longer a risk.** `compendium` and `adventure` both compile from the one entry list `journalEntries` writes, so the overlay lands in `foundry-grafts.ts` once.
+- **A world without the type degrades to `text`, with a warning.** Same as a `foundry.source` rung that cannot resolve. Only something running inside the world can do this, since it has to ask what types exist; the compiled `grafts.json` carries what the vault declared and cannot know the reader's system. That makes it a graft-side decision, not a build-side one.
 
 This shipped once (8a6749b) against the pre-graft architecture and was lost in the graft rewrite; the decisions above are that implementation's, and its spec conformance tests are in history to crib from.
 
 ## 2. Separating vaults from Foundry
 
-Vaults is increasingly used for things with nothing to do with TTRPGs, and those deploys should not carry a Foundry payload. `foundry.package: none` handles the deploy side already.
+Vaults is increasingly used for things with nothing to do with TTRPGs, and those deploys should not carry a Foundry payload. `foundry.enabled: false` handles the deploy side already.
 
 What remains is the built-ins: `statblock`, `battlemap` and `dice` are hardcoded rather than bundled-but-disableable handlers. **Do not build a plugin system for this.** The handler registry already is one, with user-authored handlers, browser JS and CSS, and Foundry opt-in. A general plugin API earns its keep when a third party wants to write one, and today the third party is us.
 
@@ -46,7 +45,7 @@ This separates two things the Moulinette work conflated. A `foundry.source` prio
 
 ## 5. Vaults as decentralised distribution
 
-Vaults already has most of what a content marketplace sells: entitlement checking, per-user access, a client that pulls content into Foundry, auth for that client, and multiple creators in one world. Structurally it is *better* for entitlement than a client-side gate, because a non-subscriber is not filtered by a module they could patch. The premium files are simply not in the variant the server returns.
+Vaults already has most of what a content marketplace sells: entitlement checking, per-user access, a per-role grafts.json with scoped asset tokens, and multiple creators in one world. Structurally it is *better* for entitlement than a client-side gate, because a non-subscriber is not filtered by a module they could patch. The premium files are simply not in the variant the server returns.
 
 Missing: **cross-vault addressing** (the hard part is identity, since vault ids derive from the URL and a creator changing domains breaks every reference, so settle a stable creator id early), **dependency declaration**, and **a catalogue**. The catalogue is the real gap and it is not technical. Search across creators is Moulinette's actual product, and building an index recentralises exactly the part that matters.
 
@@ -55,5 +54,4 @@ So: aim to be the publishing substrate something else indexes over, rather than 
 ## Smaller open items
 
 - `vaults preview` renders pages containing only base code as raw base code rather than the rendered view.
-- Foundry-side coverage is partial. The pure helpers are tested, but anything touching Foundry globals (`FilePicker`, `game.scenes`) needs a mock layer, so `assets.mjs` and the freshness prompt are verified only against a live world.
 - Cloudflare Pages caps a deploy at 20,000 files. Fine for a rules vault, a real constraint for an asset library.

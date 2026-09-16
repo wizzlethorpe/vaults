@@ -1,15 +1,14 @@
-// A minimal zip writer, for the module a vault ships: two small JSON files,
-// stored uncompressed. The `zip` binary is absent on Windows and many CI
-// images, which is why this exists.
+// A minimal zip writer for asset chunks, stored uncompressed: the assets are
+// webp and ogg, already compressed, so deflating them costs time for nothing.
+// The `zip` binary is absent on Windows and many CI images.
 
 // Added in Node 22.2.0, which is why package.json asks for it exactly.
 import { crc32 } from "node:zlib";
 
 export interface ZipEntry { name: string; data: Buffer }
 
-// MS-DOS time, which is what the format stores. A fixed timestamp keeps the
-// archive byte-identical between builds of identical content, so a reader is
-// not told there is a new version because the clock moved.
+// A fixed timestamp keeps identical content byte-identical, so a chunk's name,
+// which is its hash, only moves when what is in it does.
 const DOS_TIME = 0;
 const DOS_DATE = 0x21; // 1980-01-01
 
@@ -85,4 +84,32 @@ export function zip(entries: ZipEntry[]): Buffer {
   end.writeUInt16LE(0, 20);            // comment length
 
   return Buffer.concat([...local, directory, end]);
+}
+
+/** A member's local and central headers, before the two copies of its name. */
+const ENTRY_OVERHEAD = 30 + 46;
+/** The end-of-central-directory record every archive ends with. */
+const TRAILER = 22;
+
+/**
+ * Greedy chunks whose archive is at most `maxBytes`, in the order given. The
+ * headers count, since the limit is the deployed file's size; a file too big for any chunk gets none.
+ */
+export function chunkAssets<T extends { path: string; size: number }>(files: T[], maxBytes: number): T[][] {
+  const cost = (file: T) => file.size + ENTRY_OVERHEAD + 2 * Buffer.byteLength(file.path);
+  const chunks: T[][] = [];
+  let current: T[] = [];
+  let bytes = TRAILER;
+  for (const file of files) {
+    if (TRAILER + cost(file) > maxBytes) continue;
+    if (bytes + cost(file) > maxBytes && current.length > 0) {
+      chunks.push(current);
+      current = [];
+      bytes = TRAILER;
+    }
+    current.push(file);
+    bytes += cost(file);
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
 }

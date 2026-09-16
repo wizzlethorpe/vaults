@@ -84,7 +84,7 @@ The auth Function does two things by default:
 
 What it does not do, and what to consider configuring on Cloudflare:
 
-- **Rate limiting on `/login` and `/connect/approve`.** PBKDF2 costs about 100 ms per guess, which slows but does not stop a distributed credential spray. Cloudflare's rate limiting has a free tier; turn it on for those routes if the vault is high-value. Cloudflare's DDoS protection covers volumetric attacks, not a slow trickle.
+- **Rate limiting on `/login`.** PBKDF2 costs about 100 ms per guess, which slows but does not stop a distributed credential spray. Cloudflare's rate limiting has a free tier; turn it on for those routes if the vault is high-value. Cloudflare's DDoS protection covers volumetric attacks, not a slow trickle.
 - **WAF rules.** The free tier includes a managed ruleset.
 
 Rotate the cookie-signing key any time you suspect a leak:

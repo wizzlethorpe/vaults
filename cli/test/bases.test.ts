@@ -9,6 +9,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { renderBase } from "../src/render/bases.js";
+import { journalBody } from "../src/foundry-html.js";
 import {
   mkContext,
   tableTitles,
@@ -407,5 +408,14 @@ describe("renderBase: unsupported view types", () => {
     assert.match(html, /not supported/);
     // The valid view should still be present.
     assert.match(html, /bases-table/);
+  });
+});
+
+describe("renderBase: in a Foundry journal", () => {
+  it("keeps the tab strip on the wiki and leaves it out of a journal", () => {
+    const ctx = mkContext([{ path: "A.md" }]);
+    const html = renderBase("views:\n  - type: table\n    name: One\n  - type: list\n    name: Two\n", ctx);
+    assert.match(html, /bases-tab-strip/);
+    assert.doesNotMatch(journalBody(html, { secretRoles: new Set(), css: "" }), /bases-tab-strip/);
   });
 });

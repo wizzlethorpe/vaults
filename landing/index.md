@@ -39,17 +39,17 @@ Wizzlethorpe Vaults turns an Obsidian vault into a self-hosted, role-gated wiki 
 This vault also builds into a Foundry world. Each folder becomes a JournalEntry with one page per note, wikilinks become Foundry document links, and pages with a `foundry.source` block become real Actors, Items, Scenes, tables, decks, playlists and macros, built on your machine from the compendiums you already own.
 
 ```foundry-install
-label: Install this vault in Foundry
-note: Needs the Graft and Wizzlethorpe Vaults modules
+label: Add this vault to Foundry
+note: Needs the Graft module
 ```
 
 > [!tip] Import this vault into Foundry
-> 1. In Foundry, install this vault's own module from the link above. It requires **Graft** and **Wizzlethorpe Vaults**, so Foundry offers to install both with it.
-> 2. Enable all three in a dnd5e world. Wizzlethorpe Vaults offers to build the vault. This vault is role-gated, so it first asks you to connect: open the link it shows, sign in at the tier you want Foundry to read, approve access, and paste the token back.
-> 3. The content lands in compendium packs named after the vault. Right-click a pack and choose **Import All** with **Keep Document IDs** checked to bring documents into the world.
-> 4. To read a different tier, use **Reconnect Vault** in the header of one of the vault's compendium windows and build again. Signed in as `dm`, [[Hidden Caves]] and the DM callouts arrive.
+> 1. Sign in at the tier you want Foundry to read, then download the file above. It is your own copy: a `dm` sign-in gets the DM's pages, a public one does not.
+> 2. In a dnd5e world with **Graft** enabled, open **Import grafts** on Graft's settings tab and load the file.
+> 3. The content lands in the world, foldered to match the vault. Signed in as `dm`, [[Hidden Caves]] and the DM callouts arrive.
+> 4. For newer content, download the file again and import it again. The link inside it expires after two hours.
 
-Nothing a vault builds is player-visible by default. `foundry.player_role` in `.vaults/settings.yaml` names the highest tier players may read: set to `patron`, public and patron pages import with Observer ownership and `dm` pages stay GM-only. See [[Features/Foundry integration]].
+Nothing a vault builds is player-visible by default. `foundry.player_role` in `.vaults/settings.yaml` names the highest tier players may read: set to `patron`, public and patron journal pages arrive with Observer ownership and `dm` pages stay GM-only. Actors, Items and the other documents a page builds are GM-only regardless. See [[Features/Foundry integration]].
 
 ## Set up your own vault
 

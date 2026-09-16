@@ -30,12 +30,7 @@ function readPath(values: Settings, path: string[]): unknown {
 
 function writePath(values: Settings, path: string[], value: unknown): void {
   let node = values as unknown as Record<string, unknown>;
-  for (const key of path.slice(0, -1)) {
-    // Reachable inside foundry.module, whose keys are a Foundry manifest and
-    // nest as deep as Foundry accepts.
-    if (!isRecord(node[key])) node[key] = {};
-    node = node[key] as Record<string, unknown>;
-  }
+  for (const key of path.slice(0, -1)) node = node[key] as Record<string, unknown>;
   node[path[path.length - 1]!] = value;
 }
 
@@ -65,7 +60,7 @@ export async function settingsSet(key: string, value: string, vaultPath: string)
   // Both ways the schema refuses a value have to stop the write, or the file
   // records something the build ignores: substituting a default, which
   // `stored` shows, and warning without substituting, which is how
-  // foundry.module.version rejects an unquoted number.
+  // foundry.core_version rejects an unquoted number.
   const checked = normalizeSettings(values);
   const stored = readPath(checked.values, path);
   const complaint = checked.warnings.find((w) => w.includes(`'${key}'`));

@@ -19,7 +19,7 @@ foundry:
 
 A one-track Playlist that points at [mossfoot-tavern.ogg](../Audio/mossfoot-tavern.ogg), a layered tavern ambience mixed from the [Sonniss GDC library](https://sonniss.com/gameaudiogdc/).
 
-The `@vault/PATH` prefix in the sound's `path` becomes a reference the Foundry module downloads into the per-vault cache, the same as an image, so playback works offline and survives moving the vault between deploys.
+The `@vault/PATH` prefix in the sound's `path` becomes the path graft's `http` handler downloads the file to, the same as an image, so playback works offline and survives moving the vault between deploys.
 
 ![[mossfoot-tavern.ogg]]
 

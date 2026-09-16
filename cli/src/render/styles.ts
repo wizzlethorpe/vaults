@@ -53,11 +53,283 @@ function accentBlock(selector: string, color: string): string {
 }`;
 }
 
+/** The wiki's light palette. The Foundry build maps it onto Foundry's own theme where Foundry has an equivalent. */
+export const PALETTE = {
+  bg: "#f4ecd8", fg: "#1d1a17", muted: "#6b665e",
+  accent: "#a8201a", accentSoft: "#c8423d", accentFg: "#fbf6e8",
+  rule: "#d8cfb8",
+  wikilinkBg: "rgba(168,32,26,0.10)", wikilinkBgHover: "rgba(168,32,26,0.20)",
+};
+
+/**
+ * The rules for what a page's article renders: bases, folder listings,
+ * callouts, dice, embeds. The wiki's stylesheet includes them, and the
+ * Foundry build writes them onto each journal page, which keeps no
+ * stylesheet of its own.
+ */
+export const CONTENT_CSS = `/* Obsidian Bases tables */
+.bases-block {
+  margin: 1rem 0;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--muted) 4%, transparent);
+}
+
+/* Multi-view tabbed container: tab strip on top, blocks below as panels.
+   The block inside loses its outer rounding/border on top so it merges
+   visually with the active tab without doubled rules. */
+.bases-tabbed {
+  margin: 1rem 0;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--muted) 4%, transparent);
+}
+.bases-tabbed .bases-block {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.bases-tabbed .bases-block .bases-caption { display: none; }
+.bases-tab-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.4rem 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.bases-tab {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.4rem 0.85rem;
+  margin-bottom: -1px;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.bases-tab:hover {
+  color: var(--accent);
+}
+.bases-tab-active {
+  color: inherit;
+  background: var(--bg);
+  border-color: var(--rule);
+  border-bottom-color: var(--bg);
+}
+.bases-tab-panel[hidden] { display: none !important; }
+.bases-caption {
+  padding: 0.55rem 0.85rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-bottom: 1px solid var(--rule);
+}
+.bases-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+}
+.bases-filter {
+  flex: 1;
+  padding: 0.4rem 0.65rem;
+  font: inherit; font-size: 0.85rem;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+.bases-filter:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--wikilink-bg);
+}
+.bases-count { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.bases-scroll { overflow-x: auto; }
+.bases-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin: 0;
+}
+.bases-table thead th {
+  text-align: left;
+  padding: 0.5rem 0.85rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.bases-table thead th:hover { color: var(--accent); }
+.bases-table thead th[aria-sort="ascending"]::after { content: " ▲"; font-size: 0.7em; opacity: 0.7; }
+.bases-table thead th[aria-sort="descending"]::after { content: " ▼"; font-size: 0.7em; opacity: 0.7; }
+.bases-table tbody td {
+  padding: 0.45rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+.bases-table tbody tr:last-child td { border-bottom: none; }
+.bases-table tbody tr[hidden] { display: none; }
+.bases-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--muted) 4%, transparent); }
+.bases-error {
+  padding: 0.75rem 0.85rem;
+  color: #b94a3a;
+  font-size: 0.9rem;
+}
+
+/* Cards view */
+.bases-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  padding: 0.75rem;
+}
+.bases-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg);
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s;
+}
+/* Author rules with display:flex/grid/... override the UA [hidden]
+   default, so the runtime filter has nothing to cling to. Force the hide
+   here for every Bases item type. */
+.bases-card[hidden],
+.bases-list li[hidden],
+.bases-table tr[hidden] {
+  display: none !important;
+}
+.bases-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.bases-card-cover {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background-color: color-mix(in srgb, var(--muted) 8%, transparent);
+  overflow: hidden;
+}
+.bases-card-cover img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.bases-card-cover-cover img { object-fit: cover; object-position: center; }
+.bases-card-cover-contain img { object-fit: contain; object-position: center; }
+.bases-card-cover-1x1 { aspect-ratio: 1 / 1; }
+.bases-card-cover-3x2 { aspect-ratio: 3 / 2; }
+.bases-card-cover-4x3 { aspect-ratio: 4 / 3; }
+.bases-card-cover-16x9 { aspect-ratio: 16 / 9; }
+.bases-card-cover-3x4 { aspect-ratio: 3 / 4; }
+.bases-card-cover-2x3 { aspect-ratio: 2 / 3; }
+.bases-card-body {
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.bases-card-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+.bases-card-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* List view */
+.bases-list {
+  list-style: none;
+  padding: 0.25rem 0;
+  margin: 0;
+}
+.bases-list > li {
+  padding: 0.4rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.bases-list > li:last-child { border-bottom: none; }
+.bases-list-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.bases-list-sep { opacity: 0.5; }
+
+/* Auto-generated folder index pages */
+.folder-count { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.9rem; }
+.folder-listing { list-style: none; padding: 0; margin: 0; }
+.folder-listing > li { padding: 0.6rem 0; border-bottom: 1px solid var(--rule); }
+.folder-listing > li:last-child { border-bottom: none; }
+
+/* Callouts */
+.callout {
+  margin: 1rem 0; padding: 0.75rem 1rem; border-left: 4px solid var(--muted);
+  border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--muted) 8%, transparent);
+}
+.callout > .callout-title { font-weight: 700; margin-bottom: 0.35rem; color: var(--muted); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em; }
+.callout > *:last-child { margin-bottom: 0; }
+.callout-note, .callout-info { border-left-color: #3b7bbf; background: color-mix(in srgb, #3b7bbf 10%, transparent); }
+.callout-note > .callout-title, .callout-info > .callout-title { color: #3b7bbf; }
+.callout-tip, .callout-hint { border-left-color: #2a8b58; background: color-mix(in srgb, #2a8b58 10%, transparent); }
+.callout-tip > .callout-title, .callout-hint > .callout-title { color: #2a8b58; }
+.callout-warning, .callout-caution { border-left-color: #c89a4d; background: color-mix(in srgb, #c89a4d 12%, transparent); }
+.callout-warning > .callout-title, .callout-caution > .callout-title { color: #a87a2d; }
+.callout-danger, .callout-error { border-left-color: #b94a3a; background: color-mix(in srgb, #b94a3a 10%, transparent); }
+.callout-danger > .callout-title, .callout-error > .callout-title { color: #b94a3a; }
+.callout-dm { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.callout-dm > .callout-title { color: var(--accent); }
+
+/* Inline dice-roll buttons emitted by the built-in dice handler. */
+button.dice-roll {
+  display: inline-block; padding: 0.05rem 0.5rem; margin: 0;
+  font: inherit; font-variant-numeric: tabular-nums;
+  background: var(--wikilink-bg); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 4px; cursor: pointer; line-height: 1.4;
+}
+button.dice-roll:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+code.dice-roll-invalid { color: var(--muted); text-decoration: line-through; }
+
+/* Inline frontmatter values emitted by the built-in fm handler when the
+   key is missing, visible so authors notice the typo. */
+code.fm-missing { color: #b94a3a; background: color-mix(in srgb, #b94a3a 10%, transparent); }
+
+/* Embed (transcluded ![[Page]]) */
+.embed {
+  position: relative; border-left: 3px solid var(--accent-soft);
+  padding: 0.75rem 1rem 1.1rem; margin: 1rem 0; background: var(--wikilink-bg); border-radius: 0 4px 4px 0;
+}
+.embed > *:first-child { margin-top: 0; }
+.embed > .embed-source { margin-bottom: 0 !important; }
+.embed-source {
+  position: absolute; bottom: 0.3rem; right: 0.75rem; margin: 0 !important;
+  font-size: 0.72rem; line-height: 1;
+}
+.embed-source a.internal { background: transparent; padding: 0; color: var(--muted); border-radius: 0; }
+.embed-source a.internal:hover { background: transparent; color: var(--accent); }
+.embed-broken { border-left-color: #b94a3a; color: var(--muted); font-style: italic; }
+.embed-cycle, .embed-truncated { border-left-color: var(--muted); color: var(--muted); font-style: italic; }
+`;
+
 export const DEFAULT_CSS = `:root {
-  --bg: #f4ecd8; --fg: #1d1a17; --muted: #6b665e;
-  --accent: #a8201a; --accent-soft: #c8423d; --accent-fg: #fbf6e8;
-  --rule: #d8cfb8;
-  --wikilink-bg: rgba(168,32,26,0.10); --wikilink-bg-hover: rgba(168,32,26,0.20);
+  --bg: ${PALETTE.bg}; --fg: ${PALETTE.fg}; --muted: ${PALETTE.muted};
+  --accent: ${PALETTE.accent}; --accent-soft: ${PALETTE.accentSoft}; --accent-fg: ${PALETTE.accentFg};
+  --rule: ${PALETTE.rule};
+  --wikilink-bg: ${PALETTE.wikilinkBg}; --wikilink-bg-hover: ${PALETTE.wikilinkBgHover};
   --max-width: 56rem;
   font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
 }
@@ -634,262 +906,7 @@ article blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px soli
 /* 404 page; leans on the standard article layout but bumps the lead text. */
 .lead-404 { font-size: 1.05rem; color: var(--muted); margin-top: 0.5rem; }
 
-/* Obsidian Bases tables */
-.bases-block {
-  margin: 1rem 0;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--muted) 4%, transparent);
-}
-
-/* Multi-view tabbed container: tab strip on top, blocks below as panels.
-   The block inside loses its outer rounding/border on top so it merges
-   visually with the active tab without doubled rules. */
-.bases-tabbed {
-  margin: 1rem 0;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--muted) 4%, transparent);
-}
-.bases-tabbed .bases-block {
-  margin: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-}
-.bases-tabbed .bases-block .bases-caption { display: none; }
-.bases-tab-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  padding: 0.4rem 0.5rem 0;
-  border-bottom: 1px solid var(--rule);
-}
-.bases-tab {
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  background: transparent;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 5px 5px 0 0;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 0.4rem 0.85rem;
-  margin-bottom: -1px;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
-}
-.bases-tab:hover {
-  color: var(--accent);
-}
-.bases-tab-active {
-  color: inherit;
-  background: var(--bg);
-  border-color: var(--rule);
-  border-bottom-color: var(--bg);
-}
-.bases-tab-panel[hidden] { display: none !important; }
-.bases-caption {
-  padding: 0.55rem 0.85rem;
-  font-weight: 700;
-  font-size: 0.95rem;
-  border-bottom: 1px solid var(--rule);
-}
-.bases-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.85rem;
-  border-bottom: 1px solid var(--rule);
-}
-.bases-filter {
-  flex: 1;
-  padding: 0.4rem 0.65rem;
-  font: inherit; font-size: 0.85rem;
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-}
-.bases-filter:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--wikilink-bg);
-}
-.bases-count { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
-.bases-scroll { overflow-x: auto; }
-.bases-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-  margin: 0;
-}
-.bases-table thead th {
-  text-align: left;
-  padding: 0.5rem 0.85rem;
-  font-weight: 600;
-  background: color-mix(in srgb, var(--muted) 8%, transparent);
-  border-bottom: 1px solid var(--rule);
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-}
-.bases-table thead th:hover { color: var(--accent); }
-.bases-table thead th[aria-sort="ascending"]::after { content: " ▲"; font-size: 0.7em; opacity: 0.7; }
-.bases-table thead th[aria-sort="descending"]::after { content: " ▼"; font-size: 0.7em; opacity: 0.7; }
-.bases-table tbody td {
-  padding: 0.45rem 0.85rem;
-  border-bottom: 1px solid var(--rule);
-  vertical-align: top;
-}
-.bases-table tbody tr:last-child td { border-bottom: none; }
-.bases-table tbody tr[hidden] { display: none; }
-.bases-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--muted) 4%, transparent); }
-.bases-error {
-  padding: 0.75rem 0.85rem;
-  color: #b94a3a;
-  font-size: 0.9rem;
-}
-
-/* Cards view */
-.bases-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1rem;
-  padding: 0.75rem;
-}
-.bases-card {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: var(--bg);
-  text-decoration: none;
-  color: inherit;
-  overflow: hidden;
-  transition: border-color 0.15s, transform 0.15s;
-}
-/* Author rules with display:flex/grid/... override the UA [hidden]
-   default, so the runtime filter has nothing to cling to. Force the hide
-   here for every Bases item type. */
-.bases-card[hidden],
-.bases-list li[hidden],
-.bases-table tr[hidden] {
-  display: none !important;
-}
-.bases-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-2px);
-}
-.bases-card-cover {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  background-color: color-mix(in srgb, var(--muted) 8%, transparent);
-  overflow: hidden;
-}
-.bases-card-cover img {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-.bases-card-cover-cover img { object-fit: cover; object-position: center; }
-.bases-card-cover-contain img { object-fit: contain; object-position: center; }
-.bases-card-cover-1x1 { aspect-ratio: 1 / 1; }
-.bases-card-cover-3x2 { aspect-ratio: 3 / 2; }
-.bases-card-cover-4x3 { aspect-ratio: 4 / 3; }
-.bases-card-cover-16x9 { aspect-ratio: 16 / 9; }
-.bases-card-cover-3x4 { aspect-ratio: 3 / 4; }
-.bases-card-cover-2x3 { aspect-ratio: 2 / 3; }
-.bases-card-body {
-  padding: 0.6rem 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-.bases-card-title {
-  font-weight: 600;
-  font-size: 0.95rem;
-  line-height: 1.3;
-}
-.bases-card-meta {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-/* List view */
-.bases-list {
-  list-style: none;
-  padding: 0.25rem 0;
-  margin: 0;
-}
-.bases-list > li {
-  padding: 0.4rem 0.85rem;
-  border-bottom: 1px solid var(--rule);
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-}
-.bases-list > li:last-child { border-bottom: none; }
-.bases-list-meta {
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-.bases-list-sep { opacity: 0.5; }
-
-/* Auto-generated folder index pages */
-.folder-count { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.9rem; }
-.folder-listing { list-style: none; padding: 0; margin: 0; }
-.folder-listing > li { padding: 0.6rem 0; border-bottom: 1px solid var(--rule); }
-.folder-listing > li:last-child { border-bottom: none; }
-
-/* Callouts */
-.callout {
-  margin: 1rem 0; padding: 0.75rem 1rem; border-left: 4px solid var(--muted);
-  border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--muted) 8%, transparent);
-}
-.callout > .callout-title { font-weight: 700; margin-bottom: 0.35rem; color: var(--muted); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em; }
-.callout > *:last-child { margin-bottom: 0; }
-.callout-note, .callout-info { border-left-color: #3b7bbf; background: color-mix(in srgb, #3b7bbf 10%, transparent); }
-.callout-note > .callout-title, .callout-info > .callout-title { color: #3b7bbf; }
-.callout-tip, .callout-hint { border-left-color: #2a8b58; background: color-mix(in srgb, #2a8b58 10%, transparent); }
-.callout-tip > .callout-title, .callout-hint > .callout-title { color: #2a8b58; }
-.callout-warning, .callout-caution { border-left-color: #c89a4d; background: color-mix(in srgb, #c89a4d 12%, transparent); }
-.callout-warning > .callout-title, .callout-caution > .callout-title { color: #a87a2d; }
-.callout-danger, .callout-error { border-left-color: #b94a3a; background: color-mix(in srgb, #b94a3a 10%, transparent); }
-.callout-danger > .callout-title, .callout-error > .callout-title { color: #b94a3a; }
-.callout-dm { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.callout-dm > .callout-title { color: var(--accent); }
-
-/* Inline dice-roll buttons emitted by the built-in dice handler. */
-button.dice-roll {
-  display: inline-block; padding: 0.05rem 0.5rem; margin: 0;
-  font: inherit; font-variant-numeric: tabular-nums;
-  background: var(--wikilink-bg); color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-  border-radius: 4px; cursor: pointer; line-height: 1.4;
-}
-button.dice-roll:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-code.dice-roll-invalid { color: var(--muted); text-decoration: line-through; }
-
-/* Inline frontmatter values emitted by the built-in fm handler when the
-   key is missing — visible so authors notice the typo. */
-code.fm-missing { color: #b94a3a; background: color-mix(in srgb, #b94a3a 10%, transparent); }
-
-/* Embed (transcluded ![[Page]]) */
-.embed {
-  position: relative; border-left: 3px solid var(--accent-soft);
-  padding: 0.75rem 1rem 1.1rem; margin: 1rem 0; background: var(--wikilink-bg); border-radius: 0 4px 4px 0;
-}
-.embed > *:first-child { margin-top: 0; }
-.embed > .embed-source { margin-bottom: 0 !important; }
-.embed-source {
-  position: absolute; bottom: 0.3rem; right: 0.75rem; margin: 0 !important;
-  font-size: 0.72rem; line-height: 1;
-}
-.embed-source a.internal { background: transparent; padding: 0; color: var(--muted); border-radius: 0; }
-.embed-source a.internal:hover { background: transparent; color: var(--accent); }
-.embed-broken { border-left-color: #b94a3a; color: var(--muted); font-style: italic; }
-.embed-cycle, .embed-truncated { border-left-color: var(--muted); color: var(--muted); font-style: italic; }
+${CONTENT_CSS}
 
 /* Hover preview popover */
 .wiki-preview {

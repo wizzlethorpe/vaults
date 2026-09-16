@@ -33,7 +33,7 @@ describe("defaultsFor", () => {
 });
 
 describe("resolvePageRefs", () => {
-  const page = { image: "/attachments/Marlo%20Vex.webp", body: "@vaults/dm/Actors/Marlo.foundry.html" };
+  const page = { image: "/attachments/Marlo%20Vex.webp", body: () => "<p>Marlo</p>" };
 
   it("turns a page image into a vault reference", () => {
     assert.equal(resolvePageRefs("@page/image", page), "@vault/attachments/Marlo%20Vex.webp");
@@ -44,8 +44,13 @@ describe("resolvePageRefs", () => {
       "https://x.example/a.webp");
   });
 
-  it("uses the body reference as given, already variant-scoped", () => {
-    assert.equal(resolvePageRefs("@page/body", page), page.body);
+  it("renders the page's body only when a default asks for it", () => {
+    let renders = 0;
+    const counted = { image: page.image, body: () => { renders++; return "<p>Marlo</p>"; } };
+    assert.equal(resolvePageRefs({ img: "@page/image" }, counted)?.img, "@vault/attachments/Marlo%20Vex.webp");
+    assert.equal(renders, 0, "rendered a body nothing asked for");
+    assert.equal(resolvePageRefs("@page/body", counted), "<p>Marlo</p>");
+    assert.equal(renders, 1);
   });
 
   it("reaches into nested defaults", () => {

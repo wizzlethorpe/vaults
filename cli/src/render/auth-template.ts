@@ -8,11 +8,7 @@ import { htmlAttr, htmlEscape } from "../escape.js";
 export interface AuthTemplateConfig {
   /** ordered low → high */
   roles: string[];
-  /**
-   * Whether this deploy ships the Foundry integration. When false the bulk
-   * read endpoints the Foundry module syncs through are not emitted at all —
-   * a vault with no Foundry involvement should not expose them.
-   */
+  /** Whether this deploy ships the Foundry integration; a vault with no Foundry involvement exposes none of it. */
   foundry: boolean;
   /** role → encoded password hash ("iter:saltHex:hashHex"); only for roles above the default. */
   rolePasswords: Record<string, string>;
@@ -66,31 +62,20 @@ const ROLES = ${rolesLiteral};
 const PASSWORDS = ${passwordsLiteral};
 const PATREON = ${patreonLiteral};
 const OIDC = ${oidcLiteral};
-// False on a deploy that opted out of the Foundry integration; the /_batch
-// endpoints below are the API its module syncs through and nothing else uses.
+// False on a deploy that opted out of the Foundry integration, which is what
+// decides whether /_foundry/grafts.json is served at all.
 const FOUNDRY = ${foundryLiteral};
 const COOKIE_NAME = "vault_role";
 // Non-HttpOnly companion cookie carrying the role name only; the auth check
 // uses COOKIE_NAME (which is signed and HttpOnly), this one is purely for UI.
 const DISPLAY_COOKIE_NAME = "vault_role_display";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
-// Bearer tokens (used by Foundry, MCP clients) get a much longer lifetime
-// since refreshing means reopening a browser-based approval flow.
-const BEARER_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
-// Long enough to paste a URL somewhere and press install, short enough that a
-// leaked one is worthless. Deliberately not single-use: a use-count needs
-// server-side state, and this deploy has none by design, so the honest
-// stateless equivalent is a small window. Pre-signed URLs everywhere else
-// work the same way for the same reason.
-const LINK_MAX_AGE = 60 * 10; // 10 minutes
-// Tokens carry their purpose so the two are not interchangeable: without
-// this a 7-day session cookie and a 90-day bearer were byte-identical in
-// format, so either could be replayed as the other.
+// Long enough to survive downloading at a desk and building at the table.
+const GRAFT_MAX_AGE = 60 * 60 * 2; // 2 hours
+// Tokens carry their purpose, so a session cookie cannot be replayed as a
+// bearer or the other way round.
 const TOKEN_TYPE_SESSION = "s";
 const TOKEN_TYPE_BEARER = "b";
-// A link token. Separate from a bearer because it is honoured on ordinary
-// navigation, which a bearer deliberately is not — see readRole.
-const TOKEN_TYPE_LINK = "l";
 const PBKDF2_DEFAULT_ITERATIONS = 100000;
 // Same shape as a real PBKDF2 hash (iterations:saltHex:hashHex with the
 // expected lengths) but with all-zero salt + hash. Used to keep the
@@ -108,10 +93,6 @@ export const onRequest = async (ctx) => {
 /**
  * Headers every response gets, added at the one exit so redirects and error
  * responses are covered too.
- *
- * Referrer-Policy is load-bearing here rather than hygiene: the Foundry sync
- * passes its bearer as ?_token= in the URL, and without this any external
- * link on a page fetched that way would carry the token in the Referer.
  */
 function withSecurityHeaders(response) {
   const out = new Response(response.body, response);
@@ -124,18 +105,15 @@ const handleRequest = async (ctx) => {
   const { request, env, next } = ctx;
   const url = new URL(request.url);
 
-  // CORS preflight. Foundry, the MCP server, and AI tooling fetch the
-  // manifest / source / search endpoints from a different origin with an
-  // 'Authorization: Bearer' header, which triggers a preflight OPTIONS.
-  // Allow * because the resource is gated by the bearer token, not by
-  // the origin (and we don't want to maintain an allowlist).
+  // CORS preflight. graft's asset handler fetches from the Foundry origin with an
+  // Authorization header, which triggers one. Allow * because a bearer gates the file, not the origin.
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
   // Block direct access to /_variants/<role>/*; those paths exist in storage
   // for the rewrite below, but exposing them would let anyone fetch any
-  // variant's manifest, page, or markdown source by guessing the role name.
+  // variant's pages by guessing the role name.
   if (url.pathname.startsWith("/_variants/")) {
     return withCors(new Response("Not found", { status: 404 }), request);
   }
@@ -162,24 +140,6 @@ const handleRequest = async (ctx) => {
     return new Response(null, { status: 302, headers });
   }
 
-  // /connect. OAuth-style approval flow for Foundry / MCP clients to obtain
-  // a long-lived bearer token. GET shows the approval page; POST signs the
-  // token and redirects back to the requesting app.
-  if (url.pathname === "/connect" && request.method === "GET") {
-    return handleConnectGet(request, env);
-  }
-  if (url.pathname === "/connect/approve" && request.method === "POST") {
-    return handleConnectApprove(request, env);
-  }
-
-  // /_link. Mints a short-lived, self-authenticating URL for one path, for
-  // consumers that cannot carry the session cookie. Foundry's module
-  // installer is the motivating one: it runs on the Foundry server, not in
-  // the browser, so it needs a URL that stands on its own.
-  if (url.pathname === "/_link" && request.method === "GET") {
-    return handleLink(request, env);
-  }
-
   // /auth/patreon/* — only mounted when the build saw a Patreon config.
   // Issues the same signed session cookie as password login on success;
   // failure paths bounce back to /login with an error param.
@@ -203,20 +163,9 @@ const handleRequest = async (ctx) => {
     }
   }
 
-  // /_batch; bulk source fetch for sync clients (Foundry). Body is
-  // newline-separated paths under text/plain so the request stays CORS-
-  // simple (no preflight per file → no OPTIONS rate-limit). Response is
-  // JSON: { files: { path: content }, missing: [path, ...] }.
-  if (FOUNDRY && url.pathname === "/_batch" && request.method === "POST") {
-    return withCors(await handleBatch(request, env), request);
-  }
-
-  // /_batch-images; bulk *binary* fetch (images, etc). Same input shape as
-  // /_batch but each file is base64-encoded so it can ride in JSON. Used by
-  // the Foundry image cache so a 300-image sync is a handful of HTTP calls
-  // instead of 300 GETs that hit Cloudflare's per-IP rate limit.
-  if (FOUNDRY && url.pathname === "/_batch-images" && request.method === "POST") {
-    return withCors(await handleBatchBinary(request, env), request);
+  // /_foundry/grafts.json; see handleGrafts.
+  if (FOUNDRY && url.pathname === "/_foundry/grafts.json") {
+    return withCors(await handleGrafts(request, env), request);
   }
 
   // Skip rewriting for static-asset paths that don't have a per-role variant.
@@ -226,20 +175,6 @@ const handleRequest = async (ctx) => {
 
   // Determine the user's role from the session cookie (default = lowest).
   const role = await readRole(request, env);
-
-  // Installing a Foundry module is two fetches: the manifest, then the zip its
-  // download field names. A gated manifest is a static file, so it cannot
-  // carry a live token for that second fetch, and the zip would 401 — the
-  // install fails halfway with nothing useful said about why.
-  //
-  // So a manifest fetched with a link token gets its download URL signed to
-  // match, with the same short expiry. The rewrite only ever fires when a
-  // valid link token is present and the field points back at this site, so it
-  // cannot be used to attach our signature to somebody else's URL.
-  const linkToken = new URL(request.url).searchParams.get("_token");
-  const linkRole = linkToken
-    ? await verifyToken(linkToken, env.SESSION_SECRET, TOKEN_TYPE_LINK)
-    : null;
 
   // env.ASSETS canonicalizes URLs (strips .html, strips index.html, redirects
   // with 308s); passing those redirects through to the browser would expose
@@ -255,10 +190,6 @@ const handleRequest = async (ctx) => {
       rewritten = new Request(new URL(location, url.origin).toString(), request);
       response = await env.ASSETS.fetch(rewritten);
     }
-  }
-  if (linkRole && response.ok && /\.json$/i.test(url.pathname)) {
-    const signed = await signManifestDownload(response, url, env, linkRole);
-    if (signed) return signed;
   }
 
   // Replace bare 404s with the variant's styled 404 page so the reader stays
@@ -276,8 +207,8 @@ const handleRequest = async (ctx) => {
   return withCors(response, request);
 };
 
-// Headers added for cross-origin clients (Foundry module, MCP). Origin: *
-// is safe because the resources are gated by bearer token, not by origin.
+// Headers for graft's cross-origin asset fetches. Origin: * is safe because a
+// bearer token gates each file, not the origin.
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -348,374 +279,37 @@ function loginRedirect(next, error) {
   return new Response(null, { status: 302, headers: { Location: url } });
 }
 
-// ── Batch source fetch ────────────────────────────────────────────────────
-//
-// Bulk-read endpoint used by sync clients to avoid making one HTTP request
-// per .md file. The body is newline-separated paths (text/plain, so the
-// request stays CORS-simple; no preflight). The handler resolves each
-// path against the caller's role variant and bundles the results into a
-// single JSON response.
-//
-// Caps:
-//   - max 200 paths per call (cap concurrent ASSETS reads inside the worker)
-//   - paths must not contain '..' or query/fragment, must not start with '_'
-//     (would escape the variant or hit metadata files)
-
-const BATCH_MAX_PATHS = 200;
-// Smaller cap for binary; base64 inflates ~4/3x and we don't want to
-// blow the worker response budget. ~30 images at 200KB avg ≈ 8MB JSON.
-const BATCH_BINARY_MAX_PATHS = 30;
-
-async function handleBatch(request, env) {
-  return handleBatchInner(request, env, BATCH_MAX_PATHS, async (res) => res.text());
-}
-
-async function handleBatchBinary(request, env) {
-  return handleBatchInner(request, env, BATCH_BINARY_MAX_PATHS, async (res) => {
-    return base64Encode(new Uint8Array(await res.arrayBuffer()));
-  });
-}
-
-async function handleBatchInner(request, env, maxPaths, encode) {
-  const role = await readRole(request, env);
-  if (!ROLES.includes(role)) return batchError(401, "Unauthorized");
-
-  let body;
-  try { body = await request.text(); }
-  catch { return batchError(400, "Could not read request body."); }
-
-  const paths = body.split(/\\r?\\n/).map((s) => s.trim()).filter(Boolean);
-  if (paths.length === 0) return batchError(400, "No paths in request body.");
-  if (paths.length > maxPaths) return batchError(400, "Too many paths (max " + maxPaths + ").");
-  for (const p of paths) {
-    if (!isSafePath(p)) return batchError(400, "Invalid path: " + p);
-  }
-
-  // Which rendering to return, which is not always the caller's own.
-  //
-  // A page carries its own role, and the sync client marks a page readable by
-  // players when that role is below the DM tier. If it then filled that page
-  // with the *DM's* rendering — which is what happens when the variant is
-  // always the caller's — a public page ends up holding DM content and
-  // readable by players. A base view filtered by role is exactly that shape:
-  // one row per creature for the DM, one for everyone else, same page.
-  //
-  // So a caller may ask for any variant at or below their own tier. Below,
-  // because that is content they can already read; never above.
-  const url = new URL(request.url);
-  const requested = url.searchParams.get("role");
-  let variant = role;
-  if (requested !== null) {
-    const wantIdx = ROLES.indexOf(requested);
-    if (wantIdx === -1 || wantIdx > ROLES.indexOf(role)) {
-      return batchError(403, "Cannot request that variant.");
-    }
-    variant = requested;
-  }
-
-  // ASSETS.fetch is internal to the worker, so fan-out is cheap.
-  const entries = await Promise.all(paths.map(async (p) => {
-    const target = new URL("/_variants/" + variant + "/" + encodeVariantPath(p), url.origin).toString();
-    const res = await env.ASSETS.fetch(target);
-    if (!res.ok) return [p, null];
-    return [p, await encode(res)];
-  }));
-
-  const files = {};
-  const missing = [];
-  for (const [p, content] of entries) {
-    if (content == null) missing.push(p);
-    else files[p] = content;
-  }
-  return new Response(JSON.stringify({ files, missing }), {
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-function batchError(status, message) {
-  return new Response(JSON.stringify({ error: message }), {
-    status, headers: { "Content-Type": "application/json" },
-  });
-}
-
-function base64Encode(bytes) {
-  // btoa wants a binary string. Build it in chunks so we don't blow the
-  // call-stack on String.fromCharCode for big payloads.
-  let binary = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(binary);
-}
-
-function isSafePath(p) {
-  if (!p || p.length > 1024) return false;
-  if (p.includes("..") || p.includes("?") || p.includes("#")) return false;
-  if (p.startsWith("/") || p.startsWith("_")) return false;
-  // Reject control chars / bare backslashes.
-  if (/[\\x00-\\x1f]/.test(p) || p.includes("\\\\")) return false;
-  return true;
-}
-
-function encodeVariantPath(p) {
-  // Each segment is URI-encoded so spaces / unicode round-trip cleanly.
-  return p.split("/").map(encodeURIComponent).join("/");
-}
-
-// ── Connect (OAuth-style bearer token issuance) ──────────────────────────
-
-async function handleConnectGet(request, env) {
-  const url = new URL(request.url);
-  const app = url.searchParams.get("app") || "an external app";
-
-  // Require login first; the user's role is what we're authorising. The
-  // default role is the unauthenticated one, so it is the whole test —
-  // any other role can only have come from a verified cookie or token.
-  const role = await readRole(request, env);
-  if (role === ROLES[0]) {
-    // Default role; redirect to login first, come back here on success.
-    const next = url.pathname + url.search;
-    return new Response(null, {
-      status: 302,
-      headers: { Location: "/login.html?next=" + encodeURIComponent(next) },
-    });
-  }
-
-  const html = renderApprovePage({ app, role });
-  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
-}
-
-async function handleConnectApprove(request, env) {
-  const form = await request.formData();
-  const app = String(form.get("app") || "an external app");
-
-  const role = await readRole(request, env);
-  if (role === ROLES[0]) {
-    // User is anonymous; reject (shouldn't reach here via normal UI flow).
-    return new Response("Not signed in.", { status: 401 });
-  }
-
-  const token = await signToken(role, env.SESSION_SECRET, BEARER_MAX_AGE, TOKEN_TYPE_BEARER);
-  const html = renderConnectCopyPage({ token, role, app });
-  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
-}
-
 /**
- * Issue a short-lived URL for a single vault path.
+ * The reader's own grafts.json, with a short-lived bearer for its assets.
  *
- * The token carries the caller's own role, so this grants nothing they could
- * not already fetch with their cookie; it only moves that authority into a
- * URL, and puts a short clock on it.
- *
- * The path is confined to this deploy: it is resolved against the origin and
- * rejected if it leaves, so a caller cannot get us to sign a link pointing at
- * somewhere else.
+ * The token carries the caller's own role, so it grants nothing they could not
+ * already fetch with their cookie.
  */
-async function handleLink(request, env) {
+async function handleGrafts(request, env) {
   const url = new URL(request.url);
-  // Minting requires a session or a bearer, never a link token: otherwise one
-  // leaked install URL renews itself indefinitely instead of expiring.
-  const role = await readRole(request, env, { rejectLinkTokens: true });
-  if (role === ROLES[0]) {
-    return jsonResponse({ error: "not signed in" }, 401);
-  }
-  const requested = url.searchParams.get("path") || "";
-  if (!requested) {
-    return jsonResponse({ error: "missing path" }, 400);
-  }
-  let target;
-  try {
-    target = new URL(requested, url.origin);
-  } catch {
-    return jsonResponse({ error: "bad path" }, 400);
-  }
-  if (target.origin !== url.origin) {
-    return jsonResponse({ error: "path must be on this site" }, 400);
-  }
-  const token = await signToken(role, env.SESSION_SECRET, LINK_MAX_AGE, TOKEN_TYPE_LINK);
-  target.searchParams.set("_token", token);
-  return jsonResponse({
-    url: target.toString(),
-    role,
-    expiresInMinutes: Math.round(LINK_MAX_AGE / 60),
-  }, 200);
-}
+  const role = await readRole(request, env);
+  // The same variant path the rewrite below would have produced. Fetched
+  // rather than passed through, because the body is edited before it is sent
+  // and the caller must not be able to ask for another role's copy.
+  const built = await env.ASSETS.fetch(new Request(
+    new URL("/_variants/" + role + "/_foundry/grafts.json", url.origin).toString(), request));
+  if (!built.ok) return built;
 
-/**
- * Re-sign a module manifest's download URL so the second half of a Foundry
- * install authenticates too.
- *
- * Returns null and leaves the response untouched for anything that is not a
- * manifest with a same-origin download field, so an ordinary JSON asset
- * fetched with a link token is served exactly as stored.
- */
-async function signManifestDownload(response, url, env, role) {
-  let manifest;
-  try { manifest = await response.clone().json(); }
-  catch { return null; }
-  if (!manifest || typeof manifest.download !== "string") return null;
-
-  // Relative resolves onto whichever host this request arrived on, which is
-  // the point: a vault can be served from several (a pages.dev name and a
-  // custom domain), and a manifest that hard-codes one of them is wrong on
-  // the others whether or not tokens are involved.
-  //
-  // An absolute URL naming a different host is left alone. That is the guard
-  // against attaching our signature to somebody else's URL, and it cannot
-  // distinguish the vault's own second hostname from anyone else's — so a
-  // manifest that hard-codes the pages.dev name will not be signed when
-  // fetched over the custom domain. Write the field relative. The CLI warns
-  // when it is not.
-  let target;
-  try { target = new URL(manifest.download, url.origin); }
-  catch { return null; }
-  if (target.origin !== url.origin) return null;
-
-  const token = await signToken(role, env.SESSION_SECRET, LINK_MAX_AGE, TOKEN_TYPE_LINK);
-  target.searchParams.set("_token", token);
-  manifest.download = target.toString();
-  return new Response(JSON.stringify(manifest), {
-    status: 200,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  const file = await built.json();
+  // The build names every origin the assets come from; each gets a token for the role that asked.
+  const auth = file.assets?.http.auth;
+  if (auth) {
+    const token = await signToken(role, env.SESSION_SECRET, GRAFT_MAX_AGE, TOKEN_TYPE_BEARER);
+    for (const origin of Object.keys(auth)) auth[origin] = token;
+  }
+  // Indented: this is a file a reader downloads, opens and sometimes edits.
+  return new Response(JSON.stringify(file, null, 2), {
+    headers: {
+      "content-type": "application/json",
+      "content-disposition": 'attachment; filename="grafts.json"',
+      "cache-control": "no-store",
+    },
   });
-}
-
-function jsonResponse(body, status) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });
-}
-
-function renderApprovePage({ app, role }) {
-  const escapedApp = escHtml(app);
-  const escapedRole = escHtml(role);
-  const escapedAppAttr = escAttr(app);
-  return \`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Authorize \${escapedApp}</title>
-<link rel="stylesheet" href="/styles.css">
-<style>
-  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-  .approve-card {
-    max-width: 28rem; width: 90%; padding: 2rem;
-    border: 1px solid var(--rule); border-radius: 6px; background: var(--bg);
-  }
-  .approve-card h1 { margin: 0 0 1rem; font-size: 1.4rem; }
-  .approve-card .info { color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem; }
-  .approve-card .info strong { color: var(--accent); }
-  .approve-card .actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; }
-  .approve-card button, .approve-card .deny {
-    flex: 1; padding: 0.55rem 1rem; font: inherit; font-size: 0.95rem;
-    border: 1px solid var(--rule); border-radius: 4px; cursor: pointer;
-    text-align: center; text-decoration: none;
-  }
-  .approve-card button { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-  .approve-card .deny { background: var(--bg); color: var(--muted); }
-</style>
-</head>
-<body>
-<form class="approve-card" method="POST" action="/connect/approve">
-  <h1>Authorize \${escapedApp}</h1>
-  <p class="info">
-    <strong>\${escapedApp}</strong> wants access to your vault as
-    <strong>\${escapedRole}</strong>.
-  </p>
-  <p class="info">After approval, this page will display a token to copy and paste back into <strong>\${escapedApp}</strong>.</p>
-  <input type="hidden" name="app" value="\${escapedAppAttr}">
-  <div class="actions">
-    <a class="deny" href="/">Deny</a>
-    <button type="submit">Approve</button>
-  </div>
-</form>
-</body>
-</html>\`;
-}
-
-function renderConnectCopyPage({ token, role, app }) {
-  const escapedApp = escHtml(app);
-  const escapedRole = escHtml(role);
-  const escapedToken = escAttr(token);
-  return \`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Authorised \${escapedApp}</title>
-<link rel="stylesheet" href="/styles.css">
-<style>
-  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-  .copy-card {
-    max-width: 32rem; width: 90%; padding: 2rem;
-    border: 1px solid var(--rule); border-radius: 6px; background: var(--bg);
-  }
-  .copy-card h1 { margin: 0 0 0.75rem; font-size: 1.3rem; }
-  .copy-card .info { color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem; }
-  .copy-card .info strong { color: var(--accent); }
-  .copy-card .token {
-    display: block; width: 100%; box-sizing: border-box;
-    margin: 0.75rem 0;
-    padding: 0.75rem 0.85rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.82rem; line-height: 1.45;
-    background: var(--wikilink-bg);
-    color: var(--fg);
-    border: 1px solid var(--rule); border-radius: 4px;
-    word-break: break-all; resize: vertical;
-  }
-  .copy-card .copy-btn {
-    width: 100%; padding: 0.6rem 1rem; margin-top: 0.5rem; font: inherit; font-size: 0.95rem;
-    background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 4px; cursor: pointer;
-  }
-  .copy-card .copy-status {
-    text-align: center; color: var(--muted); font-size: 0.78rem; margin-top: 0.5rem; min-height: 1em;
-  }
-  .copy-card .copy-status.ok { color: #2a8b58; }
-  .copy-card ol { font-size: 0.88rem; color: var(--muted); padding-left: 1.25rem; margin: 0.75rem 0 0; }
-  .copy-card ol li { margin: 0.25rem 0; }
-</style>
-</head>
-<body>
-<div class="copy-card">
-  <h1>✓ Authorised \${escapedApp}</h1>
-  <p class="info">
-    A token for the <strong>\${escapedRole}</strong> tier has been generated.
-    Copy it back into <strong>\${escapedApp}</strong> to complete sign-in.
-  </p>
-  <textarea class="token" id="token" readonly rows="4" onclick="this.select()">\${escapedToken}</textarea>
-  <button type="button" class="copy-btn" id="copy-btn">Copy token</button>
-  <p class="copy-status" id="copy-status"></p>
-  <ol>
-    <li>Click <strong>Copy token</strong> above.</li>
-    <li>Switch back to \${escapedApp}.</li>
-    <li>Paste into the token field and confirm.</li>
-  </ol>
-</div>
-<script>
-(function () {
-  var btn = document.getElementById('copy-btn');
-  var ta = document.getElementById('token');
-  var status = document.getElementById('copy-status');
-  btn.addEventListener('click', async function () {
-    try {
-      await navigator.clipboard.writeText(ta.value);
-      status.textContent = 'Copied to clipboard.';
-      status.className = 'copy-status ok';
-    } catch (e) {
-      ta.select();
-      status.textContent = 'Press Ctrl/Cmd-C to copy.';
-      status.className = 'copy-status';
-    }
-    setTimeout(function () { status.textContent = ''; }, 4000);
-  });
-})();
-</script>
-</body>
-</html>\`;
 }
 
 // These two helpers are intentionally inline and not imported: this file
@@ -1082,13 +676,11 @@ async function readStateCookie(request, secret) {
 
 // ── Cookie + role lookup ──────────────────────────────────────────────────
 
-async function readRole(request, env, opts) {
+async function readRole(request, env) {
   const fallback = ROLES[0];
   if (!env.SESSION_SECRET) return fallback;
 
-  // Authorization: Bearer <token>; used by curl / the MCP server / any
-  // client that can set request headers freely. Same signed-token format
-  // as the cookie, so verification is shared.
+  // Authorization: Bearer <token>, which graft's asset handler sends.
   const auth = request.headers.get("Authorization") || "";
   const bearerMatch = /^Bearer\\s+(.+)$/i.exec(auth);
   if (bearerMatch) {
@@ -1096,62 +688,10 @@ async function readRole(request, env, opts) {
     if (role && ROLES.includes(role)) return role;
   }
 
-  // ?_token=<token>; used by the Foundry module so cross-origin GETs stay
-  // CORS-simple and don't trigger a preflight per file (Cloudflare rate-
-  // limits OPTIONS bursts and a sync is hundreds of unique URLs).
-  //
-  // Only honoured on a request that says it is a subresource fetch. A token
-  // in a URL is a shareable credential that lands in browser history, access
-  // logs and Referer, and bearers last 90 days — so a pasted link must not
-  // quietly browse the site at someone else's role.
-  //
-  // Fails CLOSED: an absent Sec-Fetch-Mode means the token is ignored. The
-  // earlier version only rejected an explicit "navigate", which left the hole
-  // open for anything that does not send Fetch Metadata — a proxy that strips
-  // it, or a browser older than Chrome 76 / Firefox 90 / Safari 16.4. The
-  // query param exists purely so the sync client's cross-origin GETs stay
-  // CORS-simple, and that client is a browser, so it always sends the header.
-  // Anything that cannot has no reason to prefer the param: it can set an
-  // Authorization: Bearer header freely, which is checked above.
-  const queryToken = new URL(request.url).searchParams.get("_token");
-  if (queryToken && isSubresourceFetch(request)) {
-    const role = await verifyToken(queryToken, env.SESSION_SECRET, TOKEN_TYPE_BEARER);
-    if (role && ROLES.includes(role)) return role;
-  }
-
-  // A link token IS honoured on navigation, which is the whole reason it is a
-  // separate type. The rule above rests on bearers lasting 90 days; a link
-  // token lasts ten minutes, so the same reasoning does not reach it. It also
-  // has to work this way: Foundry's module installer accepts a URL and
-  // nothing else, so it cannot send the Authorization header the rule above
-  // points anything header-capable towards.
-  //
-  // It authenticates one request and sets no cookie, so a shared link does
-  // not turn into a session at someone else's role.
-  // Not accepted where a caller could use one to obtain another. A link token
-  // is a ten-minute grant, and a request that can mint a fresh one renews
-  // itself forever — which would quietly turn the short window that justifies
-  // honouring these on navigation into no window at all.
-  if (queryToken && !opts?.rejectLinkTokens) {
-    const role = await verifyToken(queryToken, env.SESSION_SECRET, TOKEN_TYPE_LINK);
-    if (role && ROLES.includes(role)) return role;
-  }
-
   const cookie = parseCookie(request.headers.get("Cookie") || "")[COOKIE_NAME];
   if (!cookie) return fallback;
   const role = await verifyToken(cookie, env.SESSION_SECRET, TOKEN_TYPE_SESSION);
   return role && ROLES.includes(role) ? role : fallback;
-}
-
-/**
- * True only when the request explicitly identifies itself as a subresource
- * fetch rather than a navigation. Absent headers count as "not a fetch", so
- * the caller refuses rather than guesses.
- */
-function isSubresourceFetch(request) {
-  const mode = request.headers.get("Sec-Fetch-Mode");
-  if (!mode || mode === "navigate") return false;
-  return request.headers.get("Sec-Fetch-Dest") !== "document";
 }
 
 // Format: <role>.<expiryUnix>.<hmacHex>
@@ -1164,11 +704,8 @@ async function signToken(role, secret, maxAgeSeconds, typ) {
 
 async function signSessionCookie(role, secret) {
   const value = await signToken(role, secret, COOKIE_MAX_AGE, TOKEN_TYPE_SESSION);
-  // SameSite=None + Partitioned (CHIPS); required so the cookie persists
-  // when the vault is loaded inside a cross-origin iframe (the Foundry
-  // connect dialog). Partitioned scopes the cookie per parent origin, so
-  // it isn't a general third-party tracking cookie. Top-level browsing
-  // still works normally.
+  // SameSite=None + Partitioned (CHIPS): the cookie also persists inside a
+  // cross-origin iframe, scoped per parent origin rather than shared across sites.
   return COOKIE_NAME + "=" + value
     + "; Path=/; HttpOnly; Secure; SameSite=None; Partitioned; Max-Age=" + COOKIE_MAX_AGE;
 }
@@ -1273,8 +810,6 @@ function isSharedAsset(pathname) {
   //   - katex/…                      — build.ts (copyKatexAssets; math vaults only)
   //   - login.html                   — build.ts (multi-role only)
   //   - favicon.ico                  — build.ts (buildFavicon)
-  //   - _foundry/{module.json,module.zip}
-  //                                  — build.ts (the installable module)
   //   - functions/_middleware.js     — build.ts (multi-role only; not served)
   // If you add another, add it both here AND in build.ts.
   if (pathname === "/styles.css") return true;
@@ -1282,13 +817,6 @@ function isSharedAsset(pathname) {
   if (pathname === "/_handlers.js") return true;
   if (pathname === "/_handlers.css") return true;
   if (pathname === "/katex/katex.min.css" || pathname.startsWith("/katex/fonts/")) return true;
-  // How a reader installs and updates. Foundry's installer fetches the
-  // manifest and the archive with no credential of its own, so gating these
-  // makes the module uninstallable. They carry no vault content: a manifest
-  // and an archive of two JSON files. The entry list and its version.json
-  // stay gated, under each variant.
-  if (pathname === "/_foundry/module.json") return true;
-  if (pathname === "/_foundry/module.zip") return true;
   if (pathname === "/login.html") return true;
   if (pathname === "/favicon.ico" || pathname === "/favicon.svg") return true;
   if (pathname === "/robots.txt") return true;

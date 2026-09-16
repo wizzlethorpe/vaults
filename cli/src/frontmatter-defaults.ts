@@ -1,11 +1,7 @@
 // Apply `default_frontmatter` rules to a page's frontmatter.
 //
-// The point is that there is exactly one answer to "what does this page's
-// frontmatter say", and everything downstream reads it: the wiki renderer, the
-// manifest the Foundry sync client consumes, and the module compiler. A
-// setting that only one of those understood would be a way for a synced vault
-// and an installed module to disagree about the same page, which is the thing
-// they must not do.
+// There is one answer to "what does this page's frontmatter say", and both
+// readers take it from here: the wiki render and the grafts.json build.
 //
 // Defaults, not overrides: a page that states something wins. Rules apply in
 // order and deep-merge, so a broad rule sets a baseline and a narrow one

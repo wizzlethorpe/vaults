@@ -6,7 +6,7 @@
 
 ## What this is
 
-A monorepo for letting people self-host an Obsidian vault as a static wiki on Cloudflare. The user authors notes in Obsidian; the CLI renders them locally to HTML and pushes to their own Cloudflare account. Cloudflare Pages serves the static wiki. A small Pages Function (auth middleware) gates per-role variants and exposes `/_batch` read APIs the Foundry module uses to pull rendered bodies and media at build time.
+A monorepo for letting people self-host an Obsidian vault as a static wiki on Cloudflare. The user authors notes in Obsidian; the CLI renders them locally to HTML and pushes to their own Cloudflare account. Cloudflare Pages serves the static wiki. A small Pages Function (auth middleware) gates per-role variants and serves each reader the `grafts.json` they may import into Foundry.
 
 **Not** a hosted multi-tenant SaaS today. The architecture is designed to support a managed platform layered on top later (per-user Cloudflare projects, OAuth-issued JWTs that the existing Function trusts).
 
@@ -21,29 +21,21 @@ vaults/                      this repo (single git history)
 ├── package.json             root workspace manifest
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
-├── release.sh               unified release: bumps + tags + per-subproject publish
+├── release.sh               bump, tag, publish the CLI to npm
 ├── cli/                     @wizzlethorpe/vaults: CLI + Cloudflare Pages template
-├── foundry/                 Foundry VTT module (id "vaults")
 └── landing/                 Demo vault (deployed at vaults.wizzlethorpe.com)
 ```
 
-One git history, one shared version, so a release tag pins the exact behaviour across CLI, Foundry module and landing demo. Most non-trivial features touch all three in one logical change.
+One git history, so a release tag pins the exact behaviour across CLI and landing demo.
 
 ## Where work happens
 
 - **`cli/`**: ~99% of active development. Build with `pnpm --filter @wizzlethorpe/vaults run build`; test with `pnpm --filter @wizzlethorpe/vaults run test`.
-- **`foundry/`**: Foundry VTT module (id `vaults`): a [graft](https://github.com/wizzlethorpe/graft) pre-build transform. The CLI compiles a vault into a `grafts.json` entry list at build time (`cli/src/foundry-grafts.ts`); this module fetches that list from the deploy, resolves its `@vaults/<variant>/<path>` references (bodies inline, media into a per-vault world cache, cached by content hash), and hands the entries to graft to build. It also prompts to rebuild when the deploy's `version.json` content hash moves. Folder-as-JournalEntry model: every directory becomes one entry, every `.md` file an embedded JournalEntryPage, and folders without an `index.md` get the wiki's synthesized index page.
-
-  The vault's `foundry.package` setting picks the delivery:
-  - `compendium`: one pack per document type, browsable. Links are `@UUID[Compendium.<vault>.<vault>-<type>.…]`: nothing is imported as a unit, so the pack copy is the copy.
-  - `adventure`: a single Adventure document. Links are **world** UUIDs, because Foundry's Adventure import creates with keepId and updates what already carries the id, so they resolve to the copies the GM imported. The Adventure pack must declare a `system` or Foundry empties its actors, items and their folders on every read.
-  - `none`: no integration; the deploy ships no grafts.json and no `/_batch`.
-
-  Using one shape's links with the other is the bug this arrangement exists to prevent: an imported page linking to a second copy of the thing beside it. A player-visible page's journal body carries both renders: the GM's inside a `<section class="secret">` (which Foundry wraps in a `<secret-block>` element at render), the player variant's in the open.
+- **Foundry**: the CLI compiles each role's pages into a self-contained `grafts.json` (`cli/src/foundry-grafts.ts`) which the reader downloads and builds into their world with [graft](https://github.com/wizzlethorpe/graft)'s **Import grafts**. Page bodies are inlined into the entries; media is named in the file's `assets.http` block, which graft's built-in `http` handler fetches with a two-hour bearer the middleware splices in at download. Everything lands in the world, so links are world UUIDs. Folder-as-JournalEntry model: every directory becomes one entry, every `.md` file an embedded JournalEntryPage, and folders without an `index.md` get the wiki's synthesized index page. `foundry.enabled: false` writes nothing.
 
 - **`landing/`**: itself a Vault, deployed at vaults.wizzlethorpe.com. Doubles as the project's landing page AND a working demo of every CLI feature.
 
-When the user gives you a task, default to assuming it's about `cli/` unless the prompt obviously points at the Foundry module or landing demo.
+When the user gives you a task, default to assuming it's about `cli/` unless the prompt obviously points at the landing demo.
 
 ## Architecture in one screen
 
@@ -63,21 +55,19 @@ user's Cloudflare account (one Pages project per user)
     ├── _variants/<role>/  rendered HTML + body fragments per access tier
     │   ├── <page>.html        full layout (browsed on the wiki)
     │   ├── <page>.body.html       article only (hover previews, transclusion)
-    │   ├── <page>.foundry.html    article with Foundry UUID links + @vaults refs
     │   ├── <page>.preview.json    hover-preview JSON
     │   ├── <image>.webp           images referenced from this variant
-    │   ├── _foundry/grafts.json   entry list + per-asset content hashes
-    │   ├── _foundry/version.json  content hash, read by the rebuild prompt
+    │   ├── _foundry/grafts.json   the entry list a reader imports, bodies inlined
+    │   ├── _foundry/assets-<hash>.zip   media batched for graft, when zip_assets is set
     │   └── _search-index.json
     ├── styles.css, user.css   shared at root (no role gate)
     ├── _handlers.js, _handlers.css   bundled built-in + user handler assets
-    ├── _foundry/module.json, module.zip   the installable vault module (ungated)
     ├── katex/                 KaTeX css + fonts (only when a page has math)
     ├── login.html             multi-role builds only
     └── functions/
         └── _middleware.js     role gate via signed cookie + variant rewrite,
-                               plus /connect (token issuance), /_batch (text),
-                               /_batch-images (binary), /login, /logout.
+                               plus /_foundry/grafts.json (the reader's entry
+                               list, token spliced in), /login, /logout.
 ```
 
 Single-role builds collapse `_variants/public/...` straight to the deploy root, no functions, no auth.
@@ -91,7 +81,7 @@ Single-role builds collapse `_variants/public/...` straight to the deploy root, 
 - **picomatch** for ignore-pattern globs. **sharp** for image compression. **gray-matter** for frontmatter. **unified/remark/rehype** for markdown.
 - **No MCP server.** A `/mcp` Function would cost files against Pages's 20k-file cap.
 - **No platform code in this repo.** The future managed platform is a separate concern.
-- **Single shared version across cli + foundry.** Both bump together via root `release.sh <X.Y.Z>`. Landing has no version (deploys whenever).
+- **The CLI carries the version.** Bumped and published by root `release.sh <X.Y.Z>`. Landing has no version (deploys whenever).
 
 ## Coding conventions
 
@@ -137,24 +127,6 @@ contain a backtick or `${`. A stray backtick in a comment closes the template
 and the file stops parsing, which reads as an unrelated syntax error dozens of
 lines away. `pnpm typecheck` catches it, as does any middleware test, but the
 error message never points at the comment.
-
-### Testing a change to `foundry/scripts/`
-
-The module runs as-is in Foundry's browser context; there is no bundle step.
-Ship it to the hosted server with `./dev-install.sh --remote` (or into a local
-Data dir; see the script header), then reload the browser: Foundry re-reads
-module *code* on reload. Two things need more than a reload:
-
-- `module.json` changes (packs, styles, esmodules) need a **server restart**;
-  manifests are read at server start.
-- Stylesheets are cache-busted by module *version*, which dev-install does not
-  bump, so a CSS-only change may need a hard refresh (Ctrl+Shift+R).
-
-A change to what the CLI emits (`grafts.json`, `.foundry.html` bodies) reaches
-Foundry through a vault rebuild + `vaults push`, then the in-world rebuild
-prompt (or graft's Build button: the rebuild prompt only fires when the
-content hash moved, and a vault that has built nothing is offered its first
-build instead, since a gated deploy reports no hash until the GM connects).
 
 ## Self-check before reporting done
 

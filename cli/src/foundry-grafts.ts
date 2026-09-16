@@ -4,7 +4,7 @@
 
 import { createHash } from "node:crypto";
 
-import { ADVENTURE_PACK, DOC_TYPES, canonicalType, type Packaging } from "./foundry-types.js";
+import { canonicalType } from "./foundry-types.js";
 import { rewriteVaultRefs } from "./foundry-html.js";
 import { defaultsFor, resolvePageRefs } from "./foundry-defaults.js";
 import { mergeDefaults } from "./frontmatter-defaults.js";
@@ -14,48 +14,32 @@ import type { LinkIndex, LinkTarget } from "./foundry-html.js";
 export interface GraftEntry {
   id: string;
   type: string;
-  pack: string;
   folder?: string;
   /** A UUID, a sibling's bare id, or several to try in order. */
   source?: string | string[];
   patch: Record<string, unknown>;
 }
 
-export interface GraftsFile {
-  format: 2;
-  /**
-   * Content hash per `"<variant>/<path>"`, for every asset this file can
-   * reach. What lets a reader tell a file it already downloaded from one that
-   * only shares its name: nothing else about a reference changes when the
-   * bytes behind it do.
-   */
-  assets?: Record<string, string>;
-  /**
-   * Hash of everything a build of this variant fetches — see contentHash().
-   * Also written to the variant's version.json, so the module can ask "is
-   * there newer content?" without downloading this whole file.
-   */
-  contentHash: string;
-  entries: GraftEntry[];
+/** One file for graft's `http` asset handler to place. */
+export interface AssetFile {
+  /** Where to fetch it: its own URL, or a zip member first and that URL after. */
+  source: string | string[];
+  /** Where it lands in the reader's Foundry data directory. */
+  destination: string;
+  size: number;
 }
 
-/**
- * The one definition of "the content changed".
- *
- * A build consumes three things, and each is hashed by value: the entries
- * (patches, sidecars, ids), every page body the entries reference, and the
- * bytes of every asset those bodies and entries reference (the assets map
- * already carries a content hash per file). That is the Foundry module's whole
- * fixed point, so anything it would fetch differently moves this.
- */
-export function contentHash(
-  entries: GraftEntry[], assets: Record<string, string>, bodies: ReadonlyMap<string, string>,
-): string {
-  const sortedBodies = [...bodies].sort(([a], [b]) => a.localeCompare(b));
-  return createHash("md5")
-    .update(JSON.stringify({ entries, assets, bodies: sortedBodies }))
-    .digest("hex").slice(0, 16);
+export interface GraftsFile {
+  format: 4;
+  entries: GraftEntry[];
+  /**
+   * Files that have to be on disk before anything builds. Keyed by handler;
+   * a vault only ever uses `http`, since everything it serves is a URL.
+   */
+  assets?: { http: { auth?: Record<string, string>; files: AssetFile[] } };
 }
+
+const DOCUMENT_ID = /^[a-zA-Z0-9]{16}$/;
 
 /** Just enough of a page to place it. */
 export interface Page {
@@ -92,18 +76,16 @@ export interface Page {
  * when the value it states is `null`.
  */
 function defaulted(
-  patch: Record<string, unknown>, type: string, page: Page, variant: string, system: string,
+  patch: Record<string, unknown>, type: string, page: Page, opts: GraftOptions,
 ): Record<string, unknown> {
   // `embed: false` opts the page's prose out of the document's description.
   // An unsatisfied `@page/body` reference takes its key with it, so nothing
   // else is needed to suppress the default.
-  const body = page.foundry?.embed === false
-    ? undefined
-    : `@vaults/${variant}/${page.path.replace(/\.md$/i, "")}.foundry.html`;
+  const body = page.foundry?.embed === false ? undefined : () => opts.body(page);
   const out = structuredClone(patch);
   // Most specific first: each merge fills only what is still unsaid, so the
   // earlier a layer is applied the more it wins.
-  const layers = [page.sidecar, ...defaultsFor(type, system).reverse()];
+  const layers = [page.sidecar, ...defaultsFor(type, opts.system ?? "dnd5e").reverse()];
   for (const layer of layers) {
     if (!layer) continue;
     const resolved = resolvePageRefs(layer, { image: page.image, body });
@@ -131,7 +113,7 @@ function pinnedId(
   patch: Record<string, unknown> | undefined, report?: { warnings: string[]; path: string },
 ): string | null {
   const id = patch?.["_id"];
-  if (typeof id === "string" && /^[A-Za-z0-9]{16}$/.test(id)) return id;
+  if (typeof id === "string" && DOCUMENT_ID.test(id)) return id;
   if (id !== undefined && id !== null) {
     report?.warnings.push(`${report.path}: foundry.patch._id must be 16 letters or digits, got ${JSON.stringify(id)}; using the derived id`);
   }
@@ -147,11 +129,11 @@ export function basesOf(base: unknown): string[] {
   return [];
 }
 
-/** The first usable UUID, which decides the document type and the pack. */
+/** The first usable UUID, which decides the document type. */
 export const firstBase = (base: unknown): string | null => basesOf(base)[0] ?? null;
 
 export interface GraftOptions {
-  /** Also the module id, which is what a Compendium UUID names. */
+  /** Seeds every deterministic id and names the directory the assets land in. */
   vaultId: string;
   /** Role names, least privileged first. The last is what the GM builds as. */
   roles: string[];
@@ -162,20 +144,22 @@ export interface GraftOptions {
    */
   playerRole: string;
   /**
-   * The role whose file this is. Bodies are never referenced above it, since
-   * the reader holding this file could not fetch them: each variant has to be
-   * buildable by whoever is served it.
+   * Where this vault's files land in the reader's data directory, e.g.
+   * `"vaults/marlo"`. Media in a body and `@vault/` refs in a patch name a
+   * path under it, and the `assets` block sends the same path to the handler.
    */
-  buildRole: string;
-  /** Pack name per document type, e.g. `{ JournalEntry: "marlo-journals" }`. */
-  packs: Record<string, string>;
+  assetBase: string;
+  /**
+   * Filled with the vault-relative path of every asset a patch names, so the
+   * build ships those files and no others. Bodies add to the same set.
+   */
+  namedAssets: Set<string>;
+  /** A page's article as a journal body. Called only for a page whose body an entry carries. */
+  body: (page: Page) => string;
   /** Foundry version the vault's document data was authored at, e.g. "14". */
   coreVersion?: string;
   /** Game system the vault targets, for system-specific enrichers. */
   system?: string;
-  packaging?: Packaging;
-  /** Content hash per `"<variant>/<path>"`; see `GraftsFile.assets`. */
-  assets?: Record<string, string>;
 }
 
 const OBSERVER = 2;
@@ -198,13 +182,9 @@ export const itemId = (vaultId: string, path: string, key: string) =>
   det("item", `${vaultId}:${path}:${key}`);
 
 /**
- * Give every `uuid` item in a patch an `_id`.
- *
- * graft merges an items array by `_id` only when every member carries one, so
- * one reference without one makes the array replace the source's items instead
- * — taking the entries that only patch a source item down with it. The id is
- * also what marks a reference as an item to place rather than a grant to leave
- * alone. Keyed by uuid, not position, so reordering the list moves nothing.
+ * Every `uuid` item in the patch's own `items` as graft's `{ _id, source, patch }`,
+ * since Foundry rejects an item written as `{ uuid }`. Nothing deeper: a `uuid` in an
+ * advancement's grant list is offered, not placed. Keyed by uuid, so reordering moves nothing.
  */
 export function withItemIds(
   patch: Record<string, unknown>, vaultId: string, path: string,
@@ -216,14 +196,59 @@ export function withItemIds(
     ...patch,
     items: items.map((item) => {
       if (!item || typeof item !== "object" || Array.isArray(item)) return item;
-      const row = item as Record<string, unknown>;
-      if (typeof row["uuid"] !== "string" || typeof row["_id"] === "string") return item;
-      const uuid = row["uuid"];
+      const { uuid, _id, ...rest } = item as Record<string, unknown>;
+      if (typeof uuid !== "string") return item;
       const n = seen.get(uuid) ?? 0;
       seen.set(uuid, n + 1);
-      return { _id: itemId(vaultId, path, `${uuid}:${n}`), ...row };
+      return {
+        _id: typeof _id === "string" ? _id : itemId(vaultId, path, `${uuid}:${n}`),
+        source: uuid,
+        ...(Object.keys(rest).length > 0 ? { patch: rest } : {}),
+      };
     }),
   };
+}
+
+/**
+ * Foundry's embedded collections, by the type of document that holds them.
+ * Taken from the document schemas: no property of a patch distinguishes one
+ * from an ordinary array of objects, and `Card.faces` is such an array.
+ */
+const EMBEDDED: Record<string, string[]> = {
+  Actor: ["items", "effects"],
+  Cards: ["cards"],
+  Combat: ["combatants", "groups"],
+  Item: ["effects"],
+  JournalEntry: ["pages", "categories"],
+  Playlist: ["sounds"],
+  RollTable: ["results"],
+  Scene: ["drawings", "levels", "lights", "notes", "regions", "sounds", "tiles", "tokens"],
+};
+
+/**
+ * An `_id` for every embedded document in the patch that lacks one.
+ *
+ * Foundry mints a random one on each build, so the document never matches what
+ * the last build wrote and graft rewrites it forever. Graft also replaces a
+ * collection outright unless every member carries an `_id`. Keyed by position,
+ * so an id is stable until the author reorders the collection.
+ */
+export function withEmbeddedIds(
+  patch: Record<string, unknown>, type: string, vaultId: string, path: string,
+): Record<string, unknown> {
+  const out = { ...patch };
+  for (const field of EMBEDDED[type] ?? []) {
+    const members = out[field];
+    if (!Array.isArray(members)) continue;
+    out[field] = members.map((member, i) => {
+      if (!member || typeof member !== "object" || Array.isArray(member)) return member;
+      const held = (member as Record<string, unknown>)["_id"];
+      return typeof held === "string"
+        ? member
+        : { _id: itemId(vaultId, path, `${field}:${i}`), ...member };
+    });
+  }
+  return out;
 }
 
 export const folderOf = (path: string): string => {
@@ -231,16 +256,16 @@ export const folderOf = (path: string): string => {
   return i < 0 ? "" : path.slice(0, i);
 };
 
-/**
- * Whether players may see a page's document. An unknown role fails closed.
- * The body is always the build role's own rendering — the reader of this
- * file cannot fetch any other; a player-visible page's body carries the
- * player render alongside it, inside the file (see dualVariantBody).
- */
+/** Whether players may see a page's document. An unknown role fails closed. */
 export function observable(page: Page, opts: GraftOptions): boolean {
   const rank = (role: string) => opts.roles.indexOf(role);
   const ceiling = rank(opts.playerRole);
   return ceiling >= 0 && rank(page.role) >= 0 && rank(page.role) <= ceiling;
+}
+
+/** The roles players may not read, lowercased the way a callout's type names one. */
+export function secretRoles(opts: GraftOptions): Set<string> {
+  return new Set(opts.roles.slice(opts.roles.indexOf(opts.playerRole) + 1).map((r) => r.toLowerCase()));
 }
 
 
@@ -303,9 +328,7 @@ function vaultIdTargets(pages: Page[], opts: GraftOptions): VaultIdTargets {
     if (p.foundry?.journal !== false) journals.add(p.path);
     const base = firstBase(p.foundry?.source);
     const type = base ? documentTypeOf(base) : null;
-    if (type && opts.packs[type]) {
-      docs.set(p.path, pinnedId(p.foundry?.patch) ?? instanceId(opts.vaultId, p.path));
-    }
+    if (type) docs.set(p.path, pinnedId(p.foundry?.patch) ?? instanceId(opts.vaultId, p.path));
   }
   return { docs, journals };
 }
@@ -323,19 +346,10 @@ const graftFolder = (folder: string): string | undefined => folder || undefined;
 
 /**
  * One JournalEntry per directory, every `.md` in it an embedded page.
- *
- * The folder-as-entry model the sync already used: a directory of notes reads
- * as one journal a GM can page through, rather than fifty entries in a list.
- *
- * Bodies are references, not content. Inlining them would make this file
- * megabytes for a large vault and re-download every page on every build; a
- * reference lets the Foundry module batch them through `/_batch` and skip what has
- * not changed.
+ * A directory of notes reads as one journal a GM can page through, rather than
+ * fifty entries in a list.
  */
 export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] {
-  const pack = opts.packs["JournalEntry"];
-  if (!pack) return [];
-
   const byFolder = new Map<string, Page[]>();
   for (const page of pages) {
     if (page.foundry?.sync === false || page.foundry?.journal === false) continue;
@@ -343,6 +357,13 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
     if (!byFolder.has(folder)) byFolder.set(folder, []);
     byFolder.get(folder)!.push(page);
   }
+
+  // Where a folder's own entry files. Inside its own folder when that folder
+  // exists in Foundry, which is when something sits below it; otherwise beside
+  // its siblings, so a leaf does not get a folder holding one entry.
+  const dirs = [...byFolder.keys()];
+  const home = (folder: string) =>
+    (folder && dirs.some((d) => d.startsWith(`${folder}/`)) ? folder : folderOf(folder));
 
   const entries: GraftEntry[] = [];
   for (const [folder, group] of [...byFolder].sort(([a], [b]) => a.localeCompare(b))) {
@@ -358,7 +379,7 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
         type: "text",
         sort: (i + 1) * 100,
         title: { show: false, level: 1 },
-        text: { format: 1, content: `@vaults/${opts.buildRole}/${page.path.replace(/\.md$/i, "")}.foundry.html` },
+        text: { format: 1, content: opts.body(page) },
         ownership: { default: ownership },
       };
     });
@@ -369,8 +390,7 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
     entries.push({
       id: entryId(opts.vaultId, folder),
       type: "JournalEntry",
-      pack,
-      ...(graftFolder(folderOf(folder)) ? { folder: folderOf(folder) } : {}),
+      ...(graftFolder(home(folder)) ? { folder: home(folder) } : {}),
       patch: {
         name: folder ? folder.split("/").pop()! : "Home",
         ownership: { default: anyVisible ? OBSERVER : NONE },
@@ -384,10 +404,10 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 /**
  * A page's `foundry.source` becomes a graft of that document.
  *
- * This is the whole of what `instance.mjs` did at runtime — clone a compendium
- * document, apply the page's overrides, keep a deterministic id — expressed as
- * the thing graft already builds. A base that names a UUID is a source; a page
- * with only `foundry.patch` carries its own content and has none.
+ * Clone a compendium document, apply the page's overrides, keep a
+ * deterministic id: all of it expressed as the thing graft already builds. A
+ * base that names a UUID is a source; a page with only `foundry.patch` carries
+ * its own content and has none.
  */
 export function documentEntries(pages: Page[], opts: GraftOptions): { entries: GraftEntry[]; warnings: string[] } {
   const entries: GraftEntry[] = [];
@@ -410,75 +430,65 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
       warnings.push(`${page.path}: cannot tell what kind of document "${base}" is`);
       continue;
     }
-    const pack = opts.packs[type];
-    if (!pack) {
-      warnings.push(`${page.path}: no pack declared for ${type}`);
-      continue;
-    }
-
-    const ownership = observable(page, opts) ? OBSERVER : NONE;
     const subtype = subtypeOf(base);
     const resolved = {
       ...page,
       sidecar: resolveVaultIds(page.sidecar, opts, targets, warnings, page.path),
     };
-    const patch: Record<string, unknown> = rewriteVaultRefs({
+    const patch: Record<string, unknown> = withEmbeddedIds(rewriteVaultRefs({
       name: page.title,
       ...(subtype ? { type: subtype } : {}),
+      // GM-only unless the page's patch says otherwise. A page's role decides
+      // who reads it on the wiki, not who sees the NPC it builds in the world.
+      ownership: { default: NONE },
       ...defaulted(
         withItemIds(resolveVaultIds(spec.patch ?? {}, opts, targets, warnings, page.path),
           opts.vaultId, page.path),
-        type, resolved, opts.buildRole, opts.system ?? "dnd5e"),
-      // Over the patch, not under it: ownership is role gating, and a page that
-      // could overrule its own would be a page that could publish itself.
-      ownership: { default: ownership },
-    }, opts.buildRole);
+        type, resolved, opts),
+    }, opts.assetBase, opts.namedAssets), type, opts.vaultId, page.path);
     const folder = documentFolder(page);
     const id = pinnedId(spec.patch, { warnings, path: page.path }) ?? instanceId(opts.vaultId, page.path);
     if (entries.some((e) => e.id === id)) warnings.push(`${page.path}: foundry.patch._id "${id}" is also pinned by another page; graft refuses both`);
     entries.push({
       id,
       type,
-      pack,
       ...(graftFolder(folder) ? { folder } : {}),
       patch,
     });
-    if (base.startsWith("Compendium.")) sourcedBy.set(entries[entries.length - 1]!, { path: page.path, bases });
+    if (isSource(base)) sourcedBy.set(entries[entries.length - 1]!, { path: page.path, bases });
   }
-  return { entries: placeSiblings(entries, sourcedBy, opts, warnings), warnings };
+  return { entries: placeSiblings(entries, sourcedBy, warnings), warnings };
 }
 
 /**
- * Set each sourced entry's `source`. Own-vault sources become bare ids: graft
- * resolves those whatever pack the entry lands in, and adventure packaging
- * never declares the per-type pack a full UUID names. Siblings not in this
- * variant are dropped from a fallback list.
+ * Set each sourced entry's `source`. A source naming something this build also
+ * makes becomes a bare id, which graft resolves to wherever that entry landed.
  */
 function placeSiblings(
   entries: GraftEntry[],
   sourcedBy: Map<GraftEntry, { path: string; bases: string[] }>,
-  opts: GraftOptions,
   warnings: string[],
 ): GraftEntry[] {
   const built = new Map(entries.map((e) => [e.id, e]));
-  const sibling = (base: string): { id: string; type: string } | null => {
-    const parts = base.split(".");
-    return parts.length === 5 && parts[0] === "Compendium" && parts[1] === opts.vaultId
-      ? { type: parts[3]!, id: parts[4]! }
-      : null;
+  // Three cases for a world UUID, and only `built` tells them apart: an id
+  // this build assigns at the type it assigns becomes a bare id; the same id
+  // at another type is an author mistake and is dropped, since resolving it
+  // would hand back the wrong kind of document; anything else is content the
+  // reader already has and is left exactly as written.
+  const placeBase = (base: string): string[] => {
+    if (!isWorldUuid(base)) return [base];
+    const [type, id] = base.split(".") as [string, string];
+    if (!built.has(id)) return [base];
+    return built.get(id)!.type === type ? [id] : [];
   };
   return entries.map((entry) => {
     const named = sourcedBy.get(entry);
     if (!named) return entry;
-    const placed = named.bases.flatMap((base) => {
-      const s = sibling(base);
-      if (!s) return [base];
-      return built.get(s.id)?.type === s.type ? [s.id] : [];
-    });
+    const placed = named.bases.flatMap(placeBase);
     if (placed.length === 0) {
       warnings.push(
-        `${named.path}: grafts onto ${named.bases.map((b) => `"${b}"`).join(", ")}, which this build does not make.`
-        + ` Check the page it names is visible at this role, or add a source outside this vault to fall back on.`,
+        `${named.path}: grafts onto ${named.bases.map((b) => `"${b}"`).join(", ")}, which this build makes`
+        + ` as a different document type. Check the type in the UUID matches the page it names.`,
       );
     }
     const source = placed.length > 0 ? placed : named.bases;
@@ -489,16 +499,31 @@ function placeSiblings(
 /**
  * The document type a `foundry.source` names.
  *
- * A compendium UUID carries it (`Compendium.<mod>.<pack>.<Type>.<id>`); a bare
- * type name is a page inventing its own content.
+ * A UUID carries it, compendium or world; a bare type name is a page inventing
+ * its own content.
  */
 export function documentTypeOf(base: string): string | null {
+  const parts = base.split(".");
+  // Canonicalised in every branch: Foundry resolves a Combat UUID happily and
+  // a vault has nothing to build from one, so null is the honest answer.
   if (base.startsWith("Compendium.")) {
-    const parts = base.split(".");
-    return parts.length >= 5 ? parts[parts.length - 2]! : null;
+    return parts.length >= 5 ? canonicalType(parts[parts.length - 2]) : null;
   }
+  if (isWorldUuid(base)) return canonicalType(parts[0]);
   return canonicalType(base.split(":")[0]);
 }
+
+/** `Actor.<id>`: a document in the reader's world, which is where a vault builds. */
+function isWorldUuid(base: string): boolean {
+  const parts = base.split(".");
+  return parts.length === 2 && DOCUMENT_ID.test(parts[1] ?? "");
+}
+
+/**
+ * Whether a base names an existing document rather than a type to invent.
+ * `Actor:npc` invents one; either UUID form grafts onto one.
+ */
+const isSource = (base: string) => base.startsWith("Compendium.") || isWorldUuid(base);
 
 /**
  * The system subtype in a bare base, if it names one.
@@ -521,12 +546,8 @@ export function linkIndex(pages: Page[], opts: GraftOptions): LinkIndex {
     const target: LinkTarget = {};
     const base = firstBase(page.foundry?.source);
     const type = base ? documentTypeOf(base) : null;
-    const pack = type ? opts.packs[type] : undefined;
-    if (type && pack) {
-      target.doc = {
-        type, pack,
-        id: pinnedId(page.foundry?.patch) ?? instanceId(opts.vaultId, page.path),
-      };
+    if (type) {
+      target.doc = { type, id: pinnedId(page.foundry?.patch) ?? instanceId(opts.vaultId, page.path) };
     }
     if (page.foundry?.journal !== false) {
       target.entry = entryId(opts.vaultId, folderOf(page.path));
@@ -534,12 +555,7 @@ export function linkIndex(pages: Page[], opts: GraftOptions): LinkIndex {
     }
     if (target.doc || target.page) targets.set(page.path, target);
   }
-  return {
-    targets,
-    moduleId: opts.vaultId,
-    journalPack: opts.packs["JournalEntry"] ?? "",
-    packaging: opts.packaging ?? "compendium",
-  };
+  return { targets };
 }
 
 /**
@@ -563,113 +579,12 @@ function stampCoreVersion(entries: GraftEntry[], coreVersion: string): GraftEntr
 
 export function buildGrafts(
   pages: Page[], opts: GraftOptions,
-): { file: GraftsFile; warnings: string[]; links: LinkIndex } {
+): { file: GraftsFile; warnings: string[] } {
   const docs = documentEntries(pages, opts);
-  const stamped = stampCoreVersion(
+  const entries = stampCoreVersion(
     [...journalEntries(pages, opts), ...docs.entries], opts.coreVersion ?? "");
-  // graft folds every entry that names an Adventure-typed pack into one
-  // Adventure, so packaging changes only which pack the entries name.
-  const entries = opts.packaging === "adventure"
-    ? stamped.map((e) => ({ ...e, pack: `${opts.vaultId}-${ADVENTURE_PACK}` }))
-    : stamped;
-  const assets = opts.assets && Object.keys(opts.assets).length ? opts.assets : undefined;
-  return {
-    file: {
-      format: 2,
-      ...(assets ? { assets } : {}),
-      // Finished by the caller once the bodies exist; see contentHash().
-      contentHash: "",
-      entries,
-    },
-    warnings: docs.warnings,
-    links: linkIndex(pages, opts),
-  };
-}
-
-// ── the module a vault ships ────────────────────────────────────────────────
-//
-// Generated once and then inert. It declares packs and dependencies and points
-// at the vault; it holds no logic, so pushing content never means reinstalling
-// it. That is the whole reason the transform lives in a shared module instead.
-
-export function packsFor(moduleId: string): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(DOC_TYPES).map(([type, suffix]) => [type, `${moduleId}-${suffix}`]),
-  );
-}
-
-/**
- * The packs a vault's module declares, as `[type, suffix]`. Compendium
- * packaging declares every type up front: packs are read at server start, so
- * a type the vault gains later would otherwise need a reinstall and restart.
- */
-function packsDeclared(packaging: Packaging): Array<[string, string]> {
-  return packaging === "adventure" ? [["Adventure", ADVENTURE_PACK]] : Object.entries(DOC_TYPES);
-}
-
-export interface ManifestOptions {
-  moduleId: string;
-  title: string;
-  vaultUrl: string;
-  /** The game system whose Actor and Item packs this vault targets. */
-  systemId?: string;
-  /** Extra manifest keys from `foundry.module` in the vault settings. */
-  extra?: Record<string, unknown>;
-  packaging?: Packaging;
-}
-
-const label = (suffix: string) => `${suffix[0]!.toUpperCase()}${suffix.slice(1)}`;
-
-/** The `module.json` a vault serves for itself. */
-export function moduleManifest(opts: ManifestOptions): Record<string, unknown> {
-  const url = opts.vaultUrl.replace(/\/+$/, "");
-  const packs = packsDeclared(opts.packaging ?? "compendium");
-  return {
-    id: opts.moduleId,
-    title: opts.title,
-    description: `Content from ${url}, built on your machine from what you are entitled to read.`,
-    compatibility: { minimum: "14", verified: "14" },
-    url,
-    manifest: `${url}/_foundry/module.json`,
-    download: `${url}/_foundry/module.zip`,
-    packs: packs.map(([type, suffix]) => ({
-      name: `${opts.moduleId}-${suffix}`,
-      // graft names the Adventure it assembles after the pack's label.
-      label: type === "Adventure" ? opts.title : `${opts.title}: ${label(suffix)}`,
-      path: `packs/${opts.moduleId}-${suffix}`,
-      type,
-      // Never player-browsable. A reader sees vault content because the GM
-      // imported it, and the entry itself says whether they may.
-      ownership: { PLAYER: "NONE", ASSISTANT: "OWNER" },
-      // The Adventure pack needs a system as much as the Actor pack does:
-      // Adventure.fromSource empties actors, items and their folders out of
-      // any adventure read from a systemless pack.
-      ...(type === "Actor" || type === "Item" || type === "Adventure"
-        ? { system: opts.systemId ?? "dnd5e" } : {}),
-    })),
-    packFolders: [{
-      name: opts.title, sorting: "m",
-      packs: packs.map(([, suffix]) => `${opts.moduleId}-${suffix}`),
-    }],
-    relationships: {
-      requires: [
-        { id: "graft", type: "module" },
-        { id: "vaults", type: "module" },
-      ],
-    },
-    // How graft finds anything here. It reads a module's `flags.graft.entries`
-    // for the files to load; without this the module is a set of empty packs
-    // and a manifest, and nothing ever asks the vault for its contents.
-    flags: { graft: { entries: ["grafts.json"] } },
-    ...(opts.extra ?? {}),
-  };
-}
-
-/** The module's grafts.json: one entry naming the vault. */
-export function moduleGrafts(vaultUrl: string, gated: boolean) {
-  // A single-role deploy has no /_batch and no variant segment, and probing for
-  // that reads a 404 as "public", which a misconfigured deploy also looks like.
-  return { format: 2, entries: [{ vault: vaultUrl.replace(/\/+$/, ""), gated }] };
+  // `assets` is added by the caller, which is what knows each file's size.
+  return { file: { format: 4, entries }, warnings: docs.warnings };
 }
 
 /**

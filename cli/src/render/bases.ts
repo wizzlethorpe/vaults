@@ -141,7 +141,8 @@ function wrapAsTabs(blocks: string[], views: ViewSpec[]): string {
   const panels = blocks.map((html, i) =>
     `<div class="bases-tab-panel" role="tabpanel" data-bases-tab-panel="${i}"${i === 0 ? "" : " hidden"}>${html}</div>`,
   ).join("");
-  return `<div class="bases-tabbed"><div class="bases-tab-strip" role="tablist">${tabs}</div>${panels}</div>`;
+  // Web-only: switching tabs needs a script a Foundry journal does not run.
+  return `<div class="bases-tabbed"><div class="bases-tab-strip vaults-web-only" role="tablist">${tabs}</div>${panels}</div>`;
 }
 
 // ── Row model ──────────────────────────────────────────────────────────────
@@ -628,13 +629,15 @@ function renderTableView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: 
   ).join("");
   const body = tbl.map((cells, ri) => {
     const tds = cells.map((c) => `<td data-raw="${htmlAttr(toSortKey(c.raw))}">${c.html}</td>`).join("");
-    return `<tr data-row="${ri}">${tds}</tr>`;
+    return `<tr data-row="${ri}" data-vaults-role="${htmlAttr(rows[ri]!.page.role)}">${tds}</tr>`;
   }).join("");
 
   const caption = view.name ? `<div class="bases-caption">${htmlEscape(view.name)}</div>` : "";
+  // The toolbar is web-only: its filter needs a script, and in a journal its
+  // count would include items a player cannot see.
   return `<div class="bases-block">
   ${caption}
-  <div class="bases-toolbar">
+  <div class="bases-toolbar vaults-web-only">
     <input type="search" class="bases-filter" placeholder="Filter…" aria-label="Filter table">
     <span class="bases-count" data-total="${tbl.length}">${tbl.length} ${tbl.length === 1 ? "row" : "rows"}</span>
   </div>
@@ -679,7 +682,7 @@ function renderCardsView(view: ViewSpec, allRows: Row[], _doc: BaseDoc, context:
       .filter(Boolean)
       .map((v) => `<div class="bases-card-meta">${v}</div>`)
       .join("");
-    return `<a class="bases-card" href="${htmlAttr(href)}">
+    return `<a class="bases-card" href="${htmlAttr(href)}" data-vaults-role="${htmlAttr(row.page.role)}">
       ${coverHtml}
       <div class="bases-card-body">
         <div class="bases-card-title">${htmlEscape(row.page.title)}</div>
@@ -691,7 +694,7 @@ function renderCardsView(view: ViewSpec, allRows: Row[], _doc: BaseDoc, context:
   const caption = view.name ? `<div class="bases-caption">${htmlEscape(view.name)}</div>` : "";
   return `<div class="bases-block bases-cards-block">
   ${caption}
-  <div class="bases-toolbar">
+  <div class="bases-toolbar vaults-web-only">
     <input type="search" class="bases-filter" placeholder="Filter…" aria-label="Filter cards">
     <span class="bases-count" data-total="${rows.length}">${rows.length} ${rows.length === 1 ? "card" : "cards"}</span>
   </div>
@@ -717,7 +720,7 @@ function renderListView(view: ViewSpec, allRows: Row[], doc: BaseDoc): string {
       .filter(Boolean)
       .join(' <span class="bases-list-sep">·</span> ');
     const metaSpan = meta ? `<span class="bases-list-meta">${meta}</span>` : "";
-    return `<li><a class="internal internal-link" href="${htmlAttr(href)}">${htmlEscape(row.page.title)}</a>${metaSpan}</li>`;
+    return `<li data-vaults-role="${htmlAttr(row.page.role)}"><a class="internal internal-link" href="${htmlAttr(href)}">${htmlEscape(row.page.title)}</a>${metaSpan}</li>`;
   }).join("");
 
   // Keep `doc` in the signature for symmetry with the other view renderers,

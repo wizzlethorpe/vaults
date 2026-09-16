@@ -33,24 +33,7 @@ export interface VaultConfig {
   /** role name → "iter:saltHex:hashHex" produced by `vaults role add` / `vaults password`. */
   rolePasswords: Record<string, string>;
 
-  /**
-   * The version last assigned to the vault's Foundry module, with the
-   * fingerprint of the manifest it describes. Kept so the version only moves
-   * when the module itself does, rather than on every push.
-   */
-  foundryModule?: { version: string; hash: string };
-
-  /**
-   * OAuth provider overlays (optional, additive). Roles always have a password
-   * gate; if a role's name appears in any provider's `tiers`, members whose
-   * pledge / membership grants that tier can ALSO authenticate via the
-   * provider's OAuth flow. New providers (Discord, GitHub Sponsors, …) plug
-   * in here without growing the top-level VaultConfig surface.
-   *
-   * Provider config (clientId / campaignId / tiers) rides to the deploy as
-   * middleware constants and lives in `.vaultrc.json`. Secrets (clientSecret)
-   * stay in `.env` and are mirrored to Wrangler secrets on push.
-   */
+  /** Patreon / OIDC, when the vault gates a role behind one. */
   oauth?: {
     patreon?: PatreonConfig;
     oidc?: OidcConfig;

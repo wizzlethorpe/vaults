@@ -1,17 +1,14 @@
 #!/bin/bash
-# Unified release across cli + foundry. Bumps both to the
-# same version, tags the monorepo, then runs each subproject's release pipeline.
+# Release the CLI: bump, tag the monorepo, publish to npm.
 #
 # Usage:
 #   ./release.sh                         # interactive: pick major/minor/patch bump
 #   ./release.sh 1.1.0
 #   ./release.sh 1.1.0 --skip-cli        # skip cli npm publish
-#   ./release.sh 1.1.0 --skip-foundry    # skip Foundry release.sh
 #
 # Prereqs:
 #   - jq, gh, npm, pnpm on PATH
 #   - npm logged in (`npm whoami`) for cli publish
-#   - gh authenticated (`gh auth login`) for foundry release
 #   - working tree clean
 
 set -e
@@ -20,11 +17,9 @@ set -e
 # omitted (interactive menu) or given in any position.
 NEW_VERSION=""
 SKIP_CLI=0
-SKIP_FOUNDRY=0
 for arg in "$@"; do
   case "$arg" in
     --skip-cli)      SKIP_CLI=1 ;;
-    --skip-foundry)  SKIP_FOUNDRY=1 ;;
     --*) echo "Unknown flag: $arg"; exit 1 ;;
     *)
       if [[ -n "$NEW_VERSION" ]]; then
@@ -44,7 +39,6 @@ command -v pnpm >/dev/null || { echo "Error: pnpm required"; exit 1; }
 command -v npm  >/dev/null || { echo "Error: npm required"; exit 1; }
 
 CURRENT_CLI=$(jq -r '.version' cli/package.json)
-CURRENT_FOUNDRY=$(jq -r '.version' foundry/module.json)
 
 # No version on the command line: offer a bump menu computed from the cli version.
 if [[ -z "$NEW_VERSION" ]]; then
@@ -81,7 +75,6 @@ fi
 
 echo "Current versions:"
 echo "  cli:              $CURRENT_CLI"
-echo "  foundry:          $CURRENT_FOUNDRY"
 echo "Releasing as: $NEW_VERSION"
 echo ""
 read -p "Continue? (y/n) " -n 1 -r
@@ -101,16 +94,11 @@ echo "All green."
 jq --arg v "$NEW_VERSION" '.version = $v' cli/package.json > cli/package.json.tmp
 mv cli/package.json.tmp cli/package.json
 
-# Bump foundry/module.json (foundry's own release.sh would do this too,
-# but bumping here keeps the monorepo commit consistent)
-jq --arg v "$NEW_VERSION" '.version = $v' foundry/module.json > foundry/module.json.tmp
-mv foundry/module.json.tmp foundry/module.json
-
 
 # Single commit + tag for the monorepo. If versions were already at the
 # target (user pre-bumped, or re-running after a partial failure), skip
 # the commit but still tag the current HEAD.
-git add cli/package.json foundry/module.json
+git add cli/package.json
 if git diff --cached --quiet; then
   echo "Versions already at $NEW_VERSION; skipping release commit."
 else
@@ -122,10 +110,7 @@ else
   git tag -a "v$NEW_VERSION" -m "v$NEW_VERSION"
 fi
 
-# Push main + tag BEFORE subproject release pipelines. foundry/release.sh
-# does `gh release create v$NEW_VERSION` which would create the tag on the
-# remote pointed at the remote default-branch HEAD if the tag isn't already
-# pushed — that would mismatch the local commit and cause confusion.
+# Push main + tag before publishing, so the npm tarball and the tag agree.
 echo ""
 echo "=== Pushing main + tag to origin ==="
 git push origin main "v$NEW_VERSION"
@@ -136,22 +121,6 @@ if [[ $SKIP_CLI -eq 0 ]]; then
   echo "=== Publishing CLI to npm ==="
   pnpm --filter @wizzlethorpe/vaults run build
   pnpm --filter @wizzlethorpe/vaults publish --access public --no-git-checks
-fi
-
-if [[ $SKIP_FOUNDRY -eq 0 ]]; then
-  echo ""
-  echo "=== Releasing Foundry module ==="
-  # foundry/release.sh swaps module.json's URLs to /v$NEW_VERSION/ for the
-  # build, ships the release, then resets the working copy to /latest/. The
-  # reset leaves foundry/module.json dirty in the working tree afterwards;
-  # commit + push that as a follow-up so dev installs see the floating
-  # /latest/ URLs.
-  (cd foundry && ./release.sh "$NEW_VERSION")
-  if ! git diff --quiet foundry/module.json; then
-    git add foundry/module.json
-    git commit -m "Reset foundry module.json URLs to /latest/ after v$NEW_VERSION release"
-    git push origin main
-  fi
 fi
 
 echo ""

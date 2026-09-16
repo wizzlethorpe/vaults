@@ -86,7 +86,7 @@ export function countTableRows(html: string): number {
  * the title column contains an <a> with the title text.
  */
 export function tableTitles(html: string): string[] {
-  const rows = html.match(/<tr data-row="\d+">[\s\S]*?<\/tr>/g) ?? [];
+  const rows = html.match(/<tr data-row="\d+"[^>]*>[\s\S]*?<\/tr>/g) ?? [];
   return rows.map((row) => {
     const m = /<a[^>]*class="internal[^"]*"[^>]*>([^<]+)<\/a>/.exec(row);
     return m?.[1] ?? "";

@@ -15,7 +15,7 @@ foundry:
       ui.notifications.info(`Feast ${tile.hidden ? "cleared" : "spread"}.`);
 ---
 
-Toggles the feast overlay on [[Mossfoot Great Hall]] through the tile's pinned `_id` (`mossfootDinner01`). Click once and the tables appear; click again and they are cleared. The macro reads `game.scenes`, so the scene must have been imported into the world with **Keep Document IDs** checked.
+Toggles the feast overlay on [[Mossfoot Great Hall]] through the tile's pinned `_id` (`mossfootDinner01`). Click once and the tables appear; click again and they are cleared. The macro reads `game.scenes`, so build the vault's grafts file into the world first.
 
 > [!quote] Macro body
 > ```fm javascript

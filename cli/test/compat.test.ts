@@ -74,7 +74,7 @@ describe("embed: ![[Page#^block-id]] block references", () => {
       // Scope assertions to the embed body; the outgoing source-link
       // appended to every transclusion shows the original anchor text
       // (↗ Notes › ^pull-me), which is fine and unrelated to the fix.
-      const embed = /<div class="embed">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+      const embed = /<div class="embed"[^>]*>([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
       assert.match(embed, /This is the quote we care about\./);
       // The marker itself is stripped from the transcluded content.
       assert.doesNotMatch(/<p>[^<]*\^pull-me[^<]*<\/p>/.exec(embed)?.[0] ?? "no-match",
@@ -97,7 +97,7 @@ describe("embed: ![[Page#^block-id]] block references", () => {
     try {
       await build(v);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
-      const embed = /<div class="embed">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+      const embed = /<div class="embed"[^>]*>([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
       assert.match(embed, /Here is a list item that is the block\./);
       assert.doesNotMatch(embed, /Tail\./);
     } finally { await cleanup(v); }

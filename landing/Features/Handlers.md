@@ -143,7 +143,7 @@ The file ships only to the variants of the pages that reference it, and the auth
 
 ## Built-in: `foundry-install` and `` `fvtt-link:` ``
 
-`foundry-install` renders a copyable install link for the module a vault builds for itself. `fvtt-link:` links to the Foundry document a page builds rather than to its journal page. Both are documented on [[Foundry integration]].
+`foundry-install` renders a download link for the reader's own grafts.json. `fvtt-link:` links to the Foundry document a page builds rather than to its journal page. Both are documented on [[Foundry integration]].
 
 ## Writing a custom handler
 

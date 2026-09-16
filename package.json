@@ -1,11 +1,10 @@
 {
   "name": "vaults-monorepo",
   "private": true,
-  "description": "Monorepo: vaults CLI, Foundry VTT module, foundry-module compiler, and landing-site vault.",
+  "description": "Monorepo: the vaults CLI and the landing-site vault.",
   "scripts": {
     "typecheck": "pnpm -r exec tsc --noEmit && pnpm --filter @wizzlethorpe/vaults run typecheck:test",
-    "test": "pnpm -r --if-present test && pnpm run test:foundry",
-    "test:foundry": "node --test \"foundry/test/**/*.test.mjs\"",
+    "test": "pnpm -r --if-present test",
     "build:cli": "pnpm --filter @wizzlethorpe/vaults run build"
   },
   "devDependencies": {

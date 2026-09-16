@@ -1,25 +1,20 @@
 // Compiling a vault into a grafts.json.
-//
-// The decision this file exists to protect is which rendered variant a page's
-// body comes from. A player-observable document must carry the body a player
-// would have been served; taking the GM's variant instead publishes `[!dm]`
-// blocks to the table, and it would do it silently.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  buildGrafts, contentHash, journalEntries, documentEntries, documentTypeOf, observable, basesOf, moduleGrafts, moduleManifest, subtypeOf,
-  entryId, pageId, instanceId, itemId, withItemIds, folderOf, pagesFrom, linkIndex, withFolderIndexes, type Page, type GraftOptions,
+  buildGrafts, journalEntries, documentEntries, documentTypeOf, observable, secretRoles, basesOf, subtypeOf,
+  entryId, pageId, instanceId, itemId, withItemIds, withEmbeddedIds, folderOf, pagesFrom, linkIndex, withFolderIndexes, type Page, type GraftOptions,
 } from "../src/foundry-grafts.js";
-import { DOC_TYPES } from "../src/foundry-types.js";
 
 const opts: GraftOptions = {
   vaultId: "marlo",
   roles: ["public", "player", "dm"],
   playerRole: "player",
-  buildRole: "dm",
-  packs: { JournalEntry: "marlo-journals", Actor: "marlo-actors", Item: "marlo-items" },
+  assetBase: "vaults/marlo",
+  namedAssets: new Set(),
+  body: (p) => `<p>${p.title}</p>`,
 };
 
 const page = (path: string, over: Partial<Page> = {}): Page =>
@@ -33,6 +28,10 @@ describe("observable", () => {
 
   it("keeps anything above the player ceiling hidden", () => {
     assert.equal(observable(page("Secrets/Rot.md", { role: "dm" }), opts), false);
+  });
+
+  it("names the roles above the player ceiling as secret, lowercased as a callout names them", () => {
+    assert.deepEqual([...secretRoles({ ...opts, roles: ["public", "Player", "DM"], playerRole: "Player" })], ["dm"]);
   });
 
   it("treats an unknown role as privileged, not public", () => {
@@ -49,15 +48,23 @@ describe("journal entries", () => {
 
     assert.deepEqual(entries.map((e) => e.patch["name"]), ["Characters", "Places"]);
     assert.equal((entries[0]!.patch["pages"] as unknown[]).length, 2);
-    assert.equal(entries[0]!.pack, "marlo-journals");
   });
 
-  it("never carries a body, only a reference to one", () => {
-    // Inlining would make this file megabytes and re-download every page on
-    // every build. The Foundry module batches these through /_batch instead.
+  it("carries each page's body, rendered for that page", () => {
     const [entry] = journalEntries([page("Characters/Marlo.md")], opts);
     const pages = entry!.patch["pages"] as Array<Record<string, any>>;
-    assert.equal(pages[0]!.text.content, "@vaults/dm/Characters/Marlo.foundry.html");
+    assert.equal(pages[0]!.text.content, "<p>Marlo</p>");
+  });
+
+  it("renders no body that no entry carries", () => {
+    // A rendered body names its images for shipping, so one nobody carries ships files for nothing.
+    const asked: string[] = [];
+    const counting: GraftOptions = { ...opts, body: (p) => { asked.push(p.path); return ""; } };
+    buildGrafts([
+      page("Notes/Quiet.md", { foundry: { source: "Actor:npc", journal: false, embed: false } }),
+      page("Maps/Keep.md", { foundry: { source: "Scene", journal: false } }),
+    ], counting);
+    assert.deepEqual(asked, []);
   });
 
   it("opens the entry when any page inside is visible, and hides the rest", () => {
@@ -71,7 +78,7 @@ describe("journal entries", () => {
     assert.equal((entry!.patch["ownership"] as any).default, 2, "the entry opens");
     const pages = entry!.patch["pages"] as Array<Record<string, any>>;
     assert.deepEqual(pages.map((p) => p.ownership.default), [2, 0]);
-    assert.match(pages[1]!.text.content, /^@vaults\/dm\//, "and the hidden one takes the GM variant");
+    assert.equal(pages[1]!.text.content, "<p>Secret</p>", "and the hidden one still carries a body");
   });
 
   it("keeps a wholly private directory shut", () => {
@@ -97,7 +104,6 @@ describe("ids", () => {
 
 describe("documents from foundry.source", () => {
   it("become a graft of what they are based on", () => {
-    // This is the whole of what instance.mjs did at runtime.
     const { entries } = documentEntries([
       page("Characters/Marlo.md", {
         role: "dm",
@@ -108,12 +114,11 @@ describe("documents from foundry.source", () => {
 
     assert.equal(entries[0]!.source, "Compendium.some-bestiary.actors.Actor.mmBandit000000");
     assert.equal(entries[0]!.type, "Actor");
-    assert.equal(entries[0]!.pack, "marlo-actors");
     // The page's own value stands, with the dnd5e default for a description
     // filled in beside it rather than over it.
     const system = entries[0]!.patch["system"] as any;
     assert.deepEqual(system.attributes, { hp: { value: 45 } });
-    assert.equal(system.details.biography.value, "@vaults/dm/Characters/Marlo.foundry.html");
+    assert.equal(system.details.biography.value, "<p>Marlo</p>");
     assert.equal((entries[0]!.patch["ownership"] as any).default, 0);
   });
 
@@ -127,17 +132,15 @@ describe("documents from foundry.source", () => {
 
   it("names what it could not place rather than dropping it", () => {
     const { entries, warnings } = documentEntries([
-      page("x.md", { foundry: { source: "Compendium.a.b.Scene.cccccccccccccccc" } }),
       page("y.md", { foundry: { source: "nonsense" } }),
     ], opts);
     assert.deepEqual(entries, []);
-    assert.match(warnings[0]!, /no pack declared for Scene/);
-    assert.match(warnings[1]!, /cannot tell what kind/);
+    assert.match(warnings[0]!, /cannot tell what kind/);
   });
 });
 
 describe("grafting onto a sibling entry", () => {
-  const sibling = (id: string) => `Compendium.marlo.marlo-actors.Actor.${id}`;
+  const sibling = (id: string) => `Actor.${id}`;
   const commoner = "Compendium.some-bestiary.actors.Actor.mmCommoner0000000";
   const wight = page("Bestiary/Wight.md", {
     foundry: { source: "Compendium.some-bestiary.actors.Actor.mmWight00000000", patch: { _id: "344a28ac1128a1d5" } },
@@ -150,20 +153,20 @@ describe("grafting onto a sibling entry", () => {
     assert.equal(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, "344a28ac1128a1d5");
   });
 
-  it("names the page whose sibling this variant filtered out", () => {
-    // Role gating decides membership per variant, so a public page grafting
-    // onto a dm-only one builds for the GM and skips for everyone else.
+  it("leaves a world UUID this build does not make exactly as written", () => {
+    // It names a document the reader already has, which is a source like any
+    // other. Dropping it would delete a legitimate graft target.
     const { entries, warnings } = documentEntries([brynn(sibling("344a28ac1128a1d5"))], opts);
-    assert.equal(warnings.length, 1);
-    assert.match(warnings[0]!, /NPCs\/Brynn\.md/);
-    assert.match(warnings[0]!, /which this build does not make/);
-    assert.equal(entries[0]!.source, sibling("344a28ac1128a1d5"), "left as written, so the report names it");
+    assert.deepEqual(warnings, []);
+    assert.equal(entries[0]!.source, sibling("344a28ac1128a1d5"));
   });
 
-  it("keeps only the fallback when the sibling is not in this variant", () => {
+  it("keeps a fallback list intact when the first names the reader's own content", () => {
+    // graft tries them in order on the reader's machine, so a world UUID that
+    // does not resolve there falls through to the next by itself.
     const { entries, warnings } = documentEntries([brynn([sibling("344a28ac1128a1d5"), commoner])], opts);
     assert.deepEqual(warnings, []);
-    assert.equal(entries[0]!.source, commoner);
+    assert.deepEqual(entries[0]!.source, [sibling("344a28ac1128a1d5"), commoner]);
   });
 
   it("keeps the fallback list when the sibling is present", () => {
@@ -171,17 +174,19 @@ describe("grafting onto a sibling entry", () => {
     assert.deepEqual(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, ["344a28ac1128a1d5", commoner]);
   });
 
-  it("warns when no source in the list survives, names them all, and leaves them as written", () => {
-    const sources = [sibling("344a28ac1128a1d5"), sibling("gone000000000000")];
-    const { entries, warnings } = documentEntries([brynn(sources)], opts);
+  it("warns when every source names this build's own id at the wrong type", () => {
+    // The build makes an Actor under that id. Resolving either of these would
+    // hand back the wrong kind of document, so both are dropped and reported.
+    const sources = ["Item.344a28ac1128a1d5", "Scene.344a28ac1128a1d5"];
+    const { entries, warnings } = documentEntries([wight, brynn(sources)], opts);
     assert.equal(warnings.length, 1);
     assert.match(warnings[0]!, /344a28ac1128a1d5/);
-    assert.match(warnings[0]!, /gone000000000000/);
-    assert.deepEqual(entries[0]!.source, sources);
+    assert.match(warnings[0]!, /different document type/);
+    assert.deepEqual(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, sources);
   });
 
   it("passes an own-vault embedded UUID through unchanged", () => {
-    const embedded = "Compendium.marlo.marlo-actors.Actor.344a28ac1128a1d5.Item.itemAAAAAAAAAAAA";
+    const embedded = "Compendium.some-bestiary.actors.Actor.mmWight00000000.Item.itemAAAAAAAAAAAA";
     const { entries, warnings } = documentEntries([wight, brynn(embedded)], opts);
     assert.deepEqual(warnings, []);
     assert.equal(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, embedded);
@@ -190,7 +195,7 @@ describe("grafting onto a sibling entry", () => {
   it("does not take a sibling whose type disagrees with the UUID", () => {
     // The full UUID would fail to resolve on the reader's machine; a bare id
     // would quietly resolve to the wrong kind of document.
-    const asItem = "Compendium.marlo.marlo-items.Item.344a28ac1128a1d5";
+    const asItem = "Item.344a28ac1128a1d5";
     const { entries } = documentEntries([wight, brynn([asItem, commoner])], opts);
     assert.equal(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, commoner);
   });
@@ -232,59 +237,73 @@ describe("documentTypeOf", () => {
 });
 
 describe("the whole file", () => {
-  it("writes format 2", () => {
+  it("writes format 4", () => {
     const { file } = buildGrafts([page("A/B.md")], opts);
-    assert.equal(file.format, 2);
+    assert.equal(file.format, 4);
     assert.equal(file.entries.length, 1);
   });
 
-  it("aims every entry at the Adventure pack under adventure packaging", () => {
-    const wolf = page("Bestiary/Wolf.md", {
-      role: "dm", foundry: { source: "Actor:npc", patch: { _id: "wolf000000000001" } },
-    });
-    const pup = page("Bestiary/Pup.md", { foundry: { source: "Compendium.marlo.marlo-actors.Actor.wolf000000000001" } });
-    const { file } = buildGrafts([wolf, pup, page("Notes/A.md")], { ...opts, packaging: "adventure" });
-    assert.ok(file.entries.length >= 3);
-    for (const e of file.entries) assert.equal(e.pack, "marlo-adventure", e.type);
-    // The sibling is named by bare id, which resolves whatever pack it lands in.
-    assert.equal(file.entries.find((e) => e.source)!.source, "wolf000000000001");
+});
+
+describe("where a folder's own entry files", () => {
+  const at = (entries: any[], name: string) =>
+    entries.find((e) => e.patch.name === name)?.folder;
+
+  it("puts it inside its own folder, beside the subfolders it indexes", () => {
+    // Otherwise the entry holding a folder's index sits next to the Foundry
+    // folder rather than in it, which reads as two unrelated things.
+    const entries = journalEntries([
+      page("NPCs/Bram.md"), page("NPCs/Solaris/Pit.md"),
+    ], opts);
+    assert.equal(at(entries, "NPCs"), "NPCs");
+    assert.equal(at(entries, "Solaris"), "NPCs");
+  });
+
+  it("leaves a leaf beside its siblings, so no folder holds one entry", () => {
+    const entries = journalEntries([page("NPCs/Bram.md")], opts);
+    assert.equal(at(entries, "NPCs"), undefined, "a leaf got a folder of its own");
+  });
+
+  it("reaches an ancestor whose own folder holds no pages", () => {
+    // "Deep" has no notes of its own; its folder still exists because
+    // something sits below it.
+    const entries = journalEntries([page("A/Deep/Down/x.md"), page("A/y.md")], opts);
+    assert.equal(at(entries, "A"), "A");
+    assert.equal(at(entries, "Down"), "A/Deep");
+  });
+
+  it("leaves the root entry at the root", () => {
+    const entries = journalEntries([page("Home.md"), page("NPCs/Bram.md")], opts);
+    assert.equal(at(entries, "Home"), undefined);
   });
 });
 
-describe("the module a vault ships", () => {
-  it("declares every pack type, used or not", async () => {
-    // Packs are read when the server starts, so a vault that later gains its
-    // first Scene would otherwise need reinstalling and a restart.
-    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com/" });
-    const packs = m["packs"] as Array<Record<string, any>>;
-    assert.deepEqual(packs.map((p) => p.type).sort(), Object.keys(DOC_TYPES).sort());
-    assert.ok(packs.every((p) => p.ownership.PLAYER === "NONE"), "never player-browsable");
-    assert.ok(packs.filter((p) => p.type === "Actor" || p.type === "Item").every((p) => p.system));
+describe("document ownership", () => {
+  // playerRole is "player", so a public page is one players may read.
+  const npc = (patch: Record<string, unknown> = {}) => page("NPCs/Bram.md", {
+    role: "public", foundry: { source: "Actor:npc", patch },
   });
 
-  it("requires graft and the Foundry module, so a missing one is Foundry's error", async () => {
-    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://marlo.example.com" });
-    const ids = ((m["relationships"] as any).requires as Array<any>).map((r) => r.id);
-    // The Foundry module's id is "vaults". Naming it anything else gives a
-    // dependency Foundry cannot resolve, and the module installs but never
-    // builds — the failure looks like empty packs, not a missing dependency.
-    assert.deepEqual(ids, ["graft", "vaults"]);
-    assert.equal(m["manifest"], "https://marlo.example.com/_foundry/module.json");
+  it("builds a public page's document GM-only", () => {
+    // Reading a page on the wiki does not make the NPC it builds the players'.
+    const { entries } = documentEntries([npc()], opts);
+    assert.equal((entries[0]!.patch["ownership"] as any).default, 0);
   });
 
-  it("tells graft where its entries are", async () => {
-    // graft reads `flags.graft.entries` to find anything at all. Without it the
-    // module is a manifest and a set of empty packs.
-    const m = moduleManifest({ moduleId: "marlo", title: "Marlo", vaultUrl: "https://x.example.com" });
-    assert.deepEqual((m["flags"] as any).graft.entries, ["grafts.json"]);
+  it("lets the page's own patch make its document visible", () => {
+    const { entries } = documentEntries([npc({ ownership: { default: 2 } })], opts);
+    assert.equal((entries[0]!.patch["ownership"] as any).default, 2);
   });
 
-  it("names the vault instead of carrying its entries", async () => {
-    assert.deepEqual(
-      moduleGrafts("https://marlo.example.com/", true),
-      { format: 2, entries: [{ vault: "https://marlo.example.com", gated: true }] });
+  it("still opens the same page's journal page to players", () => {
+    // Role-based visibility is the journal's, and only the journal's.
+    const [entry] = journalEntries([npc()], opts);
+    const pages = entry!.patch["pages"] as Array<Record<string, any>>;
+    assert.equal(pages[0]!.ownership.default, 2);
   });
+});
 
+describe("visibility", () => {
   it("only offers a role the pages it may see", async () => {
     const metas = [
       { path: "A.md", title: "A", role: "public" },
@@ -348,17 +367,6 @@ describe("a bare base with a subtype", () => {
   });
 });
 
-describe("each role's file is buildable by that role", () => {
-  it("never references a variant above the reader who receives it", async () => {
-    // The file is served through the same gate as everything else, so a body
-    // it names above the reader's role is one they cannot fetch.
-    const asPublic = { ...opts, buildRole: "public", playerRole: "" };
-    const [entry] = journalEntries([page("Secrets/Rot.md", { role: "dm" })], asPublic);
-    const pages = entry!.patch["pages"] as Array<Record<string, any>>;
-    assert.match(pages[0]!.text.content, /^@vaults\/public\//);
-  });
-});
-
 describe("an unset player role", () => {
   it("publishes nothing, rather than defaulting to the lowest role", async () => {
     // "Empty means none of it is [player-visible]" is what the setting
@@ -415,39 +423,28 @@ describe("pagesFrom and the sidecar", () => {
   });
 });
 
-describe("asset references are variant-scoped", () => {
+describe("asset references name where the file lands", () => {
   // Every reference in a variant's grafts.json names that variant's own
   // deploy: it is the only one the reader's token is guaranteed to fetch.
-  // What keeps a DM asset from a player is not the variant an entry names but
-  // that the player's own grafts.json (buildRole = their role) never lists
-  // the DM page at all.
+  // What keeps a DM asset from a player is not the path an entry names but
+  // that the player's own grafts.json never lists the DM page, so its `assets`
+  // block never names the file and nothing fetches it.
   const withToken = (role: string): Page => ({
     path: `Bestiary/${role}.md`, title: role, role,
     foundry: { source: "Actor:npc", patch: { prototypeToken: { texture: { src: "@vault/t/x.webp" } } } },
   });
 
-  const srcOf = (p: Page, buildRole: string) => {
-    const [entry] = documentEntries([p], { ...opts, playerRole: "player", buildRole }).entries;
+  const srcOf = (p: Page) => {
+    const [entry] = documentEntries([p], opts).entries;
     const token = entry!.patch["prototypeToken"] as Record<string, any>;
     return token["texture"]["src"] as string;
   };
 
-  it("names the build role's own deploy, whatever the page's visibility", () => {
-    assert.equal(srcOf(withToken("player"), "dm"), "@vaults/dm/t/x.webp");
-    assert.equal(srcOf(withToken("dm"), "dm"), "@vaults/dm/t/x.webp");
+  it("names where the file lands, whatever role the page has", () => {
+    assert.equal(srcOf(withToken("player")), "vaults/marlo/t/x.webp");
+    assert.equal(srcOf(withToken("dm")), "vaults/marlo/t/x.webp");
   });
 
-  it("a player's own file reaches only the player deploy", () => {
-    assert.equal(srcOf(withToken("player"), "player"), "@vaults/player/t/x.webp");
-  });
-
-  it("matches the variant its own body is read from", () => {
-    const page = withToken("player");
-    const [journal] = journalEntries([page], { ...opts, playerRole: "player", buildRole: "dm" });
-    const body = (journal!.patch["pages"] as Array<Record<string, any>>)[0]!.text.content as string;
-    const variant = (s: string) => s.split("/")[1];
-    assert.equal(variant(srcOf(page, "dm")), variant(body));
-  });
 });
 
 describe("_stats.coreVersion", () => {
@@ -521,30 +518,28 @@ describe("_stats.coreVersion", () => {
 });
 
 describe("the page keys sync, journal, embed and folder", () => {
-  const scenePacks = { ...opts.packs, Scene: "marlo-scenes" };
-  const sceneOpts = { ...opts, packs: scenePacks };
   const doc = (foundry: Page["foundry"], path = "DM Notes/Scenes/Home.md"): Page =>
     ({ path, title: "Home", role: "dm", foundry });
 
   it("sync: false keeps the page out of Foundry entirely", () => {
     const p = doc({ source: "Scene", sync: false });
-    assert.deepEqual(documentEntries([p], sceneOpts).entries, []);
-    assert.equal(journalEntries([p], sceneOpts).length, 0);
-    assert.equal(linkIndex([p], sceneOpts).targets.has(p.path), false);
+    assert.deepEqual(documentEntries([p], opts).entries, []);
+    assert.equal(journalEntries([p], opts).length, 0);
+    assert.equal(linkIndex([p], opts).targets.has(p.path), false);
   });
 
   it("journal: false makes the document but no journal page", () => {
     const p = doc({ source: "Scene", journal: false });
-    assert.equal(documentEntries([p], sceneOpts).entries.length, 1);
-    assert.equal(journalEntries([p], sceneOpts).length, 0);
+    assert.equal(documentEntries([p], opts).entries.length, 1);
+    assert.equal(journalEntries([p], opts).length, 0);
   });
 
   it("journal: false points links at the document instead", () => {
     // The journal page a link would name does not exist, and the page still
     // has something a reader can be sent to.
     const p = doc({ source: "Scene", journal: false, patch: { _id: "marloHomeScene00" } });
-    const target = linkIndex([p], sceneOpts).targets.get(p.path)!;
-    assert.deepEqual(target, { doc: { type: "Scene", pack: "marlo-scenes", id: "marloHomeScene00" } });
+    const target = linkIndex([p], opts).targets.get(p.path)!;
+    assert.deepEqual(target, { doc: { type: "Scene", id: "marloHomeScene00" } });
   });
 
   it("embed: false keeps the page's prose out of the description", () => {
@@ -559,13 +554,11 @@ describe("the page keys sync, journal, embed and folder", () => {
 
   it("folder places the document where the page says, not where it lives", () => {
     const p = doc({ source: "Scene", folder: "Shopping Districts" });
-    assert.equal(documentEntries([p], sceneOpts).entries[0]!.folder, "Shopping Districts");
+    assert.equal(documentEntries([p], opts).entries[0]!.folder, "Shopping Districts");
   });
 });
 
 describe("map-note references", () => {
-  const scenePacks = { ...opts.packs, Scene: "marlo-scenes" };
-  const sceneOpts = { ...opts, packs: scenePacks };
 
   it("fills a note's journal ids from the page path it names", () => {
     const p: Page = {
@@ -573,7 +566,7 @@ describe("map-note references", () => {
       foundry: { source: "Scene" },
       sidecar: { notes: [{ entryId: "@vault/Places/Arlanton", pageId: "staleOldId000000", x: 1 }] },
     };
-    const [entry] = documentEntries([p], sceneOpts).entries;
+    const [entry] = documentEntries([p], opts).entries;
     const [note] = (entry!.patch["notes"] as Array<Record<string, unknown>>);
     assert.equal(note!["entryId"], entryId("marlo", "Places"));
     assert.equal(note!["pageId"], pageId("marlo", "Places/Arlanton.md"));
@@ -585,7 +578,7 @@ describe("map-note references", () => {
       path: "S.md", title: "S", role: "dm",
       foundry: { source: "Scene", patch: { notes: [{ entryId: "@vault/Places/Arlanton.md" }] } },
     };
-    const [entry] = documentEntries([p], sceneOpts).entries;
+    const [entry] = documentEntries([p], opts).entries;
     const [note] = (entry!.patch["notes"] as Array<Record<string, unknown>>);
     assert.equal(note!["pageId"], pageId("marlo", "Places/Arlanton.md"));
   });
@@ -595,7 +588,7 @@ describe("map-note references", () => {
       path: "S.md", title: "S", role: "dm",
       foundry: { source: "Scene", patch: { notes: [{ entryId: "@vault/Nowhere/Gone" }] } },
     };
-    const { warnings } = documentEntries([p], sceneOpts);
+    const { warnings } = documentEntries([p], opts);
     assert.ok(warnings.some((w) => w.includes("Nowhere/Gone")), warnings.join("; "));
   });
 
@@ -614,7 +607,7 @@ describe("map-note references", () => {
         { name: "Wolf", actorId: "@vault/Bestiary/Wolf" },
       ] } },
     };
-    const { entries } = documentEntries([macy, scene], sceneOpts);
+    const { entries } = documentEntries([macy, scene], opts);
     const tokens = entries.find((e) => e.type === "Scene")!.patch["tokens"] as Array<Record<string, unknown>>;
     assert.equal(tokens[0]!["actorId"], "marloMacyArla000", "pinned id wins");
     assert.equal(tokens[1]!["actorId"], instanceId("marlo", "Bestiary/Wolf.md"), "derived otherwise");
@@ -630,8 +623,8 @@ describe("map-note references", () => {
     };
     const patch = { tokens: [{ name: "Macy", actorId: "@vault/Actors/Macy Arla" }] };
     const scene: Page = { path: "S.md", title: "S", role: "public", foundry: { source: "Scene", patch } };
-    documentEntries([scene], { ...sceneOpts, buildRole: "public" });          // the player's build, no Macy
-    const dm = documentEntries([macy, scene], { ...sceneOpts, buildRole: "dm" });
+    documentEntries([scene], opts);          // the player's build, no Macy
+    const dm = documentEntries([macy, scene], opts);
     const tokens = dm.entries.find((e) => e.type === "Scene")!.patch["tokens"] as Array<Record<string, unknown>>;
     assert.equal(tokens[0]!["actorId"], "marloMacyArla000");
     assert.equal(patch.tokens[0]!.actorId, "@vault/Actors/Macy Arla", "frontmatter untouched");
@@ -647,7 +640,7 @@ describe("map-note references", () => {
         notes: [{ entryId: "@vault/Macros/M" }],
       } },
     };
-    const { warnings } = documentEntries([prose, macro, scene], { ...sceneOpts, packs: { ...scenePacks, Macro: "marlo-macros" } });
+    const { warnings } = documentEntries([prose, macro, scene], opts);
     assert.ok(warnings.some((w) => w.includes("Notes/Lore.md") && w.includes("no document")), warnings.join("; "));
     assert.ok(warnings.some((w) => w.includes("Macros/M.md") && w.includes("no journal page")), warnings.join("; "));
   });
@@ -657,42 +650,9 @@ describe("map-note references", () => {
       path: "S.md", title: "S", role: "dm",
       foundry: { source: "Scene", patch: { notes: [{ entryId: "abcdabcdabcdabcd", pageId: "x" }] } },
     };
-    const [entry] = documentEntries([p], sceneOpts).entries;
+    const [entry] = documentEntries([p], opts).entries;
     const [note] = (entry!.patch["notes"] as Array<Record<string, unknown>>);
     assert.equal(note!["entryId"], "abcdabcdabcdabcd");
-  });
-});
-
-describe("contentHash", () => {
-  const entries = () => buildGrafts([{
-    path: "Bestiary/Wolf.md", title: "Wolf", role: "dm",
-    foundry: { source: "Actor:npc", patch: {} },
-  }], { ...opts, coreVersion: "14" }).file.entries;
-  const bodies = new Map([["Bestiary/Wolf.md", "aaaa"], ["Notes/A.md", "bbbb"]]);
-
-  it("is stable across identical inputs, whatever order the bodies arrive in", () => {
-    const reversed = new Map([...bodies].reverse());
-    assert.equal(contentHash(entries(), { "dm/a.webp": "1111" }, bodies),
-      contentHash(entries(), { "dm/a.webp": "1111" }, reversed));
-  });
-
-  it("moves when an entry changes", () => {
-    const changed = entries().map((e) => ({ ...e, patch: { ...e.patch, name: "Dire Wolf" } }));
-    assert.notEqual(contentHash(entries(), {}, bodies), contentHash(changed, {}, bodies));
-  });
-
-  it("moves when only an asset's bytes change", () => {
-    // A regenerated portrait keeps its name; the hash map is the one thing
-    // about the build that notices.
-    assert.notEqual(contentHash(entries(), { "dm/a.webp": "aaaa" }, bodies),
-      contentHash(entries(), { "dm/a.webp": "bbbb" }, bodies));
-  });
-
-  it("moves when a page body changes and nothing else does", () => {
-    // Bodies are references from the entries' point of view. Left out, a
-    // prose edit — the common case — would never prompt a rebuild.
-    const edited = new Map(bodies).set("Notes/A.md", "cccc");
-    assert.notEqual(contentHash(entries(), {}, bodies), contentHash(entries(), {}, edited));
   });
 });
 
@@ -710,7 +670,7 @@ describe("document artwork", () => {
   const artOf = (page: Page) => documentEntries([page], opts).entries[0]!.patch;
 
   it("uses the page's image as the document's art", () => {
-    assert.equal(artOf(withImage())["img"], "@vaults/dm/attachments/npcs/Marlo%20Vex.webp");
+    assert.equal(artOf(withImage())["img"], "vaults/marlo/attachments/npcs/Marlo%20Vex.webp");
   });
 
   it("loses to a sidecar, which is the page's data too", () => {
@@ -742,7 +702,7 @@ describe("document artwork", () => {
 
   it("defaults an Actor's token from the same image", () => {
     const token = artOf(withImage())["prototypeToken"] as any;
-    assert.equal(token.texture.src, "@vaults/dm/attachments/npcs/Marlo%20Vex.webp");
+    assert.equal(token.texture.src, "vaults/marlo/attachments/npcs/Marlo%20Vex.webp");
   });
 
   it("never overwrites token art the page already has", () => {
@@ -781,7 +741,7 @@ describe("what the patch can say for itself", () => {
     path: "Scenes/Home.md", title: "Home", role: "dm",
     foundry: { source: "Scene", patch }, ...over,
   });
-  const entryFor = (p: Page) => documentEntries([p], { ...opts, packs: { ...opts.packs, Scene: "marlo-scenes" } });
+  const entryFor = (p: Page) => documentEntries([p], opts);
 
   it("pins a document id from patch._id", () => {
     const { entries } = entryFor(doc({ _id: "marloHomeScene00" }));
@@ -814,43 +774,6 @@ describe("what the patch can say for itself", () => {
     const page = doc({ img: null }, { image: "/a/portrait.webp" });
     const patch = entryFor(page).entries[0]!.patch;
     assert.equal(patch["img"], null);
-  });
-});
-
-describe("what packs a module declares", () => {
-
-  it("declares exactly one for an Adventure", async () => {
-    // Everything the vault holds goes inside it, so a new document type adds
-    // nothing to declare, and empty packs beside it are just noise.
-    const m = moduleManifest({
-      moduleId: "v", title: "V", vaultUrl: "https://x", packaging: "adventure",
-    });
-    assert.deepEqual((m["packs"] as Array<any>).map((p) => [p.name, p.type]),
-      [["v-adventure", "Adventure"]]);
-    assert.equal((m["packs"] as Array<any>)[0].label, "V");
-  });
-
-  it("gives the Adventure pack the vault's system", async () => {
-    // Adventure.fromSource empties actors, items and their folders out of any
-    // adventure read from a pack with no system. The data survives on disk
-    // and every read of it arrives incomplete, with nothing saying so.
-    const m = moduleManifest({
-      moduleId: "v", title: "V", vaultUrl: "https://x",
-      packaging: "adventure", systemId: "dnd5e",
-    });
-    assert.equal((m["packs"] as Array<any>)[0].system, "dnd5e");
-  });
-
-  it("files only the packs it declared", async () => {
-    const m = moduleManifest({
-      moduleId: "v", title: "V", vaultUrl: "https://x", packaging: "adventure",
-    });
-    assert.deepEqual((m["packFolders"] as Array<any>)[0].packs, ["v-adventure"]);
-  });
-
-  it("keeps the Adventure pack out of a compendium module", async () => {
-    const m = moduleManifest({ moduleId: "v", title: "V", vaultUrl: "https://x" });
-    assert.ok(!(m["packs"] as Array<any>).some((p) => p.type === "Adventure"));
   });
 });
 
@@ -894,13 +817,23 @@ describe("withFolderIndexes", () => {
 describe("withItemIds", () => {
   const stamp = (patch: Record<string, unknown>) => withItemIds(patch, "southaven", "NPCs/Baldrin.md");
 
-  it("gives a uuid reference the id graft needs to key the array", () => {
-    // Without one, isKeyedArray is false and the whole items array replaces
-    // the source's items instead of merging into them.
+  it("becomes a graft of the item it names, which is what graft expands", () => {
+    // Left as `{uuid, ...}` graft leaves it alone, and Foundry rejects an item
+    // with no name and no type. The `_id` is also what keys the array, without
+    // which the whole items array replaces the source's instead of merging.
     const out = stamp({ items: [{ uuid: "Compendium.kctg.p.Item.abc", system: { quantity: 40 } }] });
     const items = out["items"] as Record<string, unknown>[];
     assert.equal(items[0]!["_id"], itemId("southaven", "NPCs/Baldrin.md", "Compendium.kctg.p.Item.abc:0"));
-    assert.deepEqual(items[0]!["system"], { quantity: 40 });
+    assert.equal(items[0]!["source"], "Compendium.kctg.p.Item.abc");
+    assert.deepEqual(items[0]!["patch"], { system: { quantity: 40 } });
+    assert.equal(items[0]!["uuid"], undefined, "the authoring key must not survive into the entry");
+  });
+
+  it("leaves a uuid deeper in the patch alone: a grant is offered, not placed", () => {
+    // An advancement's configuration.items[] is a list of what the feature
+    // grants, not documents to create.
+    const grant = { configuration: { items: [{ uuid: "Compendium.dnd5e.p.Item.xyz" }] } };
+    assert.deepEqual(stamp(grant), grant);
   });
 
   it("leaves an id the page pinned itself alone", () => {
@@ -932,5 +865,45 @@ describe("withItemIds", () => {
   it("ignores a patch with no items array", () => {
     const patch = { name: "Baldrin" };
     assert.equal(stamp(patch), patch);
+  });
+});
+
+describe("withEmbeddedIds", () => {
+  const stamp = (patch: Record<string, unknown>, type = "Scene") =>
+    withEmbeddedIds(patch, type, "southaven", "Scenes/Market.md");
+  const members = (patch: Record<string, unknown>, field: string) =>
+    patch[field] as Record<string, unknown>[];
+
+  it("keys a scene note, which Foundry would otherwise re-mint every build", () => {
+    // A random id each build means the scene never matches what was stored,
+    // and graft replaces the whole collection instead of merging it.
+    const out = stamp({ notes: [{ entryId: "aaaaaaaaaaaaaaaa", x: 350 }] });
+    assert.equal(members(out, "notes")[0]!["_id"],
+      itemId("southaven", "Scenes/Market.md", "notes:0"));
+    assert.equal(members(out, "notes")[0]!["x"], 350);
+  });
+
+  it("keys every collection the type has, not just the first", () => {
+    const out = stamp({ notes: [{ x: 1 }], tokens: [{ name: "Cassira" }] });
+    assert.notEqual(members(out, "tokens")[0]!["_id"], members(out, "notes")[0]!["_id"]);
+  });
+
+  it("leaves an id the author wrote alone", () => {
+    const out = stamp({ levels: [{ _id: "defaultLevel0000", name: "Ground" }] });
+    assert.equal(members(out, "levels")[0]!["_id"], "defaultLevel0000");
+  });
+
+  it("does not touch an array that is not an embedded collection", () => {
+    // Card.faces is a plain array of objects, so shape alone cannot decide.
+    const faces = [{ name: "Ace" }];
+    assert.deepEqual(stamp({ faces }, "Cards")["faces"], faces);
+  });
+
+  it("is stable across builds and distinct between pages", () => {
+    const one = stamp({ notes: [{ x: 1 }] });
+    const again = stamp({ notes: [{ x: 1 }] });
+    const elsewhere = withEmbeddedIds({ notes: [{ x: 1 }] }, "Scene", "southaven", "Scenes/Docks.md");
+    assert.equal(members(one, "notes")[0]!["_id"], members(again, "notes")[0]!["_id"]);
+    assert.notEqual(members(one, "notes")[0]!["_id"], members(elsewhere, "notes")[0]!["_id"]);
   });
 });

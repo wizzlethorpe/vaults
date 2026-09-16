@@ -1,8 +1,8 @@
-// The install box for the module a vault builds for itself.
+// The box offering a reader their own grafts.json.
 //
-// The URL it shows is only real when the build writes `_foundry/module.json`,
-// which needs both a packaging and a site_url. A block on a vault missing
-// either would ship a link that 404s, so the build refuses instead.
+// The link is only real when the build writes one, which needs the Foundry
+// integration on and a site_url. A block on a vault missing either would ship
+// a link that 404s, so the build refuses instead.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { buildSite } from "../src/build.js";
 import { writeSettingsFile } from "./settings-helpers.js";
 import {
-  MANIFEST_PATH, foundryInstallHandler, hasFoundryInstall, parseInstallBlock,
+  GRAFTS_PATH, foundryInstallHandler, hasFoundryInstall, parseInstallBlock,
 } from "../src/render/handlers/builtin/foundry-install.js";
 
 const BLOCK = "```foundry-install\nlabel: Install it\n```\n";
@@ -25,13 +25,13 @@ function render(content: string): string {
 }
 
 describe("foundry-install", () => {
-  it("names the manifest the deploy actually serves", () => {
-    assert.match(render("label: Install it\n"), new RegExp(`data-path="${MANIFEST_PATH}"`));
+  it("links to the entry list the deploy actually serves", () => {
+    assert.match(render("label: Install it\n"), new RegExp(`href="${GRAFTS_PATH}"`));
   });
 
   it("takes a label and a note, and needs neither", () => {
     assert.deepEqual(parseInstallBlock("label: Go\nnote: v2\n"), { label: "Go", note: "v2" });
-    assert.equal(parseInstallBlock("").label, "Install in Foundry VTT");
+    assert.equal(parseInstallBlock("").label, "Add to Foundry VTT");
   });
 
   it("escapes a label rather than letting it write markup", () => {
@@ -73,10 +73,10 @@ async function build(settings: string, pages: Record<string, string>): Promise<s
 const page = (body: string) => ({ "index.md": `---\ntitle: Home\n---\n${body}` });
 
 describe("a foundry-install block the build cannot honour", () => {
-  it("refuses a vault that packages no module", async () => {
+  it("refuses a vault with the integration off", async () => {
     await assert.rejects(
-      () => build('site_url: "https://v.example.com"\nfoundry:\n  package: none\n', page(BLOCK)),
-      /foundry.package is "none"/,
+      () => build('site_url: "https://v.example.com"\nfoundry:\n  enabled: false\n', page(BLOCK)),
+      /foundry.enabled is false/,
     );
   });
 
@@ -95,77 +95,12 @@ describe("a foundry-install block the build cannot honour", () => {
     const out = await build('site_url: "https://v.example.com"\n', page(BLOCK));
     const html = await readFile(join(out, "index.html"), "utf8");
     assert.match(html, /vaults-foundry-install/);
-    // The runtime reads data-path to build the absolute URL; the page sanitizer
-    // strips attributes it does not allow, so pin it on the built page.
-    assert.match(html, new RegExp(`data-path="${MANIFEST_PATH}"`));
+    // The page sanitizer strips attributes it does not allow, so pin the
+    // download link on the built page rather than on the handler's output.
+    assert.match(html, new RegExp(`href="${GRAFTS_PATH}"`));
+    assert.match(html, /download="grafts\.json"/);
     await rm(out, { recursive: true, force: true });
   });
 });
 
-const GATED = JSON.stringify({
-  roles: ["public", "dm"], rolePasswords: { dm: "100000:0000:0000" },
-});
 
-const SITE = 'site_url: "https://v.example.com"\n';
-
-describe("the version the module manifest carries", () => {
-  /** A built vault, with what the version came from and a cleanup. */
-  async function moduleOf(settings: string, pages: Record<string, string> = {}) {
-    const dir = await mkdtemp(join(tmpdir(), "vault-fi-"));
-    await writeVault(dir, `${SITE}${settings}`, { ...page("Body.\n"), ...pages });
-    const out = await buildQuietly(dir);
-    const manifestJson = await readFile(join(out, "_foundry", "module.json"));
-    return {
-      manifest: JSON.parse(manifestJson.toString()),
-      manifestJson,
-      /** The stamp the build stored, absent when the author owns the version. */
-      stamp: async () => JSON.parse(
-        await readFile(join(dir, ".vaults", "config.json"), "utf8")).foundryModule,
-      cleanup: () => rm(dir, { recursive: true, force: true }),
-    };
-  }
-
-  it("stamps a date when the author names no version", async () => {
-    const m = await moduleOf("");
-    try { assert.match(m.manifest.version, /^\d{4}\.\d+\.\d+(\.\d+)?$/); }
-    finally { await m.cleanup(); }
-  });
-
-  it("leaves a version from foundry.module alone", async () => {
-    // An author numbering their own releases owns the field.
-    const m = await moduleOf('foundry:\n  module:\n    version: "1.4.0"\n');
-    try { assert.equal(m.manifest.version, "1.4.0"); }
-    finally { await m.cleanup(); }
-  });
-
-  it("ignores a version the author did not quote", async () => {
-    // YAML reads 1.4 as a number, and only a string takes over the numbering.
-    const m = await moduleOf("foundry:\n  module:\n    version: 1.4\n");
-    try { assert.match(m.manifest.version, /^\d{4}\./); }
-    finally { await m.cleanup(); }
-  });
-
-  it("fingerprints the files beside the manifest, not just the manifest", async () => {
-    // The marker inside module.zip says whether the deploy is gated, and
-    // module.json does not, so a fingerprint reading only the manifest hands
-    // both deploys the same version and neither is ever offered an update.
-    const open = await moduleOf("");
-    const gated = await moduleOf("", { ".vaultrc.json": GATED });
-    try {
-      assert.deepEqual(gated.manifestJson, open.manifestJson);
-      assert.notEqual((await gated.stamp()).hash, (await open.stamp()).hash);
-    } finally { await open.cleanup(); await gated.cleanup(); }
-  });
-
-  it("refuses a version below the one already published", async () => {
-    // Foundry compares 1 against 2026 and never offers the update again, which
-    // is the failure the date scheme exists to avoid.
-    const dir = await mkdtemp(join(tmpdir(), "vault-fi-"));
-    try {
-      await writeVault(dir, SITE, page("Body.\n"));
-      await buildQuietly(dir);
-      await writeVault(dir, `${SITE}foundry:\n  module:\n    version: "1.4.0"\n`, {});
-      await assert.rejects(() => buildQuietly(dir), /does not order above/);
-    } finally { await rm(dir, { recursive: true, force: true }); }
-  });
-});

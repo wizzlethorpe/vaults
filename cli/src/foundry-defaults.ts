@@ -1,6 +1,6 @@
 // Default patches: what a document gets before its page says anything.
 //
-// Layered least specific first — `Actor`, then `dnd5e/Actor`, then the page's
+// Layered least specific first: `Actor`, then `dnd5e/Actor`, then the page's
 // own patch, which wins at every depth including with an explicit `null`.
 // `@page/…` resolves during the build, and a reference that resolves to
 // nothing takes its key with it.
@@ -9,8 +9,8 @@
 export interface PageValues {
   /** Representative image, as a served URL ("/attachments/x.webp"). */
   image?: string | null;
-  /** The page's rendered article, as a vault reference. */
-  body?: string;
+  /** The page's article as a journal body, rendered only when a default asks for it. */
+  body?: () => string;
 }
 
 const PAGE_REF = /^@page\/([a-z]+)$/;
@@ -25,9 +25,7 @@ export const DEFAULT_PATCHES: Record<string, Record<string, unknown>> = {
   Item: { img: "@page/image" },
 
   // The page's article becomes the document's description, so a statblock
-  // opened in Foundry carries the writing that explains it. As a reference, in
-  // the same role variant the journal page uses, so a player-visible document
-  // cannot end up holding the GM's version of its own page.
+  // opened in Foundry carries the writing that explains it.
   "dnd5e/Actor": { system: { details: { biography: { value: "@page/body" } } } },
   "dnd5e/Item": { system: { description: { value: "@page/body" } } },
 };
@@ -51,7 +49,7 @@ export function resolvePageRefs<T>(value: T, page: PageValues): T | undefined {
     if (!name) return value;
     const resolved = name === "image"
       ? imageRef(page.image)
-      : name === "body" ? page.body : undefined;
+      : name === "body" ? page.body?.() : undefined;
     return (resolved ?? undefined) as T | undefined;
   }
   if (Array.isArray(value)) {

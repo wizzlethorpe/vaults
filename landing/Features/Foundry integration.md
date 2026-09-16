@@ -2,32 +2,31 @@
 title: Foundry VTT integration
 ---
 
-A deployed vault is also a Foundry VTT module. The **Wizzlethorpe Vaults** Foundry module, built on [graft](https://github.com/wizzlethorpe/graft), reads the vault's deploy and builds its content on the reader's machine: journals from the pages, Foundry document links from the wikilinks, images and audio into the world's data directory, and real Actors, Items, Scenes and other documents from pages that ask for them. What it builds depends on `foundry.package` in `.vaults/settings.yaml`: **compendium** packs, one per document type, or one **Adventure** document.
+A deployed vault hands Foundry a file. Download your `grafts.json` from the vault, import it with [graft](https://github.com/wizzlethorpe/graft), and its content builds into your world: journals from the pages, Foundry document links from the wikilinks, images and audio into your data directory, and real Actors, Items, Scenes and other documents from pages that ask for them.
 
 Nothing a vault ships is content the reader does not already own. A page that builds an Actor names a compendium document; the reader's Foundry resolves it, and the vault supplies only the patch.
 
 ```foundry-install
-label: Install this vault in Foundry
-note: Needs the Graft and Wizzlethorpe Vaults modules
+label: Add this vault to Foundry
+note: Needs the Graft module
 ```
 
-The box above is the `foundry-install` code block. It shows the vault's own install link and copies it; the build requires `site_url` in `.vaults/settings.yaml` to write the module it points at.
+The box above is the `foundry-install` code block. It links to the reader's own entry list; the build requires `site_url` in `.vaults/settings.yaml` for the file to name the media it fetches.
 
 ## How a vault reaches Foundry
 
-1. `vaults push` deploys the wiki and, beside it, `_foundry/module.json`: a module for the vault holding a manifest, its pack declarations, and one line naming the deploy. It contains no content.
-2. The reader installs the vault's module from that link. It requires Graft and Wizzlethorpe Vaults, both in Foundry's package directory, so Foundry offers to install and enable them alongside it.
-3. Wizzlethorpe Vaults offers to build. It fetches the vault's entry list and page bodies, downloads images and audio into `worlds/<world>/vaults-cache/<deploy>/<role>/`, and hands the entries to graft, which resolves each source and writes the packs.
-4. A role-gated vault asks the reader to connect first: open the vault's `/connect` page, sign in, approve access for Foundry VTT, and paste the token back. The build reads the vault at that role. **Reconnect Vault**, in the header of any of the vault's compendium windows, forgets the token and the cache and offers to build again, which is how a reader changes role.
-5. On later world loads the module compares the deploy's content hash with the last build and offers a rebuild when the vault has changed. Pushing new content never means reinstalling anything.
+1. `vaults push` deploys the wiki and, inside each role's variant, a `grafts.json`: every page as a graft entry, with its rendered body inlined and its art listed in an `assets` block.
+2. The reader downloads it. A gated vault serves whichever variant their sign-in entitles them to, and splices in a token good for two hours so graft can fetch the media the file names.
+3. In Foundry, **Import grafts** on Graft's settings tab takes the file. Graft fetches the art into `vaults/<vault>/`, resolves each entry's source, and writes the documents into the world.
+4. For newer content, download the file again and import it again. Entries carry deterministic ids, so a second import updates what it wrote the first time rather than adding a second copy.
 
 ## What is built
 
 | Source | Foundry object |
 |---|---|
 | Each folder | One `JournalEntry` with one `JournalEntryPage` per `.md` page in it, foldered to match the vault |
-| `image:` (or the discovered cover) | Downloaded into the world's vault cache |
-| `[[Other Page]]` | `@UUID[Compendium.<vault>.<vault>-journals.JournalEntry.<entry>.JournalEntryPage.<page>]{label}`, or a world UUID under Adventure packaging |
+| `image:` (or the discovered cover) | Downloaded into `vaults/<vault>/` |
+| `[[Other Page]]` | `@UUID[JournalEntry.<entry>.JournalEntryPage.<page>]{label}` |
 | Audio, PDFs, other passthroughs | Downloaded alongside images |
 | `foundry.source: <UUID>` | A document of the UUID's type, built on that compendium document (see below) |
 | `foundry.source: <Type>[:<subtype>]` | A blank `Actor`, `Item`, `Scene`, `JournalEntry`, `RollTable`, `Macro`, `Cards` or `Playlist` |
@@ -36,7 +35,7 @@ The box above is the `foundry-install` code block. It shows the vault's own inst
 | `foundry.journal: false` | The page's document is built but the page gets no journal page |
 | `foundry.embed: false` | The page's article is not written into its document's description |
 | `foundry.folder` | A `/`-separated folder path the document files under, independent of where the page lives |
-| `foundry.patch` | A deep-merge overlay on the document. `"@vault/PATH"` strings become vault-cache URLs |
+| `foundry.patch` | A deep-merge overlay on the document. `"@vault/PATH"` strings become the path the file lands at |
 | `foundry.patch_json` | A vault-relative JSON file deep-merged into the document before `foundry.patch` |
 | `foundry.patch._id` | A 16-character `[A-Za-z0-9]` id pinned for the document, instead of the derived one |
 
@@ -59,12 +58,12 @@ foundry:
 ---
 ```
 
-The build gives the page a **deterministic id**, a digest of the vault id and the page path, so a rebuild updates the same document. It layers the page's defaults over the source: `name` from the title, `img` from the cover image, the description from the page's rendered article. It then deep-merges `foundry.patch` on top, so HP and CR land where the sheet expects them. On the reader's machine graft resolves the UUID, applies the result, and writes the document into the vault's pack.
+The build gives the page a **deterministic id**, a digest of the vault id and the page path, so a rebuild updates the same document. It layers the page's defaults over the source: `name` from the title, `img` from the cover image, the description from the page's rendered article. It then deep-merges `foundry.patch` on top, so HP and CR land where the sheet expects them. On the reader's machine graft resolves the UUID, applies the result, and writes the document into the world.
 
-The result is an Actor or Item whose description is the wiki article. Documents you import into the world are yours: a rebuild rewrites the pack, not your copy.
+The result is an Actor or Item whose description is the wiki article.
 
 > [!warning] The patch is authoritative
-> Everything in `foundry.patch` is rewritten on every build, so a pack document never drifts from its page. Do not use it for sheets that change at the table, such as player characters.
+> Everything in `foundry.patch` is rewritten on every import, so an imported document never drifts from its page. Do not use it for sheets that change at the table, such as player characters.
 
 ### Blank documents
 
@@ -85,7 +84,7 @@ foundry:
 ---
 ```
 
-`Scene` makes a blank scene, `RollTable` a blank table, `Item:weapon` a blank weapon. The same id and patch rules apply, and a page that disappears takes its document out of the pack on the next build. Supported types: Actor, Item, Scene, JournalEntry, RollTable, Macro, Cards, Playlist. Subtypes are system-specific (dnd5e Actor: npc, character, vehicle, group; dnd5e Item: weapon, equipment, consumable, and so on). The bare type (`Actor`) takes the active system's default subtype.
+`Scene` makes a blank scene, `RollTable` a blank table, `Item:weapon` a blank weapon. The same id and patch rules apply, and a page that disappears leaves its document in the world, where you can delete it. Supported types: Actor, Item, Scene, JournalEntry, RollTable, Macro, Cards, Playlist. Subtypes are system-specific (dnd5e Actor: npc, character, vehicle, group; dnd5e Item: weapon, equipment, consumable, and so on). The bare type (`Actor`) takes the active system's default subtype.
 
 [[Mossroot]] is a worked example: a blank `Actor:npc` whose statblock reads AC, HP, CR and speed through `fm:` from the same `foundry.patch` block, so one frontmatter block drives the wiki render and the Foundry sheet.
 
@@ -95,8 +94,8 @@ In this vault:
 - [[Healing Potion]] builds on the SRD Potion of Healing
 - [[Witchwood encounters]] is a blank `RollTable` whose results live in `foundry.patch.results` and render in the page body through `fm:`
 - [[Mossfoot Tarot]] is a blank `Cards` deck of six `base` cards
-- [[Mossfoot ambience]] is a blank `Playlist` whose sound `path` is an `@vault/` reference, so the audio plays from the vault cache
-- [[Mossfoot Great Hall]] is a blank `Scene` with a background, walls and one ambient sound, both files pulled into the vault cache through `@vault/`
+- [[Mossfoot ambience]] is a blank `Playlist` whose sound `path` is an `@vault/` reference, so the audio plays from the file graft placed
+- [[Mossfoot Great Hall]] is a blank `Scene` with a background, walls and one ambient sound, both files placed on disk through `@vault/`
 - [[Toggle feast]], [[Toggle lights]] and [[Toggle ambient noise]] are `script` Macros that reach the Great Hall by its pinned `patch._id` and its placeables by their pinned `_id`s
 
 ![[screenshot-fvtt-actor-aelar-galanodel.webp|500]]
@@ -128,7 +127,7 @@ foundry:
 ---
 ```
 
-The build reads the JSON from disk and merges it into the entry, so changing the file moves the vault's content hash and prompts a rebuild. The file itself does not need to reach the deploy.
+The build reads the JSON from disk and merges it into the entry, so changing the file changes what the next download builds. The file itself does not need to reach the deploy.
 
 [[Aelar]] is the live demo: `Mossfoot/sheets/aelar-export.json` supplies biography, languages, skills and coin, and the page's `foundry.patch` adds the wound (HP 22/30), a CR bump and the "(wounded)" token name.
 
@@ -149,16 +148,10 @@ foundry:
 ---
 ```
 
-[[Mossfoot Great Hall]] is the live demo. After the scene is imported with **Keep Document IDs**, a hotbar macro can run:
+[[Mossfoot Great Hall]] is the live demo. Once the grafts file is built, the scene sits in the world under that id, so a hotbar macro can run:
 
 ```javascript
 game.scenes.get("mossfootHall0001").view();
-```
-
-To reach the copy still in the pack, name the pack:
-
-```javascript
-await fromUuid("Compendium.<vault-id>.<vault-id>-scenes.Scene.mossfootHall0001");
 ```
 
 The folder's `JournalEntry` id is shared by every page in that folder, so it cannot be pinned per page. Changing a pinned id between builds leaves anything already imported under the old id; delete it by hand.
@@ -204,31 +197,11 @@ Creators re-export their catalogue for each Foundry generation as a **new pack w
 
 A file has no version. Compose the scene yourself and name only the art: you cannot redistribute a creator's map, and wall geometry and lighting are your own work and ship in the vault. See [[Battlemaps]] for the same pattern applied to layered maps.
 
-## Packs, and getting content into your world
+## Getting content into your world
 
-Under `package: compendium` a vault builds into its own packs, one per document type, all eight declared whether or not the vault uses them, grouped in a sidebar folder named after the vault:
+Everything lands in the world, foldered to match the vault. A page's role decides who can read its journal page: a `role: public` page is player-visible when `player_role` allows it, and a `role: dm` page is GM-only. The documents a page builds, its Actor or Item or Scene, are GM-only whatever the page's role; set `ownership` in `foundry.patch` to share one.
 
-```
-Compendium Packs
-└── Marlo Mystery
-    ├── Marlo Mystery: Journals
-    ├── Marlo Mystery: Actors
-    ├── Marlo Mystery: Items
-    ├── Marlo Mystery: Scenes
-    ├── Marlo Mystery: Tables
-    ├── Marlo Mystery: Macros
-    ├── Marlo Mystery: Playlists
-    └── Marlo Mystery: Cards
-```
-
-To bring content across, right-click a pack and choose **Import All**, or drag individual documents out. The documents become yours: a later build updates the pack and leaves what you imported alone.
-
-> [!tip] Check "Keep Document IDs"
-> Import All offers it. Vault documents have derived ids, and keeping them is what lets cross-references survive the trip: a scene's map note finds its article, a macro finds its scene, and a re-import updates what you already brought over instead of adding a second copy.
-
-**Vault packs are declared GM-only** in the vault's `module.json`, whatever the vault's roles. Foundry gates compendium visibility per pack and per user role, with no per-document filter, so a pack a player could open would show them every name and image in it. Per-page roles take effect on import instead: Import All preserves each document's ownership, so a `role: public` page lands player-visible when `player_role` allows it and a `role: dm` page lands GM-only. Dragging a single document out is the exception: Foundry clears ownership on that path, and the document arrives GM-only whatever its role.
-
-Under `package: adventure` the vault builds one Adventure document, named after the vault, in a single pack. Import it once and every internal link resolves to the copies you imported; a second import updates them in place, since the ids are deterministic. Folders travel with it.
+Graft never overwrites a document it did not write. One already in your world under the same id, put there by hand, stops that entry and is named in the report rather than replaced. A document graft did write is updated in place on the next import, so an edit you made to an imported NPC does not survive re-importing that page.
 
 ## Everything Foundry, under `foundry:`
 
@@ -236,13 +209,10 @@ A vault's Foundry settings live in `.vaults/settings.yaml`, in the same vocabula
 
 ```yaml
 foundry:
-  package: compendium     # none | compendium | adventure
+  enabled: true           # false writes no grafts.json at all
   player_role: public     # highest role players may read; empty means none
   system: dnd5e           # the system your Actor and Item content targets
   core_version: '14.359'  # the full Foundry version your exported JSON came from
-  module:                 # optional; extra keys for the module.json served
-    authors:
-      - name: You
 ```
 
 ## `foundry.core_version`: what your document data is
@@ -255,7 +225,9 @@ A bare generation such as `'14'` is worse than leaving it unset: it sorts before
 
 ## What players see inside a shared page
 
-A player-visible page's journal body carries two renders: the GM's full page inside a Foundry secret section, and the player variant's render in the open. Foundry hides secret sections from anyone below owner, so players see the same rendering the public wiki gives them, including differences no callout marks, such as a link only the GM's render resolves. The GM's copy is hidden by Foundry, not absent from the document data. Treat it as obfuscation, and keep real secrets on `role: dm` pages.
+A player-visible page's journal body is the GM's render, with everything players may not see inside Foundry secret sections: role-gated callouts, embeds of pages above the player role, and the bases rows, cards and list items for those pages. A bases view is split rather than wrapped, because a secret cannot sit inside a table: players see the view with their own items, and the GM sees a second copy beneath it holding only the gated ones. A link to a page players cannot open still shows its title, as it does on the public wiki, and opens nothing for them. Foundry hides secret sections from anyone below owner, but the text is in the document data rather than absent from it. Treat it as obfuscation, and keep real secrets on `role: dm` pages.
+
+A journal keeps no stylesheet, so the wiki's styles for callouts, bases and embeds are written into the page's HTML. Hover effects are the one part that does not carry over.
 
 ## Linking to the document instead of the page
 
@@ -274,7 +246,16 @@ Any HTML element carrying the `vaults-web-only` class is stripped from the journ
 
 ## `foundry.player_role`: what your players can read
 
-Set it in `.vaults/settings.yaml` to the **highest role your Foundry players may read**. Pages at that role or below import with `OBSERVER` ownership; everything above stays GM-only. Empty, the default, makes none of the vault player-visible.
+Set it in `.vaults/settings.yaml` to the **highest role your Foundry players may read**. Journal pages at that role or below import with `OBSERVER` ownership; everything above stays GM-only. Empty, the default, makes none of the vault player-visible.
+
+It governs journal pages only. An Actor, Item, Scene or any other document a page builds arrives GM-only, so a public NPC page does not hand players the NPC's statblock. To share one, say so in the page's patch:
+
+```yaml
+foundry:
+  source: Actor:npc
+  patch:
+    ownership: { default: 2 }
+```
 
 ```yaml
 foundry:
@@ -283,7 +264,7 @@ foundry:
 
 For a vault with roles `public`, `patron` and `dm` running that setting:
 
-| Page | Role | Foundry ownership |
+| Page | Role | Journal page ownership |
 |---|---|---|
 | [[Aelar]] | public | `default: OBSERVER` (players can read) |
 | [[Witchwood Cult]] | patron | GM-only |
@@ -293,15 +274,15 @@ Set it to `patron` and the middle row becomes player-visible too. This vault lea
 
 ### Role-gated callouts inside player-visible pages
 
-[[Aelar]] is `role: public`, so it imports player-visible, but it holds `[!dm]` and `[!patron]` callouts. The two-render body above is what keeps them from players: the GM's render, callouts included, sits in the secret section, and the player render, callouts stripped, sits in the open. The GM sees the full page with Foundry's secret marker and a REVEAL toggle; a player with Observer ownership sees only the player render.
+[[Aelar]] is `role: public`, so its journal page imports player-visible, but it holds `[!dm]` and `[!patron]` callouts. Each becomes its own Foundry secret section. The GM sees the whole page with those callouts marked as secrets, and can show one to players with its REVEAL toggle; a player with Observer ownership sees the page without them.
 
 ![[screenshot-fvtt-journal-bram-mossfoot.webp|500]]
 
 [[Bram]]'s journal as the GM sees it, with the DM-only material inside the dimmed secret block.
 
-The same holds for an Actor or Item description, which is the page's rendered article and carries the same two renders.
+An Actor or Item description is the same rendered article with the same secret sections, which matters once a patch has shared that document.
 
-Changing `foundry.player_role` changes ownership and the bodies, which moves the content hash; push, and the next world load offers a rebuild. Documents already imported keep the ownership they arrived with.
+Changing `foundry.player_role` changes ownership and the bodies; push, then download and import again. Documents already built are updated in place.
 
 > [!warning] Secrets on player-owned documents
 > Foundry does not hide secret sections on a document owned by a non-GM user. Imported journal entries default to GM ownership with Observer access for players, so this rarely applies to them. It does apply when you change ownership, or when a page's article is embedded in an Actor or Item sheet a player owns.
@@ -327,6 +308,6 @@ The page still renders on the wiki. It never reaches Foundry: no journal page, a
 > [!warning] Not the same as `embed: false`
 > `foundry.embed: false` only keeps the article out of a document's description; the journal page is still built. `foundry.sync: false` keeps the page out altogether.
 
-Setting the flag on a page that has already been built removes its journal page and its document from the pack on the next build, the same as deleting the page. A copy already imported into the world stays.
+Setting the flag on a page that has already been imported leaves its journal page and document in the world; delete them there if you no longer want them.
 
 The alternative is `ignore:` in `.vaults/settings.yaml`, which drops the page from the build entirely, so it reaches neither the wiki nor Foundry. Use `ignore:` for files that are not content. Use `foundry.sync: false` for pages that belong on the wiki only.

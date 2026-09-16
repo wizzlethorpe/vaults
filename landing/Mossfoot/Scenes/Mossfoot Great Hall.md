@@ -7,9 +7,9 @@ foundry:
   # computing the SHA1 we'd otherwise derive from the page path. Stable
   # across renames and across vault redeploys.
   source: Scene
-  # `@vault/PATH` strings inside foundry.patch become references the Foundry
-  # module downloads into worlds/<world>/vaults-cache/<deploy>/<role>/PATH, so
-  # the scene names vault-shipped assets without a deploy URL. Walls trace
+  # `@vault/PATH` strings inside foundry.patch name files graft places at
+  # vaults/<vault>/PATH, so the scene names vault-shipped assets without a
+  # deploy URL. Walls trace
   # the outer room; one ambient sound plays at the centre.
   patch:
     _id: mossfootHall0001
@@ -110,7 +110,7 @@ foundry:
     ownership: { default: 0 }
 ---
 
-The grand hall of the Mossfoot Inn. A 27 by 20 grid map at 140 pixels per square, walls tracing the outer room, one ambient sound covering the centre. In Foundry this becomes a `Scene` in the vault's scenes pack; the background image and the audio are downloaded into the per-vault cache and served locally.
+The grand hall of the Mossfoot Inn. A 27 by 20 grid map at 140 pixels per square, walls tracing the outer room, one ambient sound covering the centre. In Foundry this becomes a `Scene` in your world; the background image and the audio are downloaded into the vault's own directory and served locally.
 
 ```battlemap
 grid: 140
@@ -131,7 +131,7 @@ And the ambient track that plays while you're in the scene:
 
 ![[great-hall.ogg]]
 
-Both files reach the deploy through the `@vault/` paths in the scene's `levels`, `tiles` and `sounds`; the embed above is here so the track can be heard on the web page. The Foundry module downloads both into the per-vault cache.
+Both files reach the deploy through the `@vault/` paths in the scene's `levels`, `tiles` and `sounds`; the embed above is here so the track can be heard on the web page. Graft downloads both into the vault's own directory.
 
 > [!tip] Try the macros
 > Three pinned-id macros target this scene:
@@ -140,4 +140,4 @@ Both files reach the deploy through the `@vault/` paths in the scene's `levels`,
 > - [[Toggle lights]]: flip scene darkness between 0 and 1
 > - [[Toggle ambient noise]]: mute or unmute the ambient sound (`mossfootHallAmb1`)
 >
-> Each macro reaches the scene by its pinned `patch._id` (`mossfootHall0001`) and the placeable by its pinned `_id`. They read `game.scenes`, so import the scene with **Keep Document IDs** checked.
+> Each macro reaches the scene by its pinned `patch._id` (`mossfootHall0001`) and the placeable by its pinned `_id`. They read `game.scenes`, so build the vault's grafts file into the world first.

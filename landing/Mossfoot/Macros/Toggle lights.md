@@ -14,7 +14,7 @@ foundry:
       ui.notifications.info(`Mossfoot Great Hall ${newDarkness === 0 ? "lit" : "dimmed"}.`);
 ---
 
-Flips the [[Mossfoot Great Hall]] scene's darkness between `0` (fully lit) and `1` (full dark). It reaches the scene by its pinned `patch._id` (`mossfootHall0001`), so it works whether or not the scene is on the canvas. The macro reads `game.scenes`, so the scene must have been imported into the world with **Keep Document IDs** checked.
+Flips the [[Mossfoot Great Hall]] scene's darkness between `0` (fully lit) and `1` (full dark). It reaches the scene by its pinned `patch._id` (`mossfootHall0001`), so it works whether or not the scene is on the canvas. The macro reads `game.scenes`, so build the vault's grafts file into the world first.
 
 > [!quote] Macro body
 > ```fm javascript

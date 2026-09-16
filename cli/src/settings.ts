@@ -30,22 +30,16 @@ export interface Settings {
   favicon: string;
   auto_image: boolean;
   include_unknown_files: boolean;
+  zip_assets: number;
   foundry: FoundrySettings;
   footer: string;
   site_url: string;
 }
 
-type SettingType = "string" | "number" | "boolean" | "string[]" | "rules" | "object";
+/** The largest file Cloudflare Pages deploys. */
+export const PAGES_FILE_BYTES = 25 * 1024 * 1024;
 
-/**
- * How a vault's content is packaged for Foundry.
- *
- * The difference is not cosmetic: an adventure's links must name the copies
- * the GM imported (world UUIDs; import creates with keepId), a compendium's
- * must name the packs. One shape's links used the other way point a reader at
- * a second copy of the thing beside it.
- */
-export type FoundryPackage = "none" | "compendium" | "adventure";
+type SettingType = "string" | "number" | "boolean" | "string[]" | "rules" | "object";
 
 /**
  * Everything this vault says about Foundry, under one key.
@@ -54,8 +48,8 @@ export type FoundryPackage = "none" | "compendium" | "adventure";
  * Foundry facts about this thing".
  */
 export interface FoundrySettings {
-  /** How the vault is packaged: browsable packs, one Adventure, or nothing. */
-  package: FoundryPackage;
+  /** Whether the build writes the grafts.json a reader imports. */
+  enabled: boolean;
   /** Highest role players may read; "" means none of it is player-visible. */
   player_role: string;
   /**
@@ -65,19 +59,14 @@ export interface FoundrySettings {
   core_version: string;
   /** Game system the vault's Actor and Item content targets, e.g. "dnd5e". */
   system: string;
-  /** Extra keys merged into the generated module.json. */
-  module: Record<string, unknown>;
 }
 
 export const FOUNDRY_DEFAULTS: FoundrySettings = {
-  package: "compendium",
+  enabled: true,
   player_role: "",
   core_version: "",
   system: "dnd5e",
-  module: {},
 };
-
-const FOUNDRY_PACKAGES: FoundryPackage[] = ["none", "compendium", "adventure"];
 
 export interface SettingDef<K extends keyof Settings> {
   default: Settings[K];
@@ -111,7 +100,7 @@ export const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     description: "WebP quality 1 to 100 for image compression. Set 0 to disable.",
   },
   max_file_bytes: {
-    default: 25 * 1024 * 1024,
+    default: PAGES_FILE_BYTES,
     type: "number",
     description: "Hard cap (in bytes) on a single file. Larger files are skipped.",
   },
@@ -214,16 +203,21 @@ export const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     description:
       "Ship files with unrecognized extensions. Default false skips them with a warning, so a stray file cannot bypass role gating. Recognized media (audio, video, pdf, epub) is reference-gated either way.",
   },
+  zip_assets: {
+    default: 0,
+    type: "number",
+    description:
+      "Also ship each role's Foundry assets as zips of at most this many MiB, so a first import is a few downloads instead of hundreds. 0 turns it off. At most 25, Cloudflare Pages' per-file limit. Smaller zips mean a rebuild that changes one file drags fewer others along.",
+  },
   foundry: {
     default: FOUNDRY_DEFAULTS,
     type: "object",
     description:
       "Foundry VTT integration. "
-      + "'package': 'adventure' ships the vault as one Adventure document you import once, 'compendium' (the default) as browsable packs, one per document type, 'none' ships nothing. "
-      + "'player_role': the highest role players may read. Pages at or below it arrive player-visible; empty (the default) means none are. "
+      + "'enabled': write the grafts.json a reader downloads and imports into their world. "
+      + "'player_role': the highest role players may read. Journal pages at or below it arrive player-visible; empty (the default) means none are. Documents a page builds, such as Actors and Items, are GM-only whatever the role, unless the page's foundry.patch sets their ownership. "
       + "'system': the game system your Actor and Item content targets, e.g. dnd5e. "
-      + "'core_version': the full quoted Foundry version your exported Scene / Actor JSON came from, e.g. '14.359'. A bare '14' sorts before every release in that generation and costs a Scene its levels. "
-      + "'module': extra keys merged into the module.json the vault serves, such as 'authors'. A quoted 'version' there takes over the numbering, and must rise on every release or Foundry stops offering updates; leave it out to have the build stamp a date."
+      + "'core_version': the full quoted Foundry version your exported Scene / Actor JSON came from, e.g. '14.359'. A bare '14' sorts before every release in that generation and costs a Scene its levels."
   },
   site_url: {
     default: "",
@@ -295,6 +289,10 @@ export function normalizeSettings(input: unknown): { values: Settings; warnings:
   }
 
   normalizeFoundry(values, warnings);
+  if (values.zip_assets < 0 || values.zip_assets * 1024 * 1024 > PAGES_FILE_BYTES) {
+    warnings.push(`${SETTINGS_FILE}: 'zip_assets' must be between 0 and 25 MiB, got ${values.zip_assets}. Using 0.`);
+    values.zip_assets = 0;
+  }
 
   for (const key of Object.keys(fm)) {
     if (!(key in SCHEMA)) {
@@ -328,12 +326,8 @@ function isPlainObject(v: unknown): boolean {
 }
 
 /**
- * Check and fill in the `foundry` block.
- *
- * The generic type check only asks whether it is an object, and every key
- * inside it means something: an unrecognised `package` would silently pick a
- * delivery shape the author did not ask for, with links baked to match, and a
- * misspelled subkey would read as an unset default rather than as a mistake.
+ * Check and fill in the `foundry` block. The generic check only asks whether it
+ * is an object; a misspelled subkey would otherwise read as an unset default.
  * Missing keys take their defaults, so a vault only states what it changes.
  */
 function normalizeFoundry(values: Settings, warnings: string[]): void {
@@ -346,12 +340,9 @@ function normalizeFoundry(values: Settings, warnings: string[]): void {
     }
   }
 
-  const pkg = raw["package"];
-  if (pkg !== undefined && !FOUNDRY_PACKAGES.includes(pkg as FoundryPackage)) {
-    warnings.push(
-      `${SETTINGS_FILE}: 'foundry.package' should be one of ${FOUNDRY_PACKAGES.join(", ")}, `
-      + `got '${String(pkg)}'. Using '${FOUNDRY_DEFAULTS.package}'.`,
-    );
+  const enabled = raw["enabled"];
+  if (enabled !== undefined && typeof enabled !== "boolean") {
+    warnings.push(`${SETTINGS_FILE}: 'foundry.enabled' should be true or false, got ${describeType(enabled)}.`);
   }
   const role = raw["player_role"];
   if (role !== undefined && typeof role !== "string") {
@@ -383,26 +374,12 @@ function normalizeFoundry(values: Settings, warnings: string[]): void {
   if (sys !== undefined && typeof sys !== "string") {
     warnings.push(`${SETTINGS_FILE}: 'foundry.system' should be a system id like dnd5e, got ${describeType(sys)}.`);
   }
-  const module = raw["module"];
-  if (module !== undefined && !isPlainObject(module)) {
-    warnings.push(`${SETTINGS_FILE}: 'foundry.module' should be a manifest object, got ${describeType(module)}.`);
-  }
-  // Quoted or the YAML scalar decides: 1.4.0 is a string, 1.4 is a number, and
-  // only a string suppresses the date stamp.
-  const moduleVersion = isPlainObject(module)
-    ? (module as Record<string, unknown>)["version"] : undefined;
-  if (moduleVersion !== undefined && typeof moduleVersion !== "string") {
-    warnings.push(`${SETTINGS_FILE}: 'foundry.module.version' should be a quoted string, got ${describeType(moduleVersion)}. Ignoring it and stamping a date.`);
-  }
-
   values.foundry = {
-    package: FOUNDRY_PACKAGES.includes(pkg as FoundryPackage)
-      ? pkg as FoundryPackage : FOUNDRY_DEFAULTS.package,
+    enabled: typeof enabled === "boolean" ? enabled : FOUNDRY_DEFAULTS.enabled,
     player_role: typeof role === "string" ? role : FOUNDRY_DEFAULTS.player_role,
     system: typeof sys === "string" && sys ? sys : FOUNDRY_DEFAULTS.system,
     core_version: typeof core === "string" ? core
       : typeof core === "number" ? String(core) : FOUNDRY_DEFAULTS.core_version,
-    module: isPlainObject(module) ? module as Record<string, unknown> : {},
   };
 }
 

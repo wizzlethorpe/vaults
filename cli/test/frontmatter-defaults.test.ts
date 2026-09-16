@@ -1,10 +1,5 @@
-// `default_frontmatter`: frontmatter supplied by glob, before anything reads it.
-//
-// The reason it exists is that a vault has one answer to "what does this page
-// say", and the wiki, the Foundry sync manifest and the module compiler all
-// read it. The alternative — a module-only setting for the same idea — is a
-// way for a synced world and an installed module to disagree about one page,
-// which is exactly what they must not do.
+// `default_frontmatter`: frontmatter supplied by glob, before the wiki render or
+// the grafts.json build reads it.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
