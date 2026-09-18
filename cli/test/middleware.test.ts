@@ -15,7 +15,7 @@
 // drifts on either side, every user of every deployed vault is locked out,
 // and nothing else in the suite would notice.
 
-import { describe, it, before } from "node:test";
+import { describe, it, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -82,7 +82,6 @@ describe("generated auth middleware", () => {
   before(async () => {
     mw = await loadMiddleware({
       roles: ["public", "dm"],
-      foundry: true,
       rolePasswords: { dm: await hashPassword("hunter2") },
     });
   });
@@ -177,30 +176,29 @@ describe("generated auth middleware", () => {
 
 });
 
-describe("the grafts.json a reader downloads", () => {
+describe("a declared download", () => {
   let mw: Middleware;
   let dmCookie: string;
+  const DOWNLOAD = { path: "/_export/data.json", tokens: ["auth", "keys"], maxAge: 60 };
 
-  /** Each variant serves its own file, so the role the gate picked is visible. */
+  let fetched: string[];
+  let body: (variantPath: string) => unknown;
   const served = {
-    fetch: (req: Request) => new Response(JSON.stringify({
-      format: 4,
-      entries: [{ id: "0123456789abcdef", type: "Actor", patch: { name: new URL(req.url).pathname } }],
-      assets: { http: { auth: { "https://assets.example": "" }, files: [{
-        // The zip-and-fallback shape `zip_assets` produces.
-        source: ["https://assets.example/_foundry/assets-1.zip#a.webp", "https://assets.example/a.webp?v=1"],
-        destination: "vaults/v/a.webp",
-        size: 1,
-      }] } },
-    })),
+    fetch: (req: Request) => {
+      const path = new URL(req.url).pathname;
+      fetched.push(path);
+      return new Response(JSON.stringify(body(path)));
+    },
   };
-  const download = (init: RequestInit = {}) =>
-    call(mw, "https://v.example/_foundry/grafts.json", init, { ASSETS: served });
+  const download = (init: RequestInit = {}) => {
+    fetched = [];
+    return call(mw, "https://v.example" + DOWNLOAD.path, init, { ASSETS: served });
+  };
 
   before(async () => {
     mw = await loadMiddleware({
       roles: ["public", "dm"],
-      foundry: true,
+      download: DOWNLOAD,
       rolePasswords: { dm: await hashPassword("hunter2") },
     });
     const res = await call(mw, "https://v.example/login", {
@@ -211,26 +209,39 @@ describe("the grafts.json a reader downloads", () => {
     dmCookie = (res.headers.get("Set-Cookie") ?? "").split(";")[0]!;
   });
 
-  it("serves each visitor the file built for their own role", async () => {
-    // Fetched by the middleware rather than passed through, so a caller
-    // cannot ask for another role's copy by naming its path.
-    const dm = await (await download({ headers: { Cookie: dmCookie } })).json() as any;
-    assert.equal(dm.entries[0].patch.name, "/_variants/dm/_foundry/grafts.json");
-    const anon = await (await download()).json() as any;
-    assert.equal(anon.entries[0].patch.name, "/_variants/public/_foundry/grafts.json");
+  beforeEach(() => {
+    body = (served) => ({ served, auth: { keys: { "https://a.example": "", "https://b.example": "" } } });
   });
 
-  it("splices in a bearer the asset handler can use", async () => {
-    const file = await (await download({ headers: { Cookie: dmCookie } })).json() as any;
-    const token = file.assets.http.auth["https://assets.example"];
-    assert.match(token, /^b\.dm\./, "must be a typed bearer for the role that asked");
+  it("fetches the caller's own variant once and forbids caching the result", async () => {
+    // The general rewrite would also reach the variant, but passes the file through cacheable and unedited.
+    const res = await download({ headers: { Cookie: dmCookie } });
+    assert.deepEqual(fetched, ["/_variants/dm/_export/data.json"]);
+    assert.equal(res.headers.get("cache-control"), "no-store");
   });
 
-  it("fills in exactly the origins the build named, whatever host the request came in on", async () => {
-    // A deploy answers on more than one host; a token filed under the request's
-    // host instead would never be sent, and every asset would 401.
+  it("is named after the declared path", async () => {
+    const res = await download();
+    assert.equal(res.headers.get("content-disposition"), 'attachment; filename="data.json"');
+  });
+
+  it("writes a typed bearer for the caller's role under every key", async () => {
     const file = await (await download({ headers: { Cookie: dmCookie } })).json() as any;
-    assert.deepEqual(Object.keys(file.assets.http.auth), ["https://assets.example"]);
+    assert.deepEqual(Object.keys(file.auth.keys), ["https://a.example", "https://b.example"]);
+    for (const token of Object.values(file.auth.keys) as string[]) assert.match(token, /^b\.dm\./);
+  });
+
+  it("signs the bearer for the declared lifetime", async () => {
+    const file = await (await download()).json() as any;
+    const exp = Number((file.auth.keys["https://a.example"] as string).split(".")[2]);
+    assert.ok(Math.abs(exp - (Date.now() / 1000 + DOWNLOAD.maxAge)) < 5, `exp ${exp} is not about ${DOWNLOAD.maxAge}s away`);
+  });
+
+  it("leaves a file without the token object unchanged", async () => {
+    body = (served) => ({ served });
+    const res = await download();
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { served: "/_variants/public/_export/data.json" });
   });
 });
 
@@ -241,7 +252,6 @@ describe("OAuth state cookie", () => {
     // to any vault whose page titles aren't plain ASCII.
     const mw = await loadMiddleware({
       roles: ["public", "staff"],
-      foundry: true,
       rolePasswords: {},
       oidc: {
         displayName: "LMU",
@@ -269,7 +279,6 @@ describe("OAuth state cookie", () => {
     // bouncing the visitor through a flow that cannot complete.
     const mw = await loadMiddleware({
       roles: ["public", "staff"],
-      foundry: true,
       rolePasswords: {},
       oidc: {
         displayName: "LMU",

@@ -43,7 +43,7 @@ import { bundleHandlerAssets } from "./render/handlers/assets.js";
 import { runMigrations } from "./migrate/run.js";
 import { cacheDir } from "./paths.js";
 import { formatDuration, pMap, Progress } from "./util.js";
-import { buildGrafts, linkIndex, observable, pagesFrom, secretRoles, withFolderIndexes, type AssetFile, type GraftOptions } from "./foundry-grafts.js";
+import { GRAFTS_DOWNLOAD, buildGrafts, linkIndex, observable, pagesFrom, secretRoles, withFolderIndexes, type AssetFile, type GraftOptions } from "./foundry-grafts.js";
 import { chunkAssets, zip } from "./zip.js";
 import { toFoundryHtml } from "./foundry-html.js";
 import { loadDataJson } from "./foundry-meta.js";
@@ -782,7 +782,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       : null;
     const middleware = renderAuthMiddleware({
       roles,
-      foundry: foundryEnabled,
+      ...(foundryEnabled ? { download: GRAFTS_DOWNLOAD } : {}),
       rolePasswords: cfg.rolePasswords,
       ...(patreonForFn ? { patreon: patreonForFn } : {}),
       ...(oidcForFn ? { oidc: oidcForFn } : {}),

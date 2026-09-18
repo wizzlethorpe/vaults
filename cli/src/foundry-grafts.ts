@@ -9,6 +9,8 @@ import { rewriteVaultRefs } from "./foundry-html.js";
 import { defaultsFor, resolvePageRefs } from "./foundry-defaults.js";
 import { mergeDefaults } from "./frontmatter-defaults.js";
 import type { LinkIndex, LinkTarget } from "./foundry-html.js";
+import type { TokenDownload } from "./render/auth-template.js";
+import { GRAFTS_PATH } from "./render/handlers/builtin/foundry-install.js";
 
 /** One graft entry. `source` absent means the patch *is* the document. */
 export interface GraftEntry {
@@ -38,6 +40,13 @@ export interface GraftsFile {
    */
   assets?: { http: { auth?: Record<string, string>; files: AssetFile[] } };
 }
+
+export const GRAFTS_DOWNLOAD: TokenDownload = {
+  path: GRAFTS_PATH,
+  tokens: ["assets", "http", "auth"],
+  // Long enough to survive downloading at a desk and building at the table.
+  maxAge: 60 * 60 * 2,
+};
 
 const DOCUMENT_ID = /^[a-zA-Z0-9]{16}$/;
 
