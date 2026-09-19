@@ -1,14 +1,14 @@
 #!/bin/bash
-# Release the CLI: bump, tag the monorepo, publish to npm.
+# Release the CLI and its TTRPG add-on at one version: bump, tag the monorepo, publish both to npm.
 #
 # Usage:
 #   ./release.sh                         # interactive: pick major/minor/patch bump
 #   ./release.sh 1.1.0
-#   ./release.sh 1.1.0 --skip-cli        # skip cli npm publish
+#   ./release.sh 1.1.0 --skip-publish    # bump, tag and push only
 #
 # Prereqs:
 #   - jq, gh, npm, pnpm on PATH
-#   - npm logged in (`npm whoami`) for cli publish
+#   - npm logged in (`npm whoami`) for the publish
 #   - working tree clean
 
 set -e
@@ -16,10 +16,10 @@ set -e
 # Separate an optional version argument from --skip flags so the version can be
 # omitted (interactive menu) or given in any position.
 NEW_VERSION=""
-SKIP_CLI=0
+SKIP_PUBLISH=0
 for arg in "$@"; do
   case "$arg" in
-    --skip-cli)      SKIP_CLI=1 ;;
+    --skip-publish)  SKIP_PUBLISH=1 ;;
     --*) echo "Unknown flag: $arg"; exit 1 ;;
     *)
       if [[ -n "$NEW_VERSION" ]]; then
@@ -81,24 +81,24 @@ read -p "Continue? (y/n) " -n 1 -r
 echo
 [[ "$REPLY" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
 
-# Gate the release on the suite. Nothing else does: there is no CI, so
-# without this a broken build reaches npm and the Foundry package listing,
-# and the CLI's published bundle is what every deployed vault runs.
+# Gate the release on the suite: what is published is what every deployed vault runs.
 echo ""
 echo "=== Typecheck + tests ==="
 pnpm typecheck
 pnpm test
 echo "All green."
 
-# Bump cli/package.json
-jq --arg v "$NEW_VERSION" '.version = $v' cli/package.json > cli/package.json.tmp
-mv cli/package.json.tmp cli/package.json
+# One version for both: the CLI refuses an add-on at any other.
+for pkg in cli ttrpg; do
+  jq --arg v "$NEW_VERSION" '.version = $v' "$pkg/package.json" > "$pkg/package.json.tmp"
+  mv "$pkg/package.json.tmp" "$pkg/package.json"
+done
 
 
 # Single commit + tag for the monorepo. If versions were already at the
 # target (user pre-bumped, or re-running after a partial failure), skip
 # the commit but still tag the current HEAD.
-git add cli/package.json
+git add cli/package.json ttrpg/package.json
 if git diff --cached --quiet; then
   echo "Versions already at $NEW_VERSION; skipping release commit."
 else
@@ -115,17 +115,24 @@ echo ""
 echo "=== Pushing main + tag to origin ==="
 git push origin main "v$NEW_VERSION"
 
-# Per-subproject release pipelines
-if [[ $SKIP_CLI -eq 0 ]]; then
+if [[ $SKIP_PUBLISH -eq 0 ]]; then
   echo ""
-  echo "=== Publishing CLI to npm ==="
-  pnpm --filter @wizzlethorpe/vaults run build
-  pnpm --filter @wizzlethorpe/vaults publish --access public --no-git-checks
+  echo "=== Publishing the CLI and the add-on to npm ==="
+  # The CLI first: the add-on's prepublish build compiles against the CLI's declarations.
+  # A package already at this version is skipped, so a re-run after a failed second publish finishes the job.
+  for pkg in @wizzlethorpe/vaults @wizzlethorpe/vaults-ttrpg; do
+    if [[ "$(npm view "$pkg@$NEW_VERSION" version 2>/dev/null)" == "$NEW_VERSION" ]]; then
+      echo "$pkg@$NEW_VERSION is already published; skipping."
+    else
+      pnpm --filter "$pkg" publish --access public --no-git-checks
+    fi
+  done
 fi
 
 echo ""
 echo "Released v$NEW_VERSION."
 echo "  npm:     https://www.npmjs.com/package/@wizzlethorpe/vaults/v/$NEW_VERSION"
+echo "           https://www.npmjs.com/package/@wizzlethorpe/vaults-ttrpg/v/$NEW_VERSION"
 echo "  github:  https://github.com/wizzlethorpe/vaults/releases/tag/v$NEW_VERSION"
 echo ""
 echo "Landing deploy is separate (no version coupling): cd landing && vaults push"

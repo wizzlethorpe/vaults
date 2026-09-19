@@ -4,9 +4,11 @@ node_modules/
 *.log
 .env
 
-# CLI build artifacts
+# Build artifacts
 cli/dist/
 cli/*.tsbuildinfo
+ttrpg/dist/
+ttrpg/*.tsbuildinfo
 
 # Wrangler / Cloudflare local state
 .wrangler/

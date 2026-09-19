@@ -7,21 +7,26 @@ Handlers are build-time transforms that turn a special markdown form into HTML. 
 - **Inline:** `` `prefix: content` ``, an inline code span whose content starts with a registered prefix and a colon.
 - **Code block:** ` ```lang `, a fenced code block whose language tag names a registered handler.
 
-Nine handlers are built in, and you can add your own under `.vaults/handlers/`:
+Four handlers are built in, and you can add your own under `.vaults/handlers/`:
+
+| Handler | Trigger | Demo |
+|---|---|---|
+| `fm` | inline | below |
+| `fm` | code block | below |
+| `gallery` | code block | below |
+| `download` | code block | below |
+
+The TTRPG add-on, `@wizzlethorpe/vaults-ttrpg`, brings five more. Install it beside the CLI and they work the same way:
 
 | Handler | Trigger | Demo |
 |---|---|---|
 | `dice` | inline | below |
-| `fm` | inline | below |
-| `fm` | code block | below |
 | `statblock` | code block | [[Statblocks]] |
 | `battlemap` | code block | [[Battlemaps]] |
-| `gallery` | code block | below |
-| `download` | code block | below |
 | `foundry-install` | code block | [[Foundry integration]] |
 | `fvtt-link` | inline | [[Foundry integration]] |
 
-## Built-in: `` `dice:` ``
+## Add-on: `` `dice:` ``
 
 Click the rolled die for a fresh result.
 
@@ -69,7 +74,7 @@ foundry.patch.command
 
 Renders as `<pre><code class="language-javascript">…</code></pre>`. The macro pages ([[Toggle feast]], [[Toggle lights]], [[Toggle ambient noise]]) display their `command` source this way.
 
-## Built-in: `statblock`
+## Add-on: `statblock`
 
 A code-block handler keyed on `` ```statblock ``, schema-compatible with the [Fantasy Statblocks](https://github.com/javalent/fantasy-statblocks) Obsidian plugin. See [[Statblocks]] for the full demo.
 
@@ -141,7 +146,7 @@ note: 1.4 MB, OGG
 
 The file ships only to the variants of the pages that reference it, and the auth middleware serves it only to those roles, the same gating as any other passthrough. A `download` block stages its file whatever the extension, so it also covers files outside the recognised list on [[Passthrough files]].
 
-## Built-in: `foundry-install` and `` `fvtt-link:` ``
+## Add-on: `foundry-install` and `` `fvtt-link:` ``
 
 `foundry-install` renders a download link for the reader's own grafts.json. `fvtt-link:` links to the Foundry document a page builds rather than to its journal page. Both are documented on [[Foundry integration]].
 

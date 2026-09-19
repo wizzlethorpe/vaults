@@ -12,7 +12,7 @@ const FIRST_IMAGE_RE = new RegExp(
 
 /**
  * Resolve a page's representative image to its served URL. Used for OG/Twitter
- * meta tags, Bases card covers, and the Foundry reskin pipeline.
+ * meta tags, Bases card covers, and an add-on's use of a page's art.
  *
  * Resolution order:
  *   1. `image:` frontmatter (string; `![[foo.webp]]` wikilink form is unwrapped).

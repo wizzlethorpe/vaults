@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { battlemapHandler } from "../src/render/handlers/builtin/battlemap.js";
+import { battlemapHandler } from "../src/handlers/battlemap.js";
 
 function render(content: string): string {
   return (battlemapHandler.render(content, {} as never) as { html: string }).html;

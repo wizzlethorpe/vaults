@@ -6,8 +6,7 @@
 //   note: Needs the Graft module
 //   ```
 
-import type { CodeBlockHandler, HandlerContext } from "../types.js";
-import { registerBuiltinAssets } from "../assets.js";
+import { type CodeBlockHandler, type HandlerContext } from "@wizzlethorpe/vaults/addon";
 
 const INSTALL_BLOCK_RE = /^```foundry-install[^\n]*\n([\s\S]*?)^```/gm;
 
@@ -64,6 +63,6 @@ const INSTALL_STYLES = `
 .vaults-install-hint { font-size: .8rem; color: var(--fg-muted, #666); margin: .5rem 0 0; }
 `;
 
-registerBuiltinAssets(foundryInstallHandler, {
+foundryInstallHandler.inlineAssets = {
   styles: [{ source: "builtin/foundry-install.css", content: INSTALL_STYLES }],
-});
+};

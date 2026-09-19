@@ -18,7 +18,7 @@
 // pass (**bold**, *italic*, `code`) so authors can put light formatting
 // in frontmatter and have it survive. Returning HTML rather than markdown
 // lets fm work when invoked recursively from another handler (e.g. inside
-// a `statblock` field), since the dispatcher only re-pipelines top-level
+// another handler's field), since the dispatcher only re-pipelines top-level
 // markdown returns. Wikilinks in frontmatter are NOT processed; cross-page
 // reference belongs in prose.
 //

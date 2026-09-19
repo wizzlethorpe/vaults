@@ -3,9 +3,8 @@
 // hand-written comment in the block.
 
 import { readFile, writeFile } from "node:fs/promises";
-import type { Migration } from "./types.js";
 import { foundryChildren } from "./0.15-foundry-patch-keys.js";
-import { listMarkdownFiles, frontmatter, withFrontmatter } from "./files.js";
+import { frontmatter, listMarkdownFiles, type Migration, withFrontmatter } from "@wizzlethorpe/vaults/addon";
 
 /** Rewrite one file's frontmatter, or return null if it has nothing to move. */
 export function movePinnedId(text: string): string | null {

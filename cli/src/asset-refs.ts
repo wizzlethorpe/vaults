@@ -87,8 +87,7 @@ export async function copyReferencedImages(
   // pull those in too. coverImage was resolved to the served URL upstream, so
   // strip the leading slash + decode to get back to the staging-relative path.
   // `@vault/PATH` references inside any frontmatter string field also gate
-  // an asset into this variant — common for Scene background.src / Playlist
-  // sound.path that point at vault-shipped media. Page-role gating still
+  // an asset into this variant. Page-role gating still
   // applies because we only walk visibleMetas (= pages this variant can see).
   for (const p of visibleMetas) {
     if (p.coverImage && !/^https?:\/\//i.test(p.coverImage)) {

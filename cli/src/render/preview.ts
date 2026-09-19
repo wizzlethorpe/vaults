@@ -29,7 +29,7 @@ export interface PagePreview {
 }
 
 /**
- * Context needed to resolve inline / code-block handlers (`fm:`, `dice:`, …)
+ * Context needed to resolve inline / code-block handlers (`fm:`, …)
  * inside preview snippets. Omit to skip handler dispatch entirely — the
  * preview then falls through with handler syntax preserved as literal text.
  * Pass all four together; partial context can't satisfy HandlerContext.

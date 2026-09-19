@@ -1,5 +1,5 @@
 // `default_frontmatter`: frontmatter supplied by glob, before the wiki render or
-// the grafts.json build reads it.
+// an add-on's build reads it.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

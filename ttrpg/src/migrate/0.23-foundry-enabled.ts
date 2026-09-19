@@ -3,9 +3,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { load as loadYaml } from "js-yaml";
-import type { Migration } from "./types.js";
-import { configPath, exists, settingsPath } from "../paths.js";
-import { loadSettings, writeSettings } from "../settings.js";
+import { configPath, exists, loadSettings, type Migration, settingsPath, writeSettings } from "@wizzlethorpe/vaults/addon";
 
 const RETIRED = ["package", "module"];
 const STAMP = "foundryModule";

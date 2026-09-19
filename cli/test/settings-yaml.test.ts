@@ -10,18 +10,10 @@ import { loadSettings } from "../src/settings.js";
 import { legacySettingsPath, settingsPath } from "../src/paths.js";
 import { runMigrations } from "../src/migrate/run.js";
 import { complainsAbout, settingsGet, settingsSet } from "../src/commands/settings.js";
-import { writeSettingsFile } from "./settings-helpers.js";
-import type { TtrpgSettings } from "../src/foundry-settings.js";
+import { initialised, quiet, writeSettingsFile } from "./settings-helpers.js";
 
 async function vault(): Promise<string> {
   return await mkdtemp(join(tmpdir(), "vaults-settings-yaml-"));
-}
-
-/** A vault `vaults set` will act on: one that has been initialised. */
-async function initialised(settings = ""): Promise<string> {
-  const dir = await vault();
-  await writeSettingsFile(dir, settings);
-  return dir;
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -31,16 +23,6 @@ async function exists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** Run `fn` with console output captured rather than printed. */
-async function quiet(fn: () => Promise<void>): Promise<string[]> {
-  const lines: string[] = [];
-  const origLog = console.log, origWarn = console.warn;
-  console.log = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
-  console.warn = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
-  try { await fn(); } finally { console.log = origLog; console.warn = origWarn; }
-  return lines;
 }
 
 describe("migration: settings.md → .vaults/settings.yaml", () => {
@@ -103,64 +85,10 @@ describe("vaults set", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
-  it("takes a nested foundry key without disturbing its siblings", async () => {
-    const dir = await initialised();
-    try {
-      await quiet(() => settingsSet("foundry.enabled", "false", dir));
-      await quiet(() => settingsSet("foundry.system", "pf2e", dir));
-      const { values } = await loadSettings(dir);
-      assert.equal((values as TtrpgSettings).foundry.enabled, false);
-      assert.equal((values as TtrpgSettings).foundry.system, "pf2e");
-    } finally { await rm(dir, { recursive: true, force: true }); }
-  });
-
-  it("keeps foundry.core_version a string, since YAML would make 14.359 a number", async () => {
-    const dir = await initialised();
-    try {
-      await quiet(() => settingsSet("foundry.core_version", "14.359", dir));
-      const { values, warnings } = await loadSettings(dir);
-      assert.equal((values as TtrpgSettings).foundry.core_version, "14.359");
-      assert.deepEqual(warnings, [], "the value was stored as a number and warned about on read");
-    } finally { await rm(dir, { recursive: true, force: true }); }
-  });
-
-  it("refuses a value of the wrong type inside the foundry block", async () => {
-    const dir = await initialised();
-    try {
-      await assert.rejects(() => settingsSet("foundry.enabled", "yes please", dir),
-        /Refusing to set 'foundry.enabled'/);
-      const { values } = await loadSettings(dir);
-      assert.equal((values as TtrpgSettings).foundry.enabled, true);
-    } finally { await rm(dir, { recursive: true, force: true }); }
-  });
-
-  it("refuses a key the foundry block does not know, set alone or inside the whole block", async () => {
-    const dir = await initialised();
-    try {
-      await assert.rejects(() => settingsSet("foundry.sytem", "pf2e", dir), /unknown key 'foundry\.sytem'/);
-      await assert.rejects(
-        () => settingsSet("foundry", "{enabled: true, player_role: '', system: dnd5e, core_version: '', package: none}", dir),
-        /unknown key 'foundry\.package'/);
-      assert.doesNotMatch(await readFile(settingsPath(dir), "utf8"), /sytem|package:/);
-    } finally { await rm(dir, { recursive: true, force: true }); }
-  });
-
   it("refuses a value of the wrong type", async () => {
     const dir = await initialised();
     try {
       await assert.rejects(() => settingsSet("image_quality", "high", dir), /Refusing to set/);
-    } finally { await rm(dir, { recursive: true, force: true }); }
-  });
-
-  it("refuses a value the schema warns about but does not replace", async () => {
-    // A bare generation warns without being replaced, so comparing the stored
-    // value against the input says nothing. Written, it costs a Scene its levels.
-    const dir = await initialised();
-    try {
-      await assert.rejects(() => settingsSet("foundry.core_version", "14", dir),
-        /Refusing to set 'foundry.core_version'/);
-      const { values } = await loadSettings(dir);
-      assert.equal((values as TtrpgSettings).foundry.core_version, "");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
@@ -187,6 +115,14 @@ describe("vaults set", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
+  it("says which package may own a setting it does not know", async () => {
+    const dir = await initialised("foundry:\n  enabled: false\n");
+    try {
+      await assert.rejects(() => settingsSet("foundry.enabled", "true", dir), /Unknown setting 'foundry'.*install that beside the CLI/);
+      assert.match(await readFile(settingsPath(dir), "utf8"), /^foundry:\n  enabled: false$/m, "the block it does not own was touched");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
   it("refuses an unknown setting rather than writing a key the build ignores", async () => {
     const dir = await initialised();
     try {
@@ -203,20 +139,19 @@ describe("vaults set", () => {
       assert.match(raw, /^other_tool:\n  depth: 2$/m, "a canonical rewrite cost the vault a key the CLI does not own");
       assert.ok(raw.indexOf("other_tool:") > raw.indexOf("site_url:"), "unknown keys follow the schema's");
       const { warnings, changed } = await loadSettings(dir);
-      assert.match(warnings.join("\n"), /unknown setting 'other_tool' is ignored/);
+      assert.match(warnings.join("\n"), /unknown setting 'other_tool' is ignored\. If it belongs to @wizzlethorpe\/vaults-ttrpg, install that beside the CLI\./);
       assert.equal(changed, false, "a file holding an unknown key would be rewritten on every build");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
   it("treats a key named like an Object.prototype member as any other unknown key", async () => {
-    const dir = await initialised("constructor: mine\ntoString: also mine\n__proto__:\n  depth: 2\nfoundry:\n  constructor: nested\n");
+    const dir = await initialised("constructor: mine\ntoString: also mine\n__proto__:\n  depth: 2\n");
     try {
       await quiet(() => settingsSet("auto_image", "false", dir));
       const raw = await readFile(settingsPath(dir), "utf8");
       assert.match(raw, /^constructor: mine$/m);
       assert.match(raw, /^toString: also mine$/m);
       assert.match(raw, /^__proto__:\n  depth: 2$/m);
-      assert.match(raw, /^  constructor: nested$/m, "the same rule one level down, inside the foundry block");
       const { warnings } = await loadSettings(dir);
       assert.match(warnings.join("\n"), /unknown setting 'constructor' is ignored/);
       await assert.rejects(quiet(() => settingsSet("constructor", "x", dir)), /Unknown setting 'constructor'/);
@@ -255,7 +190,6 @@ describe("vaults get", () => {
       const out = await quiet(() => settingsGet(undefined, dir));
       assert.ok(out.some((l) => l.startsWith("auto_image:")), "a schema key was missing from the listing");
       assert.ok(out.some((l) => l.startsWith("site_url:")), "a schema key was missing from the listing");
-      assert.ok(out.some((l) => l.startsWith("foundry:")), "the add-on's settings were missing from the listing");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

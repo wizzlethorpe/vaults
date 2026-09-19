@@ -2,7 +2,10 @@
 title: Statblocks
 ---
 
-A built-in code-block handler renders D&D 5e creature statblocks. The schema matches the [Fantasy Statblocks](https://github.com/javalent/fantasy-statblocks) Obsidian plugin.
+> [!note] Part of the TTRPG add-on
+> Install `@wizzlethorpe/vaults-ttrpg` beside the CLI: `npm install -g @wizzlethorpe/vaults @wizzlethorpe/vaults-ttrpg`.
+
+The `statblock` code-block handler renders D&D 5e creature statblocks. The schema matches the [Fantasy Statblocks](https://github.com/javalent/fantasy-statblocks) Obsidian plugin.
 
 ## A worked example
 

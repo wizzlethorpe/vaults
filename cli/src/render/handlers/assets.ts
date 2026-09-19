@@ -14,32 +14,6 @@ import { dirname, resolve, sep } from "node:path";
 import type { Handler } from "./types.js";
 import type { LoadedHandler } from "./loader.js";
 
-/**
- * Built-in handlers carry their asset content inline rather than loading
- * from disk. They register via this side-table so the bundler can include
- * them without filesystem reads.
- */
-export interface BuiltinAsset {
-  /** Stable identifier for dedup. Conventionally "<handler-name>.<kind>". */
-  source: string;
-  content: string;
-}
-
-export interface BuiltinAssetMap {
-  scripts?: BuiltinAsset[];
-  styles?: BuiltinAsset[];
-}
-
-/**
- * Built-in handlers attach their static assets to a side-table keyed on
- * the handler reference. The bundler looks them up here.
- */
-const BUILTIN_ASSETS = new WeakMap<Handler, BuiltinAssetMap>();
-
-export function registerBuiltinAssets(handler: Handler, assets: BuiltinAssetMap): void {
-  BUILTIN_ASSETS.set(handler, assets);
-}
-
 export interface BundledAssets {
   js: string;
   css: string;
@@ -64,7 +38,7 @@ export async function bundleHandlerAssets(
   const handlersRoot = resolve(vaultPath, ".vaults/handlers");
 
   for (const h of builtinHandlers) {
-    const inline = BUILTIN_ASSETS.get(h);
+    const inline = h.inlineAssets;
     if (!inline) continue;
     for (const a of inline.scripts ?? []) {
       if (!seenJs.has(a.source)) {

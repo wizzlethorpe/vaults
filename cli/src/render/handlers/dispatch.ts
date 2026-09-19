@@ -122,7 +122,7 @@ function outputToInline(out: HandlerOutput): PhrasingContent[] {
  * and code node. After a substitution, the replacements get re-walked at
  * depth+1 — this handles both:
  *   (a) **vertical** recursion: a paragraph the handler emitted contains
- *       further handler-eligible inline nodes (e.g., a `dice:` inside a
+ *       further handler-eligible inline nodes (e.g., an `fm:` inside a
  *       custom code-block's emitted markdown).
  *   (b) **horizontal** recursion: the replacement is itself directly
  *       handler-eligible (e.g., a `loop:` handler emitting another

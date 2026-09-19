@@ -54,7 +54,7 @@ landing/                 this folder, inside the wizzlethorpe/vaults monorepo
 ## Build it yourself
 
 ```bash
-npm install -g @wizzlethorpe/vaults
+npm install -g @wizzlethorpe/vaults @wizzlethorpe/vaults-ttrpg   # the demo uses the TTRPG add-on
 git clone https://github.com/wizzlethorpe/vaults.git
 cd vaults/landing
 vaults preview                 # http://localhost:4173

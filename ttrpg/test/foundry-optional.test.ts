@@ -11,8 +11,8 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildSite } from "../src/build.js";
-import { writeSettingsFile } from "./settings-helpers.js";
+import { buildSite } from "../../cli/src/build.js";
+import { writeSettingsFile } from "../../cli/test/settings-helpers.js";
 import type { TtrpgSettings } from "../src/foundry-settings.js";
 
 async function build(settings: string, extra: Record<string, string | Buffer> = {}): Promise<string> {
@@ -102,7 +102,7 @@ describe("the Function of a two-role deploy", () => {
 
 describe("the foundry block", () => {
   it("takes defaults for the keys a vault does not state", async () => {
-    const { loadSettings } = await import("../src/settings.js");
+    const { loadSettings } = await import("../../cli/src/settings.js");
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
     await writeSettingsFile(dir, "foundry:\n  player_role: dm\n");
     const { values, warnings } = await loadSettings(dir);
@@ -115,7 +115,7 @@ describe("the foundry block", () => {
     // The generic type check only asks whether it is an object. Without this a
     // typo reads as an absent key, which is a default rather than a mistake —
     // `player_roll: dm` would silently share nothing.
-    const { loadSettings, writeSettings } = await import("../src/settings.js");
+    const { loadSettings, writeSettings } = await import("../../cli/src/settings.js");
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
     await writeSettingsFile(dir, "foundry:\n  player_roll: dm\n  system: pf2e\n");
     const { values, warnings } = await loadSettings(dir);
@@ -131,7 +131,7 @@ describe("the foundry block", () => {
   });
 
   it("turns the integration off, which is what stops a grafts.json being written", async () => {
-    const { loadSettings } = await import("../src/settings.js");
+    const { loadSettings } = await import("../../cli/src/settings.js");
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
     await writeSettingsFile(dir, "foundry:\n  enabled: false\n");
     const { values, warnings } = await loadSettings(dir);
@@ -170,7 +170,7 @@ describe("zip_assets", () => {
   });
 
   it("refuses a size Pages would not deploy, and falls back to off", async () => {
-    const { loadSettings } = await import("../src/settings.js");
+    const { loadSettings } = await import("../../cli/src/settings.js");
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
     await writeSettingsFile(dir, "zip_assets: 40\n");
     const { values, warnings } = await loadSettings(dir);

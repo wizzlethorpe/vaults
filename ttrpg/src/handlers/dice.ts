@@ -12,9 +12,7 @@
 // Subset of Dice Roller's syntax: basic XdY +/- Z arithmetic, optional X.
 // More complex modifiers (kh, kl, explode, etc.) are not supported.
 
-import type { InlineHandler } from "../types.js";
-import { htmlEscape } from "../../../escape.js";
-import { registerBuiltinAssets } from "../assets.js";
+import { htmlEscape, type InlineHandler } from "@wizzlethorpe/vaults/addon";
 
 // Formula validation: optional X, then 'd', then Y, then optional ± integer.
 // Only used at build time to decide whether render() emits a clickable
@@ -90,7 +88,7 @@ button.dice-roll:hover { background: color-mix(in srgb, var(--accent) 12%, trans
 code.dice-roll-invalid { color: var(--muted); text-decoration: line-through; }
 `;
 
-registerBuiltinAssets(diceHandler, {
+diceHandler.inlineAssets = {
   scripts: [{ source: "builtin/dice.runtime.js", content: DICE_RUNTIME_SCRIPT }],
   styles: [{ source: "builtin/dice.css", content: DICE_STYLES }],
-});
+};

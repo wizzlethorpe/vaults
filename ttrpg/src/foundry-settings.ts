@@ -1,6 +1,6 @@
 // The settings the add-on contributes, and the checks the generic schema pass cannot make.
 
-import { PAGES_FILE_BYTES, SETTINGS_FILE, describeType, type AnySettingDef, type Settings } from "./settings.js";
+import { type AnySettingDef, describeType, PAGES_FILE_BYTES, type Settings, SETTINGS_FILE } from "@wizzlethorpe/vaults/addon";
 
 /**
  * Everything this vault says about Foundry, under one key.

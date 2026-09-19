@@ -3,7 +3,10 @@ title: Battlemaps
 image: mossfoot-great-hall.webp
 ---
 
-A built-in `battlemap` code-block handler renders a layered, multi-level map with a level switcher, a grid-overlay toggle, and a PNG download of the composited view.
+> [!note] Part of the TTRPG add-on
+> Install `@wizzlethorpe/vaults-ttrpg` beside the CLI: `npm install -g @wizzlethorpe/vaults @wizzlethorpe/vaults-ttrpg`.
+
+The `battlemap` code-block handler renders a layered, multi-level map with a level switcher, a grid-overlay toggle, and a PNG download of the composited view.
 
 ## Live demo
 

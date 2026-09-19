@@ -7,38 +7,41 @@
 
 > **🌐 Documentation and live demo: [vaults.wizzlethorpe.com](https://vaults.wizzlethorpe.com)**
 
-Self-host an Obsidian vault as a static, role-gated wiki on your own Cloudflare account, and import the same vault into Foundry VTT.
+Self-host an Obsidian vault as a static, role-gated wiki on your own Cloudflare account. With the TTRPG add-on, the same vault also imports into Foundry VTT.
 
-The repo holds two pieces, on one history so a `vaults vX.Y.Z` tag pins the exact behaviour of both:
+The repo holds three pieces, on one history so a `vaults vX.Y.Z` tag pins the exact behaviour of all of them:
 
 - **[`cli/`](cli/)**: `@wizzlethorpe/vaults` (npm). The renderer + deploy CLI. Reads your vault, renders to HTML, deploys to a Cloudflare Pages project on your own account.
+- **[`ttrpg/`](ttrpg/)**: `@wizzlethorpe/vaults-ttrpg` (npm). The optional add-on: statblocks, dice, battlemaps, and the `grafts.json` a reader imports into Foundry VTT. The CLI finds it when it is installed beside it, and knows nothing about TTRPGs without it.
 - **[`landing/`](landing/)**: A vault that doubles as the project's landing page (deployed at vaults.wizzlethorpe.com) and a working demo of every CLI feature.
 
 ## Getting started
 
 ```bash
-# CLI
 npm install -g @wizzlethorpe/vaults
+# or, for a TTRPG vault, the CLI and its add-on together
+npm install -g @wizzlethorpe/vaults @wizzlethorpe/vaults-ttrpg
 vaults init my-vault && cd my-vault
 vaults preview        # local preview
 vaults push           # deploy to your Cloudflare account
 ```
 
-Foundry: the deploy serves each reader a `grafts.json` they import with [Graft](https://foundryvtt.com/packages/graft), which builds the content into their world.
+Foundry, with the add-on installed: the deploy serves each reader a `grafts.json` they import with [Graft](https://foundryvtt.com/packages/graft), which builds the content into their world.
 
 ## Versioning
 
-The CLI carries the version. The root `release.sh <X.Y.Z>` bumps `cli/package.json`, tags `v<X.Y.Z>`, and publishes to npm.
+The CLI and the add-on share one version. The root `release.sh <X.Y.Z>` bumps both `package.json` files, tags `v<X.Y.Z>`, and publishes both to npm.
 
 ## Repo layout
 
 ```
 .
 ├── cli/               # TypeScript CLI + Cloudflare Pages template (publishes to npm)
+├── ttrpg/             # The TTRPG and Foundry add-on (publishes to npm)
 ├── landing/           # Demo vault, deployed at vaults.wizzlethorpe.com
 ├── package.json       # Workspace manifest
 ├── pnpm-workspace.yaml
-└── release.sh         # Bump, tag, publish the CLI
+└── release.sh         # Bump, tag, publish the CLI and the add-on at one version
 ```
 
 ## Support

@@ -8,6 +8,12 @@ Sync an Obsidian vault to a Cloudflare-hosted wiki. The CLI renders your notes l
 npm install -g @wizzlethorpe/vaults
 ```
 
+For a TTRPG vault, install [`@wizzlethorpe/vaults-ttrpg`](https://www.npmjs.com/package/@wizzlethorpe/vaults-ttrpg) beside it. It adds statblocks, dice, battlemaps and the Foundry VTT import, and the CLI picks it up on its own. Install and update the two together, in one command: they release at one version and the CLI refuses an add-on at any other.
+
+```bash
+npm install -g @wizzlethorpe/vaults @wizzlethorpe/vaults-ttrpg
+```
+
 Requires Node.js 22 or newer. Works on macOS, Linux, and Windows.
 
 ## Quickstart
@@ -45,7 +51,6 @@ Cloudflare Pages           ← per-user, your account
 - **Per-tier deploys.** A page tagged `role: dm` in its frontmatter only includes to the dm variant. Public visitors *cannot* fetch it; the file structurally doesn't exist in their variant.
 - **Inline gating with callouts.** Drop a `> [!dm]` callout in an otherwise public page; the entire block is stripped from the public deploy. Same for any other configured role.
 - **Images and media are gated too.** Only images, audio, video, PDFs, and EPUBs embedded by visible pages are copied into a given variant. Unknown extensions are skipped by default (toggle `include_unknown_files`).
-- **Foundry integration.** The build compiles each role's pages into a self-contained `_foundry/grafts.json`. A reader downloads their own copy and builds it into their world with [graft](https://github.com/wizzlethorpe/graft)'s **Import grafts**. Page bodies are inlined and art is listed in the file's `assets` block, fetched with a two-hour token, so a reader's download only ever holds what their role may read.
 - **Bases support.** `.base` files render as cards / table / list inside the wiki, just like inside Obsidian.
 - **LaTeX math.** `$inline$` and `$$display$$` math render server-side via KaTeX, matching Obsidian's syntax. The stylesheet and fonts are self-hosted and only ship for vaults that contain math.
 - **Social meta.** OG / Twitter card tags are auto-generated. Pages without an explicit `image:` frontmatter use the first body embed (toggle with `auto_image`).
@@ -58,7 +63,7 @@ Cloudflare Pages           ← per-user, your account
 |---|---|
 | `vaults init` | Write a `.vaults/settings.yaml` with sensible defaults. |
 | `vaults get [key]` | Show one setting, or every setting. |
-| `vaults set <key> <value>` | Change a setting, e.g. `vaults set foundry.system pf2e`. |
+| `vaults set <key> <value>` | Change a setting, e.g. `vaults set accent_color "#7a4a8c"`. |
 | `vaults build` | Render the vault to a local directory (no deploy). |
 | `vaults preview` | Render + serve locally via `wrangler pages dev` so you can click around with auth working. |
 | `vaults push` | Render + deploy to Cloudflare Pages. |
@@ -112,7 +117,7 @@ Everything about how a vault renders lives in `.vaults/settings.yaml`. Change it
 
 ```bash
 vaults get                                  # every setting and its current value
-vaults get foundry.system                   # one value, bare, so it pipes
+vaults get site_url                         # one value, bare, so it pipes
 vaults set vault_name "My Wiki"
 vaults set accent_color "#7a4a8c"
 vaults set folder_notes true
@@ -138,11 +143,7 @@ title: Optional override          # default: filename or first H1
 aliases:                          # extra names that resolve to this page from wikilinks
   - Pale Mountains
   - The Pale Mountains
-image: assets/banner.webp         # optional cover image (OG / Twitter / Bases / Foundry)
-foundry:                          # optional Foundry instantiation
-  base: Compendium.dnd5e.monsters.Actor.bandit   # template UUID, OR Type[:subtype] for blank doc
-  data:                                          # deep-merge overlay
-    system.attributes.hp.value: 22
+image: assets/banner.webp         # optional cover image (OG / Twitter / Bases)
 ---
 ```
 
@@ -219,7 +220,11 @@ Clicking an image in a page opens it in a lightbox. Images inside an element wit
 
 ### Built-ins
 
-- **`dice:` (inline)** — `` `dice: 1d20+5` `` renders as a clickable button on the deploy that re-rolls on click. Mirrors [Obsidian Dice Roller](https://github.com/javalent/dice-roller) syntax.
+- **`fm:` (inline)** and **`fm` (code block)**: insert a value from the page's frontmatter, as `` `fm: stats.hp` `` in prose or as a highlighted block.
+- **`gallery` (code block)**: a grid of the images it lists, one per line, with optional captions.
+- **`download` (code block)**: a download card for a file in the vault, shipped whatever its extension.
+
+The TTRPG add-on adds `dice:`, `statblock`, `battlemap`, `foundry-install` and `fvtt-link:`.
 
 User handlers can override built-ins of the same name. Trust model: handlers run with the same permissions as the rest of the build, so only run `vaults push` on vaults whose contents you trust.
 
@@ -229,7 +234,7 @@ Multi-role deploys include with a small Cloudflare Pages Function (`_middleware.
 
 - **Gates per-role variants** via a signed cookie (`SameSite=None; Secure; Partitioned`).
 - **Handles Patreon login** at `/auth/patreon/start` and `/auth/patreon/callback`, and **OIDC login** at `/auth/oidc/start` and `/auth/oidc/callback`, when configured.
-- **Serves `/_foundry/grafts.json`** as the caller's own role variant, with a two-hour bearer spliced into its `assets` block so graft can fetch the media it names.
+- **Serves a download an add-on declares** as the caller's own role variant, with a short-lived bearer written into it. The TTRPG add-on's `/_foundry/grafts.json` is one.
 
 Tokens are stateless HMAC-signed JWTs; revocation = rotate `SESSION_SECRET` via `vaults push --rotate-secret`.
 

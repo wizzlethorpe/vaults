@@ -1,7 +1,7 @@
 // Apply `default_frontmatter` rules to a page's frontmatter.
 //
 // There is one answer to "what does this page's frontmatter say", and both
-// readers take it from here: the wiki render and the grafts.json build.
+// readers take it from here: the wiki render and an add-on's build.
 //
 // Defaults, not overrides: a page that states something wins. Rules apply in
 // order and deep-merge, so a broad rule sets a baseline and a narrow one

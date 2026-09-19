@@ -35,13 +35,15 @@ export interface RunMigrationsOpts {
   only?: string;
   /** Suppress per-migration logs (errors and the summary still print). */
   silent?: boolean;
+  /** The migrations to consider, in order. Defaults to core's followed by the add-on's. */
+  migrations?: ReadonlyArray<Migration>;
 }
 
 export async function runMigrations(
   vaultPath: string,
   opts: RunMigrationsOpts = {},
 ): Promise<MigrationResult> {
-  const all = await listMigrations();
+  const all = opts.migrations ?? await listMigrations();
   const candidates = opts.only ? all.filter((m) => m.id === opts.only) : all;
   if (opts.only && candidates.length === 0) {
     throw new Error(`unknown migration id: ${opts.only}`);

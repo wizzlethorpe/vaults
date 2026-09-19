@@ -16,7 +16,6 @@
 // rather than a markdown link someone has to know to write.
 
 import type { CodeBlockHandler, HandlerContext } from "../types.js";
-import { registerBuiltinAssets } from "../assets.js";
 
 /** A ```download block, for the build's per-variant asset scanner. */
 const DOWNLOAD_BLOCK_RE = /^```download[^\n]*\n([\s\S]*?)^```/gm;
@@ -92,6 +91,6 @@ const DOWNLOAD_STYLES = `
 `;
 
 
-registerBuiltinAssets(downloadHandler, {
+downloadHandler.inlineAssets = {
   styles: [{ source: "builtin/download.css", content: DOWNLOAD_STYLES }],
-});
+};

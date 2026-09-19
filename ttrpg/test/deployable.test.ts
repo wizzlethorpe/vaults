@@ -3,8 +3,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { assertDeployable } from "../src/foundry-build.js";
-import { PAGES_FILE_BYTES } from "../src/settings.js";
+import { assertDeployable } from "../src/index.js";
+import { PAGES_FILE_BYTES } from "../../cli/src/settings.js";
 
 describe("assertDeployable", () => {
   it("refuses a file larger than Pages deploys, naming it and its size", () => {

@@ -12,77 +12,9 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { tmpdir } from "node:os";
-import { buildSite } from "../src/build.js";
-
-interface Vault { dir: string; out: string; }
-
-/** Build a temp vault from a path → contents map; caller must `cleanup`. */
-async function setupVault(files: Record<string, string | Buffer>): Promise<Vault> {
-  // settings.md is the source of truth for vault properties, so a test vault
-  // configures itself the way a user would. image_quality: 0 skips sharp,
-  // which these fixtures need: their "images" are placeholder bytes, not real
-  // encodings. Exercising the compression path wants real fixtures instead.
-  if (!("settings.md" in files)) {
-    files = { "settings.md": "---\nimage_quality: 0\n---\n", ...files };
-  }
-  const dir = await mkdtemp(join(tmpdir(), "vault-role-"));
-  const out = join(dir, "_out");
-  for (const [path, content] of Object.entries(files)) {
-    const full = join(dir, path);
-    await mkdir(dirname(full), { recursive: true });
-    await writeFile(full, content);
-  }
-  return { dir, out };
-}
-
-async function cleanup(v: Vault): Promise<void> {
-  await rm(v.dir, { recursive: true, force: true });
-}
-
-async function build(v: Vault): Promise<void> {
-  // buildSite logs progress to stdout (Scanning..., Pages..., Built in...).
-  // Useful when running the CLI; pure noise in test output. Swallow during
-  // the test call; expected warnings (broken cross-tier wikilinks) are
-  // verified separately by inspecting the rendered HTML.
-  const origLog = console.log;
-  const origWarn = console.warn;
-  console.log = () => {};
-  console.warn = () => {};
-  try {
-    await buildSite({
-      vaultPath: v.dir,
-      outputDir: v.out,
-      // 0 disables image compression; the test vaults below ship no images
-      // anyway, but this also skips an unrelated sharp warm-up cost.
-    });
-  } finally {
-    console.log = origLog;
-    console.warn = origWarn;
-  }
-}
-
-async function exists(path: string): Promise<boolean> {
-  try { await stat(path); return true; } catch { return false; }
-}
-
-async function readJson(path: string): Promise<unknown> {
-  return JSON.parse(await readFile(path, "utf8"));
-}
-
-/** Three-role vaultrc with placeholder password hashes (roleAdd hashes match this shape). */
-const VAULTRC_3 = JSON.stringify({
-  roles: ["public", "patron", "dm"],
-  rolePasswords: {
-    patron: "100000:0000:0000",
-    dm: "100000:0000:0000",
-  },
-});
-
-
-const VARIANT = (role: string, path: string) => `_variants/${role}/${path}`;
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { VARIANT, VAULTRC_3, build, cleanup, exists, readJson, setupVault } from "./vault-helpers.js";
 
 // ── Page-level role gating ────────────────────────────────────────────────
 
@@ -733,86 +665,6 @@ describe("role gating: wikilinks across tiers", () => {
       assert.ok(!/<a[^>]*href="\/Secret"/.test(pub),
         "public render must not link to a DM-tier page");
       assert.match(pub, /is-unresolved/);
-    } finally { await cleanup(v); }
-  });
-});
-
-
-describe("role gating: Foundry bodies", () => {
-  // A player-visible page carries one render. What players may not see sits in
-  // Foundry's secret sections, which Foundry strips for anyone below owner.
-  const SETTINGS = "---\nimage_quality: 0\nfoundry:\n  player_role: public\n  core_version: '14.359'\n---\n";
-
-  /** A page's journal body, read out of the grafts file it is inlined into. */
-  const bodyOf = async (out: string, role: string, name: string): Promise<string> => {
-    const file = await readJson(join(out, VARIANT(role, "_foundry/grafts.json"))) as
-      { entries: Array<{ patch: { pages?: Array<{ name: string; text: { content: string } }> } }> };
-    for (const entry of file.entries) {
-      const page = entry.patch.pages?.find((p) => p.name === name);
-      if (page) return page.text.content;
-    }
-    throw new Error(`no journal page named ${name} in the ${role} entry list`);
-  };
-  const withoutSecrets = (html: string) => html.replace(/<section class="secret"[\s\S]*?<\/section>/g, "");
-
-  it("puts a DM callout behind a secret, once, and leaves a DM-only page alone", async () => {
-    const v = await setupVault({
-      "settings.md": SETTINGS,
-      ".vaultrc.json": VAULTRC_3,
-      "Town.md": "---\nrole: public\n---\nThe town.\n\n> [!dm]\n> The mayor is a mimic.\n",
-      "Secrets.md": "---\nrole: dm\n---\nAll of it.\n\n> [!dm]\n> Deeper still.\n",
-    });
-    try {
-      await build(v);
-      const dm = await bodyOf(v.out, "dm", "Town");
-      assert.match(dm, /mimic/, "the GM keeps the callout");
-      assert.doesNotMatch(withoutSecrets(dm), /mimic/, "outside a secret, players would read it");
-      assert.equal(dm.match(/The town\./g)?.length, 1, "one render, not a GM copy beside a player copy");
-
-      const secrets = await bodyOf(v.out, "dm", "Secrets");
-      assert.doesNotMatch(secrets, /class="secret"/, "a page players never open needs no secrets");
-
-      const pub = await bodyOf(v.out, "public", "Town");
-      assert.doesNotMatch(pub, /mimic|class="secret"/);
-    } finally { await cleanup(v); }
-  });
-
-  it("puts an embedded DM page behind a secret", async () => {
-    // The embed carries the embedded page's role; without it the DM page's
-    // text would sit in the open on a page players read.
-    const v = await setupVault({
-      "settings.md": SETTINGS,
-      ".vaultrc.json": VAULTRC_3,
-      "Town.md": "---\nrole: public\n---\nThe town.\n\n![[Cult]]\n",
-      "Cult.md": "---\nrole: dm\n---\nThe cult meets at midnight.\n",
-    });
-    try {
-      await build(v);
-      const town = await bodyOf(v.out, "dm", "Town");
-      assert.match(town, /meets at midnight/, "the GM sees the embed");
-      assert.doesNotMatch(withoutSecrets(town), /meets at midnight/);
-    } finally { await cleanup(v); }
-  });
-
-  it("keeps a DM page's row, card and list item out of the open bases views", async () => {
-    // Each view carries the item's role through the sanitiser as a marker; a
-    // view whose marker was stripped would put the DM page in the open.
-    const base = "```base\nviews:\n  - type: table\n    name: Table\n  - type: cards\n    name: Cards\n  - type: list\n    name: List\n```\n";
-    const v = await setupVault({
-      "settings.md": SETTINGS,
-      ".vaultrc.json": VAULTRC_3,
-      "Roster.md": `---\nrole: public\n---\n${base}`,
-      "Bandit.md": "---\nrole: public\n---\nA bandit.\n",
-      "Joywraith.md": "---\nrole: dm\n---\nA wraith.\n",
-    });
-    try {
-      await build(v);
-      const roster = await bodyOf(v.out, "dm", "Roster");
-      assert.equal(roster.match(/<section class="secret"/g)?.length, 3, "one GM copy per view");
-      const open = withoutSecrets(roster);
-      assert.match(open, /Bandit/);
-      assert.doesNotMatch(open, /Joywraith/);
-      assert.doesNotMatch(roster, /data-vaults-role|bases-toolbar/, "no marker, and no filter box counting DM rows");
     } finally { await cleanup(v); }
   });
 });

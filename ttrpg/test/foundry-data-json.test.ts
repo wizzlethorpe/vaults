@@ -12,8 +12,8 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildSite } from "../src/build.js";
-import { readPatch } from "../src/foundry-build.js";
+import { buildSite } from "../../cli/src/build.js";
+import { readPatch } from "../src/index.js";
 
 interface Vault { dir: string; out: string; }
 

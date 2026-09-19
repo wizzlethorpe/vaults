@@ -166,7 +166,7 @@ describe("generated auth middleware", () => {
   });
 
   it("authenticates nothing through a token in the URL, even on a fetch", async () => {
-    // A token in a URL lands in history, logs and Referer; graft sends its bearer as a header.
+    // A token in a URL lands in history, logs and Referer; a bearer belongs in a header.
     const bearer = await forgeToken("b", "dm", 3600);
     const res = await call(mw, "https://v.example/secret?_token=" + bearer, {
       headers: { "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty" },

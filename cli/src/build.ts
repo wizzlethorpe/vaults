@@ -380,7 +380,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   for (const f of markdownFiles) {
     const parsed = parsePageFrontmatter(sources.get(f.path)!, f.path);
     // Applied here, at the one place a page's frontmatter is read, so roles, the
-    // rendered wiki and the grafts.json build all see the same page.
+    // rendered wiki and an add-on's build all see the same page.
     applyFrontmatterDefaults(authoredPath(f.path), parsed.data, frontmatterRules);
     parsedSources.set(f.path, parsed);
   }
@@ -457,13 +457,8 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       await mkdir(dirname(dest), { recursive: true });
       await writeFile(dest, compressed.body);
 
-      // Two keys for one entry: basename slug for body wikilinks/embeds
-      // (Obsidian resolves those by basename), and the full vault-relative
-      // path for `@vault/PATH` refs (frontmatter, data_json). Paths contain
-      // "/" and slugs don't, so the keyspaces never overlap. The full-path
-      // key is what stops identically-named assets in different scene folders
-      // (e.g. a shared `Water Fountain (Loop).ogg`) from colliding under one
-      // basename slug and staging only one of them.
+      // Two keys for one entry: a basename slug for body wikilinks and embeds, which Obsidian resolves by basename, and the full vault-relative path for `@vault/PATH` refs.
+      // Paths contain "/" and slugs do not, so the keyspaces never overlap, and the full path keeps same-named files in different folders apart.
       // Full-path key only; basename keys are added afterwards, in sorted
       // order, so a duplicated filename resolves deterministically.
       imageIndex.set(f.path, { sourcePath: f.path, outputPath: compressed.outputPath });
@@ -487,9 +482,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       const dest = join(otherStagingDir, f.path);
       await mkdir(dirname(dest), { recursive: true });
       await copyFile(f.absolute, dest);
-      // Dual-keyed like imageIndex: basename slug for body refs, full
-      // vault-relative path for `@vault/PATH` refs (ambient sounds in
-      // data_json), so same-named files in different folders don't collide.
+      // Dual-keyed like imageIndex: basename slug for body refs, full vault-relative path for `@vault/PATH` refs.
       passthroughIndex.set(f.path, { sourcePath: f.path, outputPath: f.path });
     }, (done, total) => progress.update(done, total));
     progress.done(`${stagedPassthroughs.length} staged`);
@@ -549,7 +542,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
 
   // ── Resolve per-page cover images ───────────────────────────────────────
   // Computed once against the final imageIndex so OG meta tags, Bases card
-  // covers, hover previews, and Foundry actor/item reskin all resolve to the
+  // covers, hover previews, and an add-on's use of a page's art all resolve to the
   // same URL. settings.auto_image flips body-fallback discovery on/off.
   //
   // Pre-strip every role-typed callout from the body before discovery: the
@@ -597,7 +590,6 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
       gated: !collapseToRoot,
       variantDir,
       vaultName: opts.vaultName,
-      vaultPath: opts.vaultPath,
       allPageMetas,
       sources,
       parsedSources,
@@ -737,8 +729,6 @@ interface VariantArgs {
   gated: boolean;
   variantDir: string;
   vaultName: string;
-  /** Vault root, used to resolve `foundry.patch_json` paths declared in page frontmatter. */
-  vaultPath: string;
   allPageMetas: PageMeta[];
   sources: Map<string, string>;
   /** Per-page pre-parsed gray-matter result, threaded through to renderMarkdown. */
@@ -932,8 +922,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     await writeFile(htmlDest, html);
 
     // .body.html holds just the rendered article content (no layout shell).
-    // Foundry imports this so callouts/embeds rendered by the vault's
-    // remark/rehype pipeline land in journals as-is, no client-side render.
+    // Hover previews and transclusion read it, and so does an add-on that republishes the article.
     const bodyPath = outputBase + ".body.html";
     await writeFile(join(a.variantDir, bodyPath), r.html);
 

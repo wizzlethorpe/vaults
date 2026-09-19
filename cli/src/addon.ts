@@ -1,4 +1,4 @@
-// What an add-on contributes to a build.
+// The add-on contract: what an add-on contributes, and below it what core offers one. Published as `@wizzlethorpe/vaults/addon`.
 
 import type { Migration } from "./migrate/types.js";
 import type { TokenDownload } from "./render/auth-template.js";
@@ -37,6 +37,8 @@ export interface AddonBuild {
 }
 
 export interface Addon {
+  /** The add-on package's own version. Core refuses one that is not its own. */
+  version: string;
   /** Built-in handlers, beside core's own. A vault's handler of the same name still replaces one. */
   handlers: Handler[];
   /** Run after core's, in this order. */
@@ -45,9 +47,24 @@ export interface Addon {
   settingDefs: Record<string, AnySettingDef>;
   /**
    * Checks the schema's types cannot make, on values that already passed them. Corrects `values` in place.
-   * A warning about a key must quote its full dotted path, as in 'foundry.system': that is how `vaults set` knows to refuse the value.
+   * A warning about a key must quote its full dotted path, as in 'block.key': that is how `vaults set` knows to refuse the value.
    */
   checkSettings(values: Record<string, unknown>, warnings: string[]): void;
   /** Runs once, before assets are staged, so it may name files to ship in a page's `extraAssets`. Returns nothing when the add-on writes nothing. */
   prepare(build: BuildInfo): Promise<AddonBuild | undefined>;
 }
+
+export { vaultRefs } from "./asset-refs.js";
+export { htmlAttr, htmlEscape, htmlUnescape } from "./escape.js";
+export { mergeDefaults } from "./frontmatter-defaults.js";
+export { frontmatter, listMarkdownFiles, withFrontmatter } from "./migrate/files.js";
+export type { Migration } from "./migrate/types.js";
+export { SETTINGS_FILE, configPath, exists, settingsPath } from "./paths.js";
+export type { TokenDownload } from "./render/auth-template.js";
+export type { CodeBlockHandler, Handler, HandlerContext, InlineHandler } from "./render/handlers/types.js";
+export { slugify } from "./render/slug.js";
+export { PALETTE } from "./render/styles.js";
+export type { PageMeta } from "./render/types.js";
+export { PAGES_FILE_BYTES, describeType, loadSettings, writeSettings } from "./settings.js";
+export type { AnySettingDef, Settings } from "./settings.js";
+export { pMap } from "./util.js";

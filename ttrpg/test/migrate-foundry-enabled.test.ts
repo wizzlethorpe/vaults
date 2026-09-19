@@ -6,10 +6,10 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadSettings } from "../src/settings.js";
-import { settingsPath } from "../src/paths.js";
-import { runMigrations } from "../src/migrate/run.js";
-import { writeSettingsFile } from "./settings-helpers.js";
+import { loadSettings } from "../../cli/src/settings.js";
+import { settingsPath } from "../../cli/src/paths.js";
+import { runMigrations } from "../../cli/src/migrate/run.js";
+import { writeSettingsFile } from "../../cli/test/settings-helpers.js";
 import type { TtrpgSettings } from "../src/foundry-settings.js";
 
 async function migrated(settings: string) {

@@ -2,6 +2,9 @@
 title: Foundry VTT integration
 ---
 
+> [!note] Part of the TTRPG add-on
+> Install `@wizzlethorpe/vaults-ttrpg` beside the CLI: `npm install -g @wizzlethorpe/vaults @wizzlethorpe/vaults-ttrpg`.
+
 A deployed vault hands Foundry a file. Download your `grafts.json` from the vault, import it with [graft](https://github.com/wizzlethorpe/graft), and its content builds into your world: journals from the pages, Foundry document links from the wikilinks, images and audio into your data directory, and real Actors, Items, Scenes and other documents from pages that ask for them.
 
 Nothing a vault ships is content the reader does not already own. A page that builds an Actor names a compendium document; the reader's Foundry resolves it, and the vault supplies only the patch.

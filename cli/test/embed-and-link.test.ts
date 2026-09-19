@@ -121,7 +121,7 @@ describe("![[file]] embeds: images", () => {
   // the absolute deployed URL. Otherwise the wiki render works only by
   // accident of the browser resolving the relative path against the
   // current page URL — anywhere else loading the rendered HTML out of
-  // context (the Foundry journal sheet runs from /game) ends up pointing
+  // context (an add-on may show the article under another URL) ends up pointing
   // at the wrong place and 404s.
   it("rewrites a relative ![alt](path) markdown image to an absolute URL", async () => {
     const v = await setupVault({
@@ -286,8 +286,8 @@ describe("![[Page]] page transclusion", () => {
 //
 // `[label](https://…)` should open in a new tab so a click doesn't drop the
 // reader off the wiki. Implemented via mdast plugin so the attributes are
-// baked into the HTML — Foundry-side journal renderings inherit the
-// behaviour too. Internal wikilinks and relative URLs stay in-tab.
+// baked into the HTML, so anything that shows the article elsewhere inherits
+// the behaviour too. Internal wikilinks and relative URLs stay in-tab.
 
 describe("external link tagging", () => {
   it("opens https://… links in a new tab with noopener", async () => {

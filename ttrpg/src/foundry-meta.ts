@@ -4,7 +4,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { documentFolder, documentTypeOf, firstBase } from "./foundry-grafts.js";
-import type { PageMeta } from "./render/types.js";
+import { type PageMeta } from "@wizzlethorpe/vaults/addon";
 
 export function warnFoundryDocCollisions(pages: PageMeta[]): void {
   const seen = new Map<string, string>(); // key → first page path

@@ -1,6 +1,6 @@
 // Normalise plain markdown image URLs (`![alt](path/to/foo.webp)`) to the
 // absolute, slugified URL the build emits for that image. A relative path only
-// resolves on the page it was written on; in a Foundry journal page it points nowhere.
+// resolves on the page it was written on, and points nowhere once the article is shown anywhere else.
 //
 // Wikilink-style image embeds (`![[foo.webp]]`) already resolve through the
 // embed plugin, which writes the absolute URL directly. This plugin is the

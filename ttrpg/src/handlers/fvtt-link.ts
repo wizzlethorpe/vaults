@@ -10,9 +10,7 @@
 // to the Actor / Scene / Macro the page instantiates, falling back to the
 // journal page for a page that makes no document.
 
-import type { InlineHandler } from "../types.js";
-import { htmlEscape } from "../../../escape.js";
-import { slugify } from "../../slug.js";
+import { htmlEscape, type InlineHandler, slugify } from "@wizzlethorpe/vaults/addon";
 
 export const fvttLinkHandler: InlineHandler = {
   inline: "fvtt-link",

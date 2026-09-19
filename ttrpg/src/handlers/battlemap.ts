@@ -25,9 +25,7 @@
 // Layer paths are vault-relative and resolve to the absolute served URL.
 
 import yaml from "js-yaml";
-import type { CodeBlockHandler } from "../types.js";
-import { htmlEscape } from "../../../escape.js";
-import { registerBuiltinAssets } from "../assets.js";
+import { type CodeBlockHandler, htmlEscape } from "@wizzlethorpe/vaults/addon";
 
 interface RawLevel {
   name?: unknown;
@@ -252,7 +250,7 @@ const BATTLEMAP_STYLES = `
 .vaults-bm-error { padding: .5rem .75rem; border: 1px solid #b94a3a; border-radius: 4px; color: #b94a3a; font-size: .85rem; }
 `;
 
-registerBuiltinAssets(battlemapHandler, {
+battlemapHandler.inlineAssets = {
   scripts: [{ source: "builtin/battlemap.runtime.js", content: BATTLEMAP_RUNTIME }],
   styles: [{ source: "builtin/battlemap.css", content: BATTLEMAP_STYLES }],
-});
+};

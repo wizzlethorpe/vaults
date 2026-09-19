@@ -9,11 +9,11 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildSite } from "../src/build.js";
-import { writeSettingsFile } from "./settings-helpers.js";
+import { buildSite } from "../../cli/src/build.js";
+import { writeSettingsFile } from "../../cli/test/settings-helpers.js";
 import {
   GRAFTS_PATH, foundryInstallHandler, hasFoundryInstall, parseInstallBlock,
-} from "../src/render/handlers/builtin/foundry-install.js";
+} from "../src/handlers/foundry-install.js";
 
 const BLOCK = "```foundry-install\nlabel: Install it\n```\n";
 

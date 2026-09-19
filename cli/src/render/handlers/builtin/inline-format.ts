@@ -1,8 +1,5 @@
-// Tiny inline-markdown formatter shared by the built-in `fm` and `statblock`
-// handlers. Both render frontmatter scalars or bespoke content directly to
-// HTML rather than re-feeding it through the full markdown pipeline, but
-// authors still expect basic ** ** / * * / `` markup to survive. This is
-// the smallest formatter that supports that.
+// Tiny inline-markdown formatter for the built-in `fm` handler, which renders frontmatter scalars straight to HTML.
+// Authors still expect basic ** ** / * * / `` markup to survive, and this is the smallest formatter that supports that.
 //
 // Bold runs first (** **) so the italic regex can't gobble its asterisks.
 // Italic uses a leading non-`*` guard so `**bold**` doesn't match. Code

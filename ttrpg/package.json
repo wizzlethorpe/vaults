@@ -1,0 +1,57 @@
+{
+  "name": "@wizzlethorpe/vaults-ttrpg",
+  "version": "0.21.1",
+  "description": "TTRPG add-on for the vaults CLI: statblocks, dice, battlemaps, and a grafts.json a reader imports into Foundry VTT.",
+  "keywords": [
+    "obsidian",
+    "vault",
+    "ttrpg",
+    "foundry-vtt",
+    "dnd5e"
+  ],
+  "homepage": "https://github.com/wizzlethorpe/vaults#readme",
+  "bugs": "https://github.com/wizzlethorpe/vaults/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wizzlethorpe/vaults.git",
+    "directory": "ttrpg"
+  },
+  "license": "MIT",
+  "author": "wizzlethorpe",
+  "type": "module",
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "exports": {
+    ".": {
+      "vaults-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+    "test": "node --import tsx --conditions=vaults-source --test test/*.test.ts",
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "hast-util-from-html": "^2.0.3",
+    "hast-util-select": "^6.0.4",
+    "hast-util-to-html": "^9.0.5",
+    "js-yaml": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/hast": "^3.0.4",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.0",
+    "@wizzlethorpe/vaults": "workspace:*",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -27,15 +27,9 @@ This shipped once (8a6749b) against the pre-graft architecture and was lost in t
 
 ## 2. Separating vaults from Foundry
 
-Vaults is increasingly used for things with nothing to do with TTRPGs, and those deploys should carry no TTRPG or Foundry code at all. The goal is a core CLI that knows nothing about either, and one add-on package, `@wizzlethorpe/vaults-ttrpg`, that carries the rest.
+The core CLI knows nothing about TTRPGs or Foundry. `@wizzlethorpe/vaults-ttrpg`, in `ttrpg/`, carries the statblock, battlemap, dice, `fvtt-link` and `foundry-install` handlers, the `foundry` and `zip_assets` settings, the Foundry migrations and the `grafts.json` build. Core finds it by importing it by name (`cli/src/addons.ts`) and everything it contributes goes through one contract, `cli/src/addon.ts`, published as `@wizzlethorpe/vaults/addon`. The two release together at one version, so the contract never has to work across versions.
 
-Core finds the add-on by importing it by name and treating a missing package as no add-on. Installing it beside the CLI is the whole opt-in: nothing in the vault names it. `foundry.enabled` stays as the add-on's own switch, for a TTRPG wiki that wants dice and statblocks and no `grafts.json`.
-
-The seam is already in core. `cli/src/addon.ts` is the contract: an add-on supplies handlers, migrations that run after core's, settings schema entries with their checks, and a `prepare` that runs once per build and may return a per-variant writer and one download the Function serves with a bearer written in. `cli/src/addons.ts` is the one place core loads it. A setting core does not know is kept in the file and ignored, and when no add-on is loaded the warning names the package to install. `cli/src/foundry-build.ts` is the contract's only implementer and still lives in core.
-
-What remains is the move. The add-on takes the `foundry-*` modules, the `statblock`, `battlemap`, `dice`, `fvtt-link` and `foundry-install` handlers, and the Foundry migrations, and `cli/src/addons.ts` imports the package by name instead of a file beside it.
-
-The add-on lives in this repo as a workspace package and releases with the CLI at the same version, so the contract never has to work across versions.
+What is left is the part of the contract that is still markup. The add-on reads the article HTML core renders, and leans on strings core emits without promising them: the `vaults-web-only` class, the `data-vaults-role` and `data-callout` attributes, `class="bases-block"`, and the `<page>.body.html` file. A change to any of them in core breaks the Foundry build with no type error. They want to be named constants on the contract, with the add-on's tests as the check.
 
 ## 3. Obsidian plugin
 

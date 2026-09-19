@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildSite } from "../src/build.js";
+import { buildSite } from "../../cli/src/build.js";
 
 async function build(files: Record<string, string>): Promise<string[]> {
   const dir = await mkdtemp(join(tmpdir(), "vault-dupdoc-"));

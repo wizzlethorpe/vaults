@@ -3,8 +3,7 @@
 // every hand-written comment in the block.
 
 import { readFile, writeFile } from "node:fs/promises";
-import type { Migration } from "./types.js";
-import { listMarkdownFiles, frontmatter, withFrontmatter } from "./files.js";
+import { frontmatter, listMarkdownFiles, type Migration, withFrontmatter } from "@wizzlethorpe/vaults/addon";
 
 /**
  * The direct children of a top-level `foundry:` block, at the block's own

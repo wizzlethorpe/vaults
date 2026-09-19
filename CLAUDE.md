@@ -6,7 +6,7 @@
 
 ## What this is
 
-A monorepo for letting people self-host an Obsidian vault as a static wiki on Cloudflare. The user authors notes in Obsidian; the CLI renders them locally to HTML and pushes to their own Cloudflare account. Cloudflare Pages serves the static wiki. A small Pages Function (auth middleware) gates per-role variants and serves each reader the `grafts.json` they may import into Foundry.
+A monorepo for letting people self-host an Obsidian vault as a static wiki on Cloudflare. The user authors notes in Obsidian; the CLI renders them locally to HTML and pushes to their own Cloudflare account. Cloudflare Pages serves the static wiki. A small Pages Function (auth middleware) gates per-role variants. An optional add-on package adds the TTRPG features, including the `grafts.json` each reader may import into Foundry.
 
 **Not** a hosted multi-tenant SaaS today. The architecture is designed to support a managed platform layered on top later (per-user Cloudflare projects, OAuth-issued JWTs that the existing Function trusts).
 
@@ -21,17 +21,19 @@ vaults/                      this repo (single git history)
 ├── package.json             root workspace manifest
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
-├── release.sh               bump, tag, publish the CLI to npm
-├── cli/                     @wizzlethorpe/vaults: CLI + Cloudflare Pages template
+├── release.sh               bump, tag, publish the CLI and the add-on to npm at one version
+├── cli/                     @wizzlethorpe/vaults: CLI + Cloudflare Pages template. Knows nothing about TTRPGs or Foundry.
+├── ttrpg/                   @wizzlethorpe/vaults-ttrpg: the add-on. Statblocks, dice, battlemaps, Foundry.
 └── landing/                 Demo vault (deployed at vaults.wizzlethorpe.com)
 ```
 
-One git history, so a release tag pins the exact behaviour across CLI and landing demo.
+One git history, so a release tag pins the exact behaviour across CLI, add-on and landing demo.
 
 ## Where work happens
 
-- **`cli/`**: ~99% of active development. Build with `pnpm --filter @wizzlethorpe/vaults run build`; test with `pnpm --filter @wizzlethorpe/vaults run test`.
-- **Foundry**: the CLI compiles each role's pages into a self-contained `grafts.json` (`cli/src/foundry-grafts.ts`) which the reader downloads and builds into their world with [graft](https://github.com/wizzlethorpe/graft)'s **Import grafts**. Page bodies are inlined into the entries; media is named in the file's `assets.http` block, which graft's built-in `http` handler fetches with a two-hour bearer the middleware splices in at download. Everything lands in the world, so links are world UUIDs. Folder-as-JournalEntry model: every directory becomes one entry, every `.md` file an embedded JournalEntryPage, and folders without an `index.md` get the wiki's synthesized index page. `foundry.enabled: false` writes nothing.
+- **`cli/`**: the core. Build both packages with `pnpm build`; test with `pnpm --filter @wizzlethorpe/vaults run test`. Its tests run with no add-on loaded (`cli/test/no-addon.ts`), so anything that needs a TTRPG feature is tested in `ttrpg/`.
+- **`ttrpg/`**: the add-on, and everything Foundry. Core loads it by package name in `cli/src/addons.ts` and talks to it only through the contract in `cli/src/addon.ts`, which is also the one module the add-on may import from core (`@wizzlethorpe/vaults/addon`). A core file must not import from `ttrpg/` or name Foundry, statblocks, dice or battlemaps. Test with `pnpm --filter @wizzlethorpe/vaults-ttrpg run test`. `VAULTS_NO_ADDON=1` runs the CLI as if it were not installed.
+- **Foundry**: the add-on compiles each role's pages into a self-contained `grafts.json` (`ttrpg/src/foundry-grafts.ts`) which the reader downloads and builds into their world with [graft](https://github.com/wizzlethorpe/graft)'s **Import grafts**. Page bodies are inlined into the entries; media is named in the file's `assets.http` block, which graft's built-in `http` handler fetches with a two-hour bearer the middleware splices in at download. Everything lands in the world, so links are world UUIDs. Folder-as-JournalEntry model: every directory becomes one entry, every `.md` file an embedded JournalEntryPage, and folders without an `index.md` get the wiki's synthesized index page. `foundry.enabled: false` writes nothing.
 
 - **`landing/`**: itself a Vault, deployed at vaults.wizzlethorpe.com. Doubles as the project's landing page AND a working demo of every CLI feature.
 
@@ -81,7 +83,7 @@ Single-role builds collapse `_variants/public/...` straight to the deploy root, 
 - **picomatch** for ignore-pattern globs. **sharp** for image compression. **gray-matter** for frontmatter. **unified/remark/rehype** for markdown.
 - **No MCP server.** A `/mcp` Function would cost files against Pages's 20k-file cap.
 - **No platform code in this repo.** The future managed platform is a separate concern.
-- **The CLI carries the version.** Bumped and published by root `release.sh <X.Y.Z>`. Landing has no version (deploys whenever).
+- **The CLI and the add-on share one version.** Bumped and published together by root `release.sh <X.Y.Z>`. The add-on reports its version and the CLI refuses any but its own. Landing has no version (deploys whenever).
 
 ## Coding conventions
 

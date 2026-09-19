@@ -51,7 +51,7 @@ const sanitizeSchema = {
     td: ["className", "data*"],
     tr: ["className", "data*"],
     // dataVaultsRole marks a bases item or an embed with the role it is gated
-    // to, which is how the Foundry build keeps it from players.
+    // to, so an add-on that republishes the article can keep it from those below that role.
     li: [...(defaultSchema.attributes?.["li"] ?? []), "dataVaultsRole"],
     input: ["type", "placeholder", "className", "ariaLabel"],
     button: ["type", "className", "data*", "role", "ariaSelected", "ariaLabel", "ariaHaspopup", "tabindex", "title"],

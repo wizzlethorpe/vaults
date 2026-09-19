@@ -32,9 +32,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
     "start": "node dist/index.js",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "node --import tsx --import ./test/no-addon.ts --conditions=vaults-source --test test/*.test.ts",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "prepublishOnly": "npm run build"
   },
@@ -42,9 +42,6 @@
     "@types/js-yaml": "^4.0.9",
     "commander": "^12.1.0",
     "gray-matter": "^4.0.3",
-    "hast-util-from-html": "^2.0.3",
-    "hast-util-select": "^6.0.4",
-    "hast-util-to-html": "^9.0.5",
     "js-yaml": "^4.1.1",
     "katex": "^0.18.1",
     "marked": "^12.0.0",
@@ -65,7 +62,6 @@
     "wrangler": "^4.87.0"
   },
   "devDependencies": {
-    "@types/hast": "^3.0.4",
     "@types/mdast": "^4.0.4",
     "@types/node": "^22.10.0",
     "@types/picomatch": "^3.0.1",
@@ -73,5 +69,12 @@
     "esbuild": "^0.28.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
+  },
+  "exports": {
+    "./addon": {
+      "vaults-source": "./src/addon.ts",
+      "types": "./dist/addon.d.ts",
+      "default": "./dist/addon.js"
+    }
   }
 }

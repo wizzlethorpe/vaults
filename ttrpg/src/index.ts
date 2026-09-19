@@ -1,10 +1,10 @@
 // The Foundry half of a build: checks the vault's `foundry:` blocks, then writes each role's grafts.json and the asset zips it names.
 
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { Addon, AddonBuild, BuildInfo, VariantInfo } from "./addon.js";
-import { vaultRefs } from "./asset-refs.js";
+import { type Addon, type AddonBuild, type BuildInfo, PAGES_FILE_BYTES, pMap, type VariantInfo, vaultRefs } from "@wizzlethorpe/vaults/addon";
 import {
   GRAFTS_DOWNLOAD, buildGrafts, linkIndex, observable, pagesFrom, secretRoles, withFolderIndexes,
   type AssetFile, type GraftOptions,
@@ -15,13 +15,11 @@ import { TTRPG_SETTINGS, normalizeTtrpgSettings, type TtrpgSettings } from "./fo
 import { foundryPatchKeysMigration } from "./migrate/0.15-foundry-patch-keys.js";
 import { foundryPinnedIdMigration } from "./migrate/0.15-foundry-pinned-id.js";
 import { foundryEnabledMigration } from "./migrate/0.23-foundry-enabled.js";
-import { battlemapHandler } from "./render/handlers/builtin/battlemap.js";
-import { diceHandler } from "./render/handlers/builtin/dice.js";
-import { foundryInstallHandler, hasFoundryInstall } from "./render/handlers/builtin/foundry-install.js";
-import { fvttLinkHandler } from "./render/handlers/builtin/fvtt-link.js";
-import { statblockHandler } from "./render/handlers/builtin/statblock.js";
-import { PAGES_FILE_BYTES } from "./settings.js";
-import { pMap } from "./util.js";
+import { battlemapHandler } from "./handlers/battlemap.js";
+import { diceHandler } from "./handlers/dice.js";
+import { foundryInstallHandler, hasFoundryInstall } from "./handlers/foundry-install.js";
+import { fvttLinkHandler } from "./handlers/fvtt-link.js";
+import { statblockHandler } from "./handlers/statblock.js";
 import { chunkAssets, zip } from "./zip.js";
 
 /** What a loaded `patch_json` file gives its page: the patch when it is a plain object, and the vault files it names either way. */
@@ -31,7 +29,8 @@ export function readPatch(loaded: unknown): { patch?: Record<string, unknown>; a
   return { patch: loaded as Record<string, unknown>, assets };
 }
 
-export const foundryAddon: Addon = {
+const addon: Addon = {
+  version: (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version,
   handlers: [diceHandler, statblockHandler, battlemapHandler, foundryInstallHandler, fvttLinkHandler],
   migrations: [foundryPatchKeysMigration, foundryPinnedIdMigration, foundryEnabledMigration],
   settingDefs: TTRPG_SETTINGS,
@@ -87,6 +86,8 @@ export const foundryAddon: Addon = {
     return { writeVariant: (variant) => writeGrafts(build, variant, patches), download: GRAFTS_DOWNLOAD };
   },
 };
+
+export default addon;
 
 /** One role's entry list, inside its variant directory so the middleware gates it. */
 async function writeGrafts(

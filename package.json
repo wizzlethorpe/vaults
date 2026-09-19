@@ -1,14 +1,15 @@
 {
   "name": "vaults-monorepo",
   "private": true,
-  "description": "Monorepo: the vaults CLI and the landing-site vault.",
+  "description": "Monorepo: the vaults CLI, its TTRPG add-on, and the landing-site vault.",
   "scripts": {
-    "typecheck": "pnpm -r exec tsc --noEmit && pnpm --filter @wizzlethorpe/vaults run typecheck:test",
+    "typecheck": "pnpm -r exec tsc --noEmit && pnpm -r run typecheck:test",
     "test": "pnpm -r --if-present test",
-    "build:cli": "pnpm --filter @wizzlethorpe/vaults run build"
+    "build": "pnpm --filter @wizzlethorpe/vaults run build && pnpm --filter @wizzlethorpe/vaults-ttrpg run build"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@wizzlethorpe/vaults-ttrpg": "workspace:*"
   },
   "packageManager": "pnpm@9.0.0"
 }

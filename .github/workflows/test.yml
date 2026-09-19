@@ -22,5 +22,7 @@ jobs:
         run: pnpm test
       - name: Build the landing vault end-to-end
         run: |
-          pnpm build:cli
+          pnpm build
           node cli/dist/index.js build landing
+          # The build only warns when the add-on is missing, so check what only the add-on writes.
+          test -f landing/.vaults/cache/rendered/_variants/public/_foundry/grafts.json

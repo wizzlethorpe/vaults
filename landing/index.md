@@ -54,7 +54,7 @@ Nothing a vault builds is player-visible by default. `foundry.player_role` in `.
 ## Set up your own vault
 
 ```bash
-npm install -g @wizzlethorpe/vaults
+npm install -g @wizzlethorpe/vaults @wizzlethorpe/vaults-ttrpg   # the second is the TTRPG add-on: statblocks, dice, battlemaps, Foundry. Leave it out for any other kind of vault.
 cd path/to/your/obsidian-vault
 vaults init
 vaults preview        # local preview at http://localhost:4173

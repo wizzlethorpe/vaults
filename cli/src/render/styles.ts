@@ -53,7 +53,7 @@ function accentBlock(selector: string, color: string): string {
 }`;
 }
 
-/** The wiki's light palette. The Foundry build maps it onto Foundry's own theme where Foundry has an equivalent. */
+/** The wiki's light palette, exported for an add-on that restyles the article elsewhere. */
 export const PALETTE = {
   bg: "#f4ecd8", fg: "#1d1a17", muted: "#6b665e",
   accent: "#a8201a", accentSoft: "#c8423d", accentFg: "#fbf6e8",
@@ -61,12 +61,7 @@ export const PALETTE = {
   wikilinkBg: "rgba(168,32,26,0.10)", wikilinkBgHover: "rgba(168,32,26,0.20)",
 };
 
-/**
- * The rules for what a page's article renders: bases, folder listings,
- * callouts, dice, embeds. The wiki's stylesheet includes them, and the
- * Foundry build writes them onto each journal page, which keeps no
- * stylesheet of its own.
- */
+/** The rules for what a page's article renders: bases, folder listings, callouts, embeds. An add-on gets them as `contentCss`, to style the article where no stylesheet follows it. */
 export const CONTENT_CSS = `/* Obsidian Bases tables */
 .bases-block {
   margin: 1rem 0;

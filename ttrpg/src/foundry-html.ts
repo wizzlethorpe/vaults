@@ -10,9 +10,8 @@ import { fromHtml } from "hast-util-from-html";
 import { selectAll } from "hast-util-select";
 import { toHtml } from "hast-util-to-html";
 
-import { htmlAttr, htmlUnescape } from "./escape.js";
 import { inlineCss, storedStyle } from "./inline-css.js";
-import { PALETTE } from "./render/styles.js";
+import { htmlAttr, htmlUnescape, PALETTE } from "@wizzlethorpe/vaults/addon";
 
 /**
  * Where a page ended up: its journal page, its document, or both. A wikilink

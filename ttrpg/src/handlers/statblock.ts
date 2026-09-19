@@ -37,9 +37,7 @@
 // integration, JS callbacks, image fields) are not supported in v1.
 
 import yaml from "js-yaml";
-import type { CodeBlockHandler, HandlerContext } from "../types.js";
-import { htmlEscape } from "../../../escape.js";
-import { registerBuiltinAssets } from "../assets.js";
+import { type CodeBlockHandler, type HandlerContext, htmlEscape } from "@wizzlethorpe/vaults/addon";
 
 interface NamedDesc { name?: string; desc?: string; traits?: NamedDesc[]; }
 
@@ -543,6 +541,6 @@ const STATBLOCK_CSS = `
 }
 `;
 
-registerBuiltinAssets(statblockHandler, {
+statblockHandler.inlineAssets = {
   styles: [{ source: "builtin/statblock.css", content: STATBLOCK_CSS }],
-});
+};

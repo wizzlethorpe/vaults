@@ -1,96 +1,23 @@
 // Tests for the custom-handler system (render/handlers/).
 //
 // Coverage:
-//   1. Built-in `dice:` handler renders as a clickable button on the deploy.
-//   2. Invalid dice formulas degrade to a styled <code> rather than crashing.
-//   3. User-defined handlers in .vaults/handlers/ are picked up and run.
-//   4. User code-block handlers can emit markdown that flows through the
+//   1. Built-in `fm:` handlers insert frontmatter values.
+//   2. User-defined handlers in .vaults/handlers/ are picked up and run.
+//   3. User code-block handlers can emit markdown that flows through the
 //      rest of the pipeline (wikilinks resolve in handler-emitted markdown).
-//   5. Multiple handlers per file (named export `handlers: []`) are loaded.
-//   6. Handler files that don't export anything usable warn but don't crash.
-//   7. User handler can override a built-in (last-registered wins).
+//   4. Multiple handlers per file (named export `handlers: []`) are loaded.
+//   5. Handler files that don't export anything usable warn but don't crash.
+//   6. User handler can override a built-in (last-registered wins).
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildSite } from "../src/build.js";
 import { loadUserHandlers } from "../src/render/handlers/loader.js";
 import { buildRegistry } from "../src/render/handlers/types.js";
-
-interface Vault { dir: string; out: string; }
-
-async function setupVault(files: Record<string, string>): Promise<Vault> {
-  // settings.md is the source of truth for vault properties, so a test vault
-  // configures itself the way a user would. image_quality: 0 skips sharp,
-  // which these fixtures need: their "images" are placeholder bytes, not real
-  // encodings. Exercising the compression path wants real fixtures instead.
-  if (!("settings.md" in files)) {
-    files = { "settings.md": "---\nimage_quality: 0\n---\n", ...files };
-  }
-  const dir = await mkdtemp(join(tmpdir(), "vault-handlers-"));
-  const out = join(dir, "_out");
-  for (const [path, content] of Object.entries(files)) {
-    const full = join(dir, path);
-    await mkdir(dirname(full), { recursive: true });
-    await writeFile(full, content);
-  }
-  return { dir, out };
-}
-
-async function cleanup(v: Vault): Promise<void> {
-  await rm(v.dir, { recursive: true, force: true });
-}
-
-async function build(v: Vault): Promise<void> {
-  // Suppress build chatter; assertions read the rendered HTML directly.
-  const origLog = console.log;
-  const origWarn = console.warn;
-  console.log = () => {};
-  console.warn = () => {};
-  try {
-    await buildSite({
-      vaultPath: v.dir,
-      outputDir: v.out,
-    });
-  } finally {
-    console.log = origLog;
-    console.warn = origWarn;
-  }
-}
-
-const VAULTRC_1 = JSON.stringify({ roles: ["public"], rolePasswords: {} });
-
-// ── Built-in dice handler ─────────────────────────────────────────────────
-
-describe("built-in dice handler", () => {
-  it("renders as a clickable button when the formula is valid", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Page.md": "Roll: `dice: 1d20+5` to hit.",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /<button[^>]*class="dice-roll"[^>]*data-formula="1d20\+5"[^>]*>1d20\+5<\/button>/);
-    } finally { await cleanup(v); }
-  });
-
-  it("invalid formulas degrade to a styled <code> element", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Page.md": "Garbled: `dice: not-a-formula`.",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /<code class="dice-roll dice-roll-invalid"[^>]*>not-a-formula<\/code>/);
-    } finally { await cleanup(v); }
-  });
-});
-
-// ── Built-in fm handler ───────────────────────────────────────────────────
+import { VAULTRC_1, build, cleanup, setupVault } from "./vault-helpers.js";
 
 describe("built-in fm handler", () => {
   it("inserts a string frontmatter value as markdown", async () => {
@@ -254,279 +181,6 @@ describe("built-in fm code-block handler", () => {
   });
 });
 
-// ── Built-in statblock handler ────────────────────────────────────────────
-
-describe("built-in statblock handler", () => {
-  it("renders a basic 5e statblock with header, ac/hp/speed, stats, and traits", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Goblin.md":
-        "```statblock\n" +
-        "name: Goblin\n" +
-        "size: Small\n" +
-        "type: humanoid\n" +
-        "alignment: neutral evil\n" +
-        "ac: 15\n" +
-        "ac_class: leather armor, shield\n" +
-        "hp: 7\n" +
-        "hit_dice: 2d6\n" +
-        "speed: 30 ft.\n" +
-        "stats: [8, 14, 10, 10, 8, 8]\n" +
-        "saves:\n" +
-        "  - dexterity: 5\n" +
-        "skillsaves:\n" +
-        "  - stealth: 6\n" +
-        "senses: darkvision 60 ft., passive Perception 9\n" +
-        "languages: Common, Goblin\n" +
-        "cr: \"1/4\"\n" +
-        "traits:\n" +
-        "  - name: Nimble Escape\n" +
-        "    desc: The goblin can take the **Disengage** or *Hide* action.\n" +
-        "actions:\n" +
-        "  - name: Scimitar\n" +
-        "    desc: \"Melee Weapon Attack: +4 to hit.\"\n" +
-        "```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Goblin.html"), "utf8");
-      assert.match(html, /<div class="statblock-name">Goblin<\/div>/);
-      assert.match(html, /Small humanoid neutral evil/);
-      assert.match(html, /<strong>Armor Class<\/strong> 15 \(leather armor, shield\)/);
-      assert.match(html, /<strong>Hit Points<\/strong> 7 \(2d6\)/);
-      assert.match(html, /<strong>Speed<\/strong> 30 ft\./);
-      // Stat block: 6 cells, each with name + value+modifier.
-      assert.match(html, /<div class="statblock-stat-name">STR<\/div>/);
-      assert.match(html, /<div class="statblock-stat-value">14 \(\+2\)<\/div>/);
-      assert.match(html, /<strong>Saving Throws<\/strong> Dex \+5/);
-      assert.match(html, /<strong>Skills<\/strong> Stealth \+6/);
-      assert.match(html, /<strong>Challenge<\/strong> 1\/4/);
-      assert.match(html, /<strong><em>Nimble Escape\.<\/em><\/strong>/);
-      // Inline markdown in desc fields renders.
-      assert.match(html, /<strong>Disengage<\/strong>/);
-      assert.match(html, /<em>Hide<\/em>/);
-      // Actions section heading.
-      assert.match(html, /<h3 class="statblock-section-heading"[^>]*>Actions<\/h3>/);
-    } finally { await cleanup(v); }
-  });
-
-  it("supports inline handlers (fm:, dice:) in top-level statblock fields", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Goblin.md":
-        "---\n" +
-        "foundry:\n" +
-        "  system:\n" +
-        "    details:\n" +
-        "      cr: 1/4\n" +
-        "---\n" +
-        "```statblock\n" +
-        "name: Goblin\n" +
-        "ac: 15\n" +
-        "hp: 7\n" +
-        "speed: 30 ft.\n" +
-        "cr: \"`fm: foundry.system.details.cr`\"\n" +
-        "actions:\n" +
-        "  - name: Scimitar\n" +
-        "    desc: \"Hit: `dice: 1d6+2` slashing damage.\"\n" +
-        "```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Goblin.html"), "utf8");
-      // CR pulled from frontmatter via fm: dot-path inside a top-level field.
-      assert.match(html, /<strong>Challenge<\/strong> <span class="fm-value">1\/4<\/span>/);
-      // dice: still chains in desc fields (regression check).
-      assert.match(html, /class="dice-roll"[^>]*data-formula="1d6\+2"/);
-      // Sentinel tokens must not leak into the output.
-      assert.doesNotMatch(html, /VAULTSTATBLOCK_HANDLER/);
-    } finally { await cleanup(v); }
-  });
-
-  it("emits a parse-error block when the YAML is invalid", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Bad.md": "```statblock\nname: [unclosed\n```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Bad.html"), "utf8");
-      assert.match(html, /class="statblock statblock-error"/);
-      assert.match(html, /statblock parse error/);
-    } finally { await cleanup(v); }
-  });
-
-  it("renders a Spellcasting trait with per-level lines and italicized spells", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Mage.md":
-        "```statblock\n" +
-        "name: Mage\n" +
-        "ac: 12\n" +
-        "hp: 40\n" +
-        "spells:\n" +
-        "  - \"The mage is a 9th-level spellcaster (spell save DC 14).\"\n" +
-        "  - \"Cantrips (at will): fire bolt, light, mage hand, prestidigitation\"\n" +
-        "  - \"1st level (4 slots): detect magic, mage armor, magic missile, shield\"\n" +
-        "  - \"5th level (1 slot): cone of cold\"\n" +
-        "```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Mage.html"), "utf8");
-      // Spellcasting header trait with intro prose.
-      assert.match(html, /<strong><em>Spellcasting\.<\/em><\/strong> The mage is a 9th-level spellcaster/);
-      // Each level entry renders as its own paragraph.
-      const levels = html.match(/class="statblock-spell-level"/g) ?? [];
-      assert.equal(levels.length, 3);
-      // Level label is bolded, spell names italicized.
-      assert.match(html, /<strong>Cantrips \(at will\)<\/strong>/);
-      assert.match(html, /<em>fire bolt<\/em>/);
-      assert.match(html, /<em>cone of cold<\/em>/);
-    } finally { await cleanup(v); }
-  });
-
-  // ── Fantasy Statblocks compatibility (saves/skillsaves shapes, spells
-  //    object form, image, extra action sections, nested traits, source/note)
-
-  it("saves accept either array-of-single-key-objects or a flat object", async () => {
-    // Both shapes should produce the same rendered output. Two statblocks in
-    // one file lets us compare directly without spinning up two builds.
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Saves.md":
-        "```statblock\nname: ArrayShape\nac: 13\nhp: 40\n" +
-        "saves:\n  - dexterity: 5\n  - wisdom: 7\n" +
-        "skillsaves:\n  - stealth: 6\n  - perception: 4\n" +
-        "```\n\n" +
-        "```statblock\nname: ObjectShape\nac: 13\nhp: 40\n" +
-        "saves:\n  dexterity: 5\n  wisdom: 7\n" +
-        "skillsaves:\n  stealth: 6\n  perception: 4\n" +
-        "```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Saves.html"), "utf8");
-      const both = html.match(/<strong>Saving Throws<\/strong> Dex \+5, Wis \+7/g) ?? [];
-      assert.equal(both.length, 2);
-      const skills = html.match(/<strong>Skills<\/strong> Stealth \+6, Perception \+4/g) ?? [];
-      assert.equal(skills.length, 2);
-    } finally { await cleanup(v); }
-  });
-
-  it("spells: accepts object entries (FS Spell = string | { [level]: list })", async () => {
-    // Plain string entries used to crash with `s.split is not a function`
-    // when an object slipped in; this test pins the per-entry detection.
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Mage.md":
-        "```statblock\n" +
-        "name: ObjMage\n" +
-        "ac: 12\n" +
-        "hp: 40\n" +
-        "spells:\n" +
-        "  - \"The mage is a 9th-level spellcaster.\"\n" +
-        "  - Cantrips (at will): fire bolt, light\n" +
-        "  - 1st level (4 slots): magic missile, shield\n" +
-        "```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Mage.html"), "utf8");
-      assert.match(html, /<strong>Cantrips \(at will\)<\/strong>: <em>fire bolt<\/em>, <em>light<\/em>/);
-      assert.match(html, /<strong>1st level \(4 slots\)<\/strong>: <em>magic missile<\/em>, <em>shield<\/em>/);
-    } finally { await cleanup(v); }
-  });
-
-  it("image: emits a portrait <img class='statblock-image'> in the header", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Goblin.md":
-        "```statblock\nname: Goblin\nimage: portraits/goblin.webp\nac: 15\nhp: 7\n```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Goblin.html"), "utf8");
-      assert.match(html, /<img[^>]*class="statblock-image"[^>]*src="portraits\/goblin\.webp"[^>]*>/);
-      // CSS rule for the image lands in _handlers.css.
-      const css = await readFile(join(v.out, "_handlers.css"), "utf8");
-      assert.match(css, /\.statblock-image/);
-    } finally { await cleanup(v); }
-  });
-
-  it("renders bonus_actions, mythic_actions, lair_actions, triggered_actions sections", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Tarrasque.md":
-        "```statblock\n" +
-        "name: Tarrasque\nac: 25\nhp: 676\n" +
-        "bonus_actions:\n  - name: Reckless\n    desc: Until the start of its next turn.\n" +
-        "mythic_description: \"If you choose to use this monster's mythic trait, the following actions are available.\"\n" +
-        "mythic_actions:\n  - name: World Render\n    desc: Bites once and uses Tail.\n" +
-        "lair_actions:\n  - name: Quake\n    desc: Each creature on the ground falls prone.\n" +
-        "triggered_actions:\n  - name: Bloodied\n    desc: Triggers when reduced below half HP.\n" +
-        "```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Tarrasque.html"), "utf8");
-      assert.match(html, /<h3 class="statblock-section-heading"[^>]*>Bonus Actions<\/h3>/);
-      assert.match(html, /<h3 class="statblock-section-heading"[^>]*>Mythic Actions<\/h3>/);
-      assert.match(html, /<h3 class="statblock-section-heading"[^>]*>Lair Actions<\/h3>/);
-      assert.match(html, /<h3 class="statblock-section-heading"[^>]*>Triggered Actions<\/h3>/);
-      // Mythic intro paragraph rides right after the heading.
-      assert.match(html, /class="statblock-section-intro">If you choose to use this monster's mythic trait/);
-    } finally { await cleanup(v); }
-  });
-
-  it("nested traits flatten one level with the parent's name as a prefix", async () => {
-    // FS allows traits[i].traits recursively. v1 hack: flat with prefix.
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Hydra.md":
-        "```statblock\nname: Hydra\nac: 15\nhp: 172\n" +
-        "traits:\n" +
-        "  - name: Multiple Heads\n" +
-        "    desc: The hydra has five heads.\n" +
-        "    traits:\n" +
-        "      - name: Reactive Heads\n" +
-        "        desc: For each head, the hydra gets an extra reaction.\n" +
-        "      - name: Wakeful\n" +
-        "        desc: While the hydra sleeps, at least one head is awake.\n" +
-        "```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Hydra.html"), "utf8");
-      assert.match(html, /<strong><em>Multiple Heads\.<\/em><\/strong>/);
-      assert.match(html, /<strong><em>Multiple Heads: Reactive Heads\.<\/em><\/strong>/);
-      assert.match(html, /<strong><em>Multiple Heads: Wakeful\.<\/em><\/strong>/);
-    } finally { await cleanup(v); }
-  });
-
-  it("source and note render as small italic text below the statblock body", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Goblin.md":
-        "```statblock\nname: Goblin\nac: 15\nhp: 7\n" +
-        "source: \"Monster Manual p. 166\"\n" +
-        "note: \"Variant: Goblin Boss has +2 HP.\"\n" +
-        "```\n",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Goblin.html"), "utf8");
-      assert.match(html, /<p class="statblock-source"><em>Monster Manual p\. 166<\/em><\/p>/);
-      assert.match(html, /<p class="statblock-note"><em>Variant: Goblin Boss has \+2 HP\.<\/em><\/p>/);
-      const css = await readFile(join(v.out, "_handlers.css"), "utf8");
-      assert.match(css, /\.statblock-source/);
-      assert.match(css, /\.statblock-note/);
-    } finally { await cleanup(v); }
-  });
-});
-
-// ── User-defined handlers ─────────────────────────────────────────────────
-
 describe("user handler loading", () => {
   it("discovers handlers from .vaults/handlers/*.mjs", async () => {
     const v = await setupVault({
@@ -563,15 +217,15 @@ describe("user handler loading", () => {
   it("user handlers can override built-in handlers (last-registered wins)", async () => {
     const v = await setupVault({
       ".vaultrc.json": VAULTRC_1,
-      ".vaults/handlers/dice-override.mjs":
-        "export const handler = { inline: 'dice', render: (s) => ({ html: '<span class=\"override\">' + s + '</span>' }) };\n",
-      "Page.md": "`dice: 1d20`",
+      ".vaults/handlers/fm-override.mjs":
+        "export const handler = { inline: 'fm', render: (s) => ({ html: '<span class=\"override\">' + s + '</span>' }) };\n",
+      "Page.md": "---\nlevel: 7\n---\n`fm: level`",
     });
     try {
       await build(v);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /<span class="override">1d20<\/span>/);
-      assert.doesNotMatch(html, /class="dice-roll"/);
+      assert.match(html, /<span class="override">level<\/span>/);
+      assert.doesNotMatch(html, /class="fm-value"/);
     } finally { await cleanup(v); }
   });
 
@@ -649,25 +303,21 @@ describe("loadUserHandlers", () => {
 // ── Recursion ────────────────────────────────────────────────────────────
 
 describe("handler recursion", () => {
-  it("handler-emitted markdown containing inline dice resolves to a dice button", async () => {
+  it("handler-emitted markdown containing an inline handler is dispatched again", async () => {
     const v = await setupVault({
       ".vaultrc.json": VAULTRC_1,
       ".vaults/handlers/wrap.mjs":
-        // Code-block handler that returns markdown containing an inline
-        // dice formula. Without recursion the formula would ship as plain
-        // inline code; with recursion it becomes a dice button.
+        // Without recursion the emitted `fm:` would ship as plain inline code.
         "export const handler = {\n" +
         "  codeBlock: 'wrap',\n" +
-        "  render: (content) => ({ markdown: content + ' (`dice: 1d20+5`)' }),\n" +
+        "  render: (content) => ({ markdown: content + ' (`fm: level`)' }),\n" +
         "};\n",
-      "Page.md": "```wrap\nattack roll\n```\n",
+      "Page.md": "---\nlevel: 7\n---\n```wrap\nattack roll\n```\n",
     });
     try {
       await build(v);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
-      // The wrap handler emitted "attack roll (`dice: 1d20+5`)" as markdown,
-      // and the dispatcher re-walked that markdown to find the inline dice.
-      assert.match(html, /<button[^>]*class="dice-roll"[^>]*data-formula="1d20\+5"/);
+      assert.match(html, /attack roll \(<span class="fm-value">7<\/span>\)/);
     } finally { await cleanup(v); }
   });
 
@@ -716,23 +366,13 @@ describe("handler recursion", () => {
 // ── Asset bundling ───────────────────────────────────────────────────────
 
 describe("handler asset bundling", () => {
-  it("built-in dice runtime ships in /_handlers.js when any page uses dice:", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Page.md": "Roll: `dice: 1d20`.",
-    });
+  it("a built-in's runtime ships in /_handlers.js, and the layout links both bundles", async () => {
+    const v = await setupVault({ ".vaultrc.json": VAULTRC_1, "Page.md": "# Page\n" });
     try {
       await build(v);
-      const js = await readFile(join(v.out, "_handlers.js"), "utf8");
-      // Sentinel from dice.runtime.js
-      assert.match(js, /FORMULA_RE = \/\^/);
-      // The built-in's source-id comment is included for traceability
-      assert.match(js, /builtin\/dice\.runtime\.js/);
-      // Layout should reference both files
+      assert.match(await readFile(join(v.out, "_handlers.js"), "utf8"), /builtin\/gallery\.runtime\.js/);
       const html = await readFile(join(v.out, "Page.html"), "utf8");
       assert.match(html, /<script src="\/_handlers\.js\?v=[a-f0-9]+" defer><\/script>/);
-      // The CSS tag follows its own bundle: statblock CSS ships by default,
-      // so both tags appear, each keyed to its own flag.
       assert.match(html, /<link[^>]*_handlers\.css/);
     } finally { await cleanup(v); }
   });
@@ -758,12 +398,6 @@ describe("handler asset bundling", () => {
       const mw = await readFile(join(v.out, "functions/_middleware.js"), "utf8");
       assert.match(mw, /pathname === "\/_handlers\.js"/);
       assert.match(mw, /pathname === "\/_handlers\.css"/);
-      // Foundry-import bundles are deliberately NOT in the shared-asset
-      // allowlist: they live per-variant so the middleware role-gates
-      // them. A public visitor can't read /_handlers.foundry.css via
-      // the rewrite path unless they have a public-tier token.
-      assert.doesNotMatch(mw, /pathname === "\/_handlers\.foundry\.js"/);
-      assert.doesNotMatch(mw, /pathname === "\/_handlers\.foundry\.css"/);
     } finally { await cleanup(v); }
   });
 
@@ -851,19 +485,19 @@ describe("buildRegistry", () => {
     try {
       buildRegistry(
         [
-          { inline: "dice", render: () => ({ html: "builtin" }) },
-          { codeBlock: "statblock", render: () => ({ html: "builtin" }) },
+          { inline: "fm", render: () => ({ html: "builtin" }) },
+          { codeBlock: "gallery", render: () => ({ html: "builtin" }) },
         ],
         [
-          { inline: "dice", render: () => ({ html: "user" }) },
-          { codeBlock: "statblock", render: () => ({ html: "user" }) },
+          { inline: "fm", render: () => ({ html: "user" }) },
+          { codeBlock: "gallery", render: () => ({ html: "user" }) },
         ],
       );
     } finally { console.warn = origWarn; }
     assert.equal(warnings.length, 2);
     assert.match(warnings[0]!, /shadows the built-in/);
-    assert.match(warnings[0]!, /dice/);
-    assert.match(warnings[1]!, /statblock/);
+    assert.match(warnings[0]!, /fm/);
+    assert.match(warnings[1]!, /gallery/);
   });
 
   it("buildRegistry stays silent when user handlers don't collide with built-ins", () => {
@@ -872,38 +506,10 @@ describe("buildRegistry", () => {
     console.warn = (msg: string) => { warnings.push(msg); };
     try {
       buildRegistry(
-        [{ inline: "dice", render: () => ({ html: "builtin" }) }],
+        [{ inline: "fm", render: () => ({ html: "builtin" }) }],
         [{ inline: "shout", render: () => ({ html: "user" }) }],
       );
     } finally { console.warn = origWarn; }
     assert.equal(warnings.length, 0);
-  });
-});
-
-describe("fvtt-link handler", () => {
-  it("renders a page link on the web, marked for the Foundry rewrite", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Macros/Toggle Feast.md": "---\ntitle: Toggle Feast\n---\nBody.\n",
-      "Page.md": "Run `fvtt-link: Toggle Feast` now.",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /class="internal internal-link fvtt-doc-link" href="\/Macros\/Toggle%20Feast"/);
-      assert.match(html, />Toggle Feast<\/a>/);
-    } finally { await cleanup(v); }
-  });
-
-  it("takes a |label and marks an unresolved target broken", async () => {
-    const v = await setupVault({
-      ".vaultrc.json": VAULTRC_1,
-      "Page.md": "See `fvtt-link: Nowhere|the void` maybe.",
-    });
-    try {
-      await build(v);
-      const html = await readFile(join(v.out, "Page.html"), "utf8");
-      assert.match(html, /is-unresolved[^>]*>the void<\/a>/);
-    } finally { await cleanup(v); }
   });
 });

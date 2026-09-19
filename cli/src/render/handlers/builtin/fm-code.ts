@@ -4,12 +4,12 @@
 // Usage:
 //
 //   ```fm javascript
-//   foundry.patch.command
+//   macro.command
 //   ```
 //
 // Renders as:
 //
-//   <pre><code class="language-javascript">…value of frontmatter.foundry.patch.command…</code></pre>
+//   <pre><code class="language-javascript">…value of frontmatter.macro.command…</code></pre>
 //
 // Companion to the inline `fm:` handler. Inline form is used in prose to
 // pull a frontmatter value into a sentence; this code-block form is used

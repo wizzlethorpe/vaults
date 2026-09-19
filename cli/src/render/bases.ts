@@ -141,7 +141,7 @@ function wrapAsTabs(blocks: string[], views: ViewSpec[]): string {
   const panels = blocks.map((html, i) =>
     `<div class="bases-tab-panel" role="tabpanel" data-bases-tab-panel="${i}"${i === 0 ? "" : " hidden"}>${html}</div>`,
   ).join("");
-  // Web-only: switching tabs needs a script a Foundry journal does not run.
+  // Web-only: switching tabs needs a script that runs only on the wiki.
   return `<div class="bases-tabbed"><div class="bases-tab-strip vaults-web-only" role="tablist">${tabs}</div>${panels}</div>`;
 }
 
@@ -633,8 +633,7 @@ function renderTableView(view: ViewSpec, allRows: Row[], doc: BaseDoc, context: 
   }).join("");
 
   const caption = view.name ? `<div class="bases-caption">${htmlEscape(view.name)}</div>` : "";
-  // The toolbar is web-only: its filter needs a script, and in a journal its
-  // count would include items a player cannot see.
+  // The toolbar is web-only: its filter needs a script, and its count is of every item, including ones a reader elsewhere may not see.
   return `<div class="bases-block">
   ${caption}
   <div class="bases-toolbar vaults-web-only">

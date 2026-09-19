@@ -13,12 +13,12 @@ Bug reports, feature requests, and pull requests are all welcome, in the CLI or 
 ## Pull requests
 
 1. Fork the repo and create a topic branch.
-2. Make your change in one subdirectory if at all possible, `cli/` or `landing/`. Changes across both are fine but should be one logical unit per PR.
+2. Make your change in one subdirectory if at all possible: `cli/` (the core), `ttrpg/` (the TTRPG and Foundry add-on) or `landing/`. Changes across them are fine but should be one logical unit per PR. Core must not name Foundry, statblocks, dice or battlemaps; anything that does belongs in `ttrpg/`.
 3. Run the gates that apply to what you touched:
 
    | Touched | Run |
    |---|---|
-   | `cli/` | `pnpm typecheck && pnpm -r test && pnpm --filter @wizzlethorpe/vaults run build` |
+   | `cli/` or `ttrpg/` | `pnpm typecheck && pnpm test && pnpm build` |
    | `landing/` | `cd landing && vaults build` |
 
 4. Open a PR against `main` with a clear description of what changed and why. Reference any related issue.
@@ -33,7 +33,7 @@ The CLA does two things: (1) confirms your contribution comes in under the proje
 
 The full project conventions live in [CLAUDE.md](./CLAUDE.md). The short version:
 
-**TypeScript (`cli/`)**
+**TypeScript (`cli/` and `ttrpg/`)**
 - ES modules only. `strict: true`, `noUncheckedIndexedAccess: true`.
 - Named exports preferred; default exports only when an external API requires them.
 - `async`/`await`, never `.then` chains.
@@ -53,7 +53,7 @@ Brief and descriptive. The first line is the summary; if you need more detail, l
 
 ## Releases
 
-Releases are cut from the repo root via `release.sh <X.Y.Z>`, which bumps `cli/package.json`, tags, and publishes the CLI to npm. Don't bump version numbers in PRs; the maintainer handles that at release time.
+Releases are cut from the repo root via `release.sh <X.Y.Z>`, which bumps both packages to one version, tags, and publishes the CLI and the add-on to npm. Don't bump version numbers in PRs; the maintainer handles that at release time.
 
 ## Questions?
 

@@ -29,13 +29,8 @@ export interface HandlerContext {
   /** HTML-escape a string. Convenience helper. */
   escape(s: string): string;
   /**
-   * Apply registered inline handlers to a plain string and return HTML.
-   * Use this when a handler renders its own non-markdown content (e.g. a
-   * statblock's bespoke layout) and wants to support nested inline handlers
-   * like `dice:` inside that content. Only handlers that return HTML are
-   * substituted; markdown-emitting handlers are left as their original
-   * `` `prefix: …` `` text. Other inline formatting (bold, italic, code,
-   * wikilinks) is the caller's responsibility.
+   * Apply registered inline handlers to a plain string and return HTML, for a handler that renders its own layout and wants `fm:` and the like to work inside it.
+   * Only handlers that return HTML are substituted. Other inline formatting (bold, italic, code, wikilinks) is the caller's responsibility.
    */
   applyInlineHandlers(text: string): Promise<string>;
   /**
@@ -74,11 +69,18 @@ export interface HandlerAssets {
   styles?: string[];
 }
 
+/** Assets given as content, for a handler that ships in a package rather than in a vault. `source` names each one and dedupes it. */
+export interface InlineAssets {
+  scripts?: { source: string; content: string }[];
+  styles?: { source: string; content: string }[];
+}
+
 export interface InlineHandler {
   /** Discriminator that appears before the colon in `` `prefix: …` ``. */
   inline: string;
   /** Browser-side JS / CSS to ship as part of the deploy. */
   assets?: HandlerAssets;
+  inlineAssets?: InlineAssets;
   render(content: string, ctx: HandlerContext): HandlerOutput | Promise<HandlerOutput>;
 }
 
@@ -86,6 +88,7 @@ export interface CodeBlockHandler {
   /** Language tag for ``` ```lang ``` ```. */
   codeBlock: string;
   assets?: HandlerAssets;
+  inlineAssets?: InlineAssets;
   /** Vault-relative images a block's body names, so the build ships them with the page even when nothing else refers to them. */
   imagePaths?(content: string): string[];
   render(content: string, ctx: HandlerContext): HandlerOutput | Promise<HandlerOutput>;

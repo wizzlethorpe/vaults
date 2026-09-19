@@ -15,14 +15,12 @@
 //                           (audio, video, PDF, epub, JSON). Shipped
 //                           per-variant so e.g. DM-only audio doesn't leak
 //                           to the public deploy. JSON support is here
-//                           specifically so a page can reference a
-//                           foundry.data_json file in its frontmatter.
+//                           so a page's frontmatter can reference a JSON file.
 //                           Anything outside this list is "unknown" and
 //                           skipped unless include_unknown_files is on.
 //
 //   contentTypeForExt()   — best-effort MIME lookup keyed off the extension.
-//                           Used by manifests so the deploy and Foundry sync
-//                           agree on each file's content-type.
+//                           Used wherever a file's content-type is stated.
 
 export { COMPRESSIBLE_EXT_RE } from "../images.js";
 

@@ -4,13 +4,12 @@
 
 import { createHash } from "node:crypto";
 
+import { mergeDefaults, type TokenDownload } from "@wizzlethorpe/vaults/addon";
 import { canonicalType } from "./foundry-types.js";
 import { rewriteVaultRefs } from "./foundry-html.js";
 import { defaultsFor, resolvePageRefs } from "./foundry-defaults.js";
-import { mergeDefaults } from "./frontmatter-defaults.js";
 import type { LinkIndex, LinkTarget } from "./foundry-html.js";
-import type { TokenDownload } from "./render/auth-template.js";
-import { GRAFTS_PATH } from "./render/handlers/builtin/foundry-install.js";
+import { GRAFTS_PATH } from "./handlers/foundry-install.js";
 
 /** One graft entry. `source` absent means the patch *is* the document. */
 export interface GraftEntry {

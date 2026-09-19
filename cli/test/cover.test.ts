@@ -1,5 +1,5 @@
 // Tests for auto-discovery of a page's cover image (`auto_image`), which feeds
-// OG/Twitter meta, Bases card covers, and the Foundry reskin pipeline.
+// OG/Twitter meta, Bases card covers, and an add-on's use of a page's art.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

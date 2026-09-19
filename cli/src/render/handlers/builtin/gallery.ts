@@ -16,7 +16,6 @@
 // ship as a built-in asset concatenated into _handlers.css.
 
 import type { CodeBlockHandler, HandlerContext } from "../types.js";
-import { registerBuiltinAssets } from "../assets.js";
 import { slugify } from "../../slug.js";
 
 /** Vault-relative output path -> absolute, percent-encoded served URL. */
@@ -103,7 +102,7 @@ const GALLERY_RUNTIME = `
 })();
 `;
 
-registerBuiltinAssets(galleryHandler, {
+galleryHandler.inlineAssets = {
   scripts: [{ source: "builtin/gallery.runtime.js", content: GALLERY_RUNTIME }],
   styles: [{ source: "builtin/gallery.css", content: GALLERY_STYLES }],
-});
+};
