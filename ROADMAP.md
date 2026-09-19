@@ -27,9 +27,15 @@ This shipped once (8a6749b) against the pre-graft architecture and was lost in t
 
 ## 2. Separating vaults from Foundry
 
-Vaults is increasingly used for things with nothing to do with TTRPGs, and those deploys should not carry a Foundry payload. `foundry.enabled: false` handles the deploy side already.
+Vaults is increasingly used for things with nothing to do with TTRPGs, and those deploys should carry no TTRPG or Foundry code at all. The goal is a core CLI that knows nothing about either, and one add-on package, `@wizzlethorpe/vaults-ttrpg`, that carries the rest.
 
-What remains is the built-ins: `statblock`, `battlemap` and `dice` are hardcoded rather than bundled-but-disableable handlers. **Do not build a plugin system for this.** The handler registry already is one, with user-authored handlers, browser JS and CSS, and Foundry opt-in. A general plugin API earns its keep when a third party wants to write one, and today the third party is us.
+Core finds the add-on by importing it by name and treating a missing package as no add-on. Installing it beside the CLI is the whole opt-in: nothing in the vault names it. `foundry.enabled` stays as the add-on's own switch, for a TTRPG wiki that wants dice and statblocks and no `grafts.json`.
+
+The seam is already in core. `cli/src/addon.ts` is the contract: `prepare` runs once per build and may return a per-variant writer and one download the Function serves with a bearer written in. `cli/src/foundry-build.ts` is its only implementer and still lives in core.
+
+What remains is the move. The add-on takes the `foundry-*` modules, the `statblock`, `battlemap`, `dice`, `fvtt-link` and `foundry-install` handlers, the `foundry` and `zip_assets` settings, and the Foundry migrations. That needs the contract to also carry handlers, settings schema entries and migrations, and core to say which package to install when it meets a `foundry:` setting it does not know.
+
+The add-on lives in this repo as a workspace package and releases with the CLI at the same version, so the contract never has to work across versions.
 
 ## 3. Obsidian plugin
 

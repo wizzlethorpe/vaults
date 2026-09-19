@@ -18,11 +18,8 @@ export interface PageMeta {
   birthtime?: number;
   /** Resolved cover image (served URL). Set during build by resolvePageImage. */
   coverImage?: string;
-  /** Vault-relative paths referenced via `@vault/...` inside this page's
-   *  foundry.data_json file. Scene backgrounds/sounds/tiles live in that JSON
-   *  content (not the page frontmatter), so the per-variant asset scanners
-   *  consult this list to stage them. Populated during build. */
-  foundryAssets?: string[];
+  /** Vault-relative files an add-on ships with this page, beyond what its source and frontmatter name. */
+  extraAssets?: string[];
 }
 
 export interface ImageEntry {

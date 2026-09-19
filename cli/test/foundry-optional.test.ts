@@ -89,6 +89,16 @@ describe("foundry.enabled: false", () => {
 
 });
 
+describe("the Function of a two-role deploy", () => {
+  const TWO_ROLES = { ".vaultrc.json": JSON.stringify({ roles: ["public", "dm"], rolePasswords: { dm: "100000:0000:0000" } }) };
+  const middleware = (out: string) => readFile(join(out, "functions/_middleware.js"), "utf8");
+
+  it("serves the entry list only when the build wrote one", async () => {
+    assert.match(await middleware(await build("", TWO_ROLES)), /"path":"\/_foundry\/grafts\.json"/);
+    assert.doesNotMatch(await middleware(await build("foundry:\n  enabled: false\n", TWO_ROLES)), /_foundry/);
+  });
+});
+
 describe("the foundry block", () => {
   it("takes defaults for the keys a vault does not state", async () => {
     const { loadSettings } = await import("../src/settings.js");
@@ -161,22 +171,22 @@ describe("zip_assets", () => {
   });
 });
 
-describe("site_url with the Foundry integration on", () => {
-  /** Build and return the warnings, since that is what is under test here. */
-  async function warningsFrom(settings: string): Promise<{ out: string; warnings: string[] }> {
-    const dir = await mkdtemp(join(tmpdir(), "vault-su-"));
-    const out = join(dir, "_out");
-    await writeSettingsFile(dir, `image_quality: 0\n${settings}`);
-    await writeFile(join(dir, "index.md"), "---\ntitle: Home\n---\nBody.\n");
-    const warnings: string[] = [];
-    const origLog = console.log, origWarn = console.warn;
-    console.log = () => {};
-    console.warn = (...a: unknown[]) => { warnings.push(a.map(String).join(" ")); };
-    try { await buildSite({ vaultPath: dir, outputDir: out }); }
-    finally { console.log = origLog; console.warn = origWarn; }
-    return { out, warnings };
-  }
+/** Build and return the warnings, since that is what is under test here. */
+async function warningsFrom(settings: string, page = "Body.\n"): Promise<{ out: string; warnings: string[] }> {
+  const dir = await mkdtemp(join(tmpdir(), "vault-su-"));
+  const out = join(dir, "_out");
+  await writeSettingsFile(dir, `image_quality: 0\n${settings}`);
+  await writeFile(join(dir, "index.md"), page.startsWith("---") ? page : `---\ntitle: Home\n---\n${page}`);
+  const warnings: string[] = [];
+  const origLog = console.log, origWarn = console.warn;
+  console.log = () => {};
+  console.warn = (...a: unknown[]) => { warnings.push(a.map(String).join(" ")); };
+  try { await buildSite({ vaultPath: dir, outputDir: out }); }
+  finally { console.log = origLog; console.warn = origWarn; }
+  return { out, warnings };
+}
 
+describe("site_url with the Foundry integration on", () => {
   it("says so when there is no URL for the entry list to fetch media from", async () => {
     // Every asset source is absolute, so without a site_url the entry list
     // names no files and a build in Foundry arrives with no art.
@@ -196,5 +206,25 @@ describe("site_url with the Foundry integration on", () => {
     const { out, warnings } = await warningsFrom("site_url: \"\"\nfoundry:\n  enabled: false\n");
     assert.doesNotMatch(warnings.join("\n"), /site_url is not set/);
     await rm(out, { recursive: true, force: true });
+  });
+});
+
+describe("foundry.core_version", () => {
+  const ACTOR = "---\ntitle: Home\nfoundry:\n  source: Actor:npc\n---\nBody.\n";
+  const SITE = "site_url: \"https://notes.example.com\"\n";
+
+  it("is asked for when a page builds a document and no version is set", async () => {
+    const { out, warnings } = await warningsFrom(SITE, ACTOR);
+    assert.match(warnings.join("\n"), /foundry\.core_version is not set/);
+    await rm(out, { recursive: true, force: true });
+  });
+
+  it("is not asked for once set, or when no page builds a document", async () => {
+    const set = await warningsFrom(`${SITE}foundry:\n  core_version: '14.359'\n`, ACTOR);
+    assert.doesNotMatch(set.warnings.join("\n"), /core_version is not set/);
+    const journalOnly = await warningsFrom(SITE);
+    assert.doesNotMatch(journalOnly.warnings.join("\n"), /core_version is not set/);
+    await rm(set.out, { recursive: true, force: true });
+    await rm(journalOnly.out, { recursive: true, force: true });
   });
 });

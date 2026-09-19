@@ -9,10 +9,11 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildSite } from "../src/build.js";
+import { readPatch } from "../src/foundry-build.js";
 
 interface Vault { dir: string; out: string; }
 
@@ -34,11 +35,13 @@ async function setupVault(files: Record<string, string>): Promise<Vault> {
   return { dir, out };
 }
 
-async function build(v: Vault): Promise<void> {
+/** Builds the vault and returns what it warned about. */
+async function build(v: Vault): Promise<string[]> {
+  const warnings: string[] = [];
   const origLog = console.log;
   const origWarn = console.warn;
   console.log = () => {};
-  console.warn = () => {};
+  console.warn = (msg: string) => { warnings.push(msg); };
   try {
     await buildSite({
       vaultPath: v.dir,
@@ -48,6 +51,7 @@ async function build(v: Vault): Promise<void> {
     console.log = origLog;
     console.warn = origWarn;
   }
+  return warnings;
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -127,6 +131,44 @@ describe("foundry.patch_json asset staging", () => {
         "the DM variant should receive the audio its scene references",
       );
     } finally { await rm(v.dir, { recursive: true, force: true }); }
+  });
+
+  it("reports a missing file once", async () => {
+    const v = await setupVault({ "Scenes/Cave.md": scenePage("Scenes/missing.json") });
+    try {
+      const warnings = await build(v);
+      assert.equal(warnings.filter((w) => /missing\.json" not found/.test(w)).length, 1);
+    } finally { await rm(v.dir, { recursive: true, force: true }); }
+  });
+
+  it("carries the file's fields into the document the page builds", async () => {
+    const v = await setupVault({
+      "Maps/Keep.md": scenePage("scenes/keep.json"),
+      "scenes/keep.json": JSON.stringify({ name: "Scene", padding: 0.125 }),
+    });
+    try {
+      await build(v);
+      const file = JSON.parse(await readFile(join(v.out, "_foundry/grafts.json"), "utf8")) as
+        { entries: Array<{ type: string; patch: { padding?: number } }> };
+      assert.equal(file.entries.find((e) => e.type === "Scene")?.patch.padding, 0.125);
+    } finally { await rm(v.dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("readPatch", () => {
+  it("takes a plain object as the patch and lists the vault files it names", () => {
+    const loaded = { name: "Keep", background: { src: "@vault/maps/keep.webp#v=2" }, sounds: [{ path: "@vault/audio/wind.ogg" }] };
+    assert.deepEqual(readPatch(loaded), { patch: loaded, assets: ["maps/keep.webp", "audio/wind.ogg"] });
+  });
+
+  it("ships what an array names without taking it as a patch", () => {
+    // Merged as a patch, an array would write its indices onto the document as keys.
+    assert.deepEqual(readPatch([{ src: "@vault/maps/keep.webp" }]), { assets: ["maps/keep.webp"] });
+  });
+
+  it("gives nothing for a scalar or a file that failed to load", () => {
+    assert.deepEqual(readPatch(3), { assets: [] });
+    assert.deepEqual(readPatch(null), { assets: [] });
   });
 });
 

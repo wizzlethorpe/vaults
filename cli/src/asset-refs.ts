@@ -18,7 +18,6 @@ import { downloadFilePaths } from "./render/handlers/builtin/download.js";
 import { IMAGE_EXT_RE } from "./render/extensions.js";
 import { slugify } from "./render/slug.js";
 import type { ImageEntry, PageMeta } from "./render/types.js";
-import { loadDataJson } from "./foundry-meta.js";
 
 // The optional backslash matters: a table cell has to escape the size hint's
 // pipe, and keeping that backslash in the name misses the index silently.
@@ -102,17 +101,7 @@ export async function copyReferencedImages(
       try { refs.add(decodeURIComponent(p.coverImage.replace(/^\//, ""))); }
       catch { /* malformed coverImage URL — ignore */ }
     }
-    if (p.frontmatter) {
-      forEachString(p.frontmatter, (s) => {
-        const path = vaultRefPath(s);
-        if (path && IMAGE_EXT_RE.test(path)) {
-          const image = imageIndex.get(path);
-          if (image) refs.add(image.outputPath);
-        }
-      });
-    }
-    // Image refs inside the page's foundry.patch_json (Scene backgrounds, tiles).
-    for (const path of p.foundryAssets ?? []) {
+    for (const path of [...vaultRefs(p.frontmatter), ...(p.extraAssets ?? [])]) {
       if (!IMAGE_EXT_RE.test(path)) continue;
       const image = imageIndex.get(path);
       if (image) refs.add(image.outputPath);
@@ -135,56 +124,14 @@ export async function copyReferencedImages(
   return copied;
 }
 
-/** Collect the `@vault/...` paths a page's foundry block references, from both
- *  `foundry.patch_json` and `foundry.patch`. A Scene's bulk asset refs
- *  (backgrounds, ambient sounds, tiles) live in that JSON content, and a token's
- *  ring subject lives in the inline `data` overlay; neither appears anywhere the
- *  per-variant asset scanners look, so without this they never ship and Foundry
- *  404s them. Returns vault-relative paths. */
-export async function collectDataJsonVaultRefs(
-  vaultPath: string,
-  fm: Record<string, unknown>,
-  pagePath: string,
-): Promise<string[]> {
-  const fo = fm["foundry"];
-  if (!fo || typeof fo !== "object" || Array.isArray(fo)) return [];
-  const block = fo as Record<string, unknown>;
-  const out: string[] = [];
-  const collect = (from: unknown) => forEachString(from, (s) => {
-    const path = vaultRefPath(s);
-    if (path) out.push(path);
-  });
-
-  const rel = block["patch_json"];
-  if (typeof rel === "string" && rel.trim()) {
-    const parsed = await loadDataJson(vaultPath, rel.trim(), pagePath);
-    if (parsed !== null) collect(parsed);
+/** Every `@vault/PATH` string anywhere inside `value`, as vault-relative paths with any fragment or query dropped. */
+export function vaultRefs(value: unknown): string[] {
+  if (typeof value === "string") {
+    const path = value.startsWith("@vault/") ? value.slice("@vault/".length).split("#")[0]!.split("?")[0]! : "";
+    return path ? [path] : [];
   }
-  collect(block["patch"]);
-  return out;
-}
-
-/**
- * Visit every string value reachable from `value` (object / array / scalar)
- * and call `fn` once per string. Used to surface `@vault/PATH` references
- * inside parsed frontmatter (e.g., a Scene's `foundry.patch.background.src`
- * or a Playlist's `foundry.patch.sounds[N].path`) so the per-variant asset
- * scanner can include those files alongside body-referenced ones.
- */
-export function forEachString(value: unknown, fn: (s: string) => void): void {
-  if (typeof value === "string") return fn(value);
-  if (Array.isArray(value)) { for (const v of value) forEachString(v, fn); return; }
-  if (value && typeof value === "object") {
-    for (const v of Object.values(value as Record<string, unknown>)) forEachString(v, fn);
-  }
-}
-
-/** Extract a vault path from a `@vault/PATH` string, or null when the
- *  string isn't a vault reference. Trailing fragment / query stripped. */
-export function vaultRefPath(s: string): string | null {
-  if (!s.startsWith("@vault/")) return null;
-  const rest = s.slice("@vault/".length).split("#")[0]!.split("?")[0]!;
-  return rest.length > 0 ? rest : null;
+  if (value && typeof value === "object") return Object.values(value).flatMap(vaultRefs);
+  return [];
 }
 
 /**
@@ -231,16 +178,7 @@ export async function copyReferencedPassthroughs(
   // (only walking visibleMetas) — a dm-tier page's @vault/Audio/secret.ogg
   // ships only to the dm variant.
   for (const p of visibleMetas) {
-    if (!p.frontmatter) continue;
-    forEachString(p.frontmatter, (s) => {
-      const path = vaultRefPath(s);
-      if (path) {
-        const entry = passthroughIndex.get(path);
-        if (entry) refs.add(entry.outputPath);
-      }
-    });
-    // Audio/video/pdf refs inside the page's foundry.patch_json (ambient sounds).
-    for (const path of p.foundryAssets ?? []) {
+    for (const path of [...vaultRefs(p.frontmatter), ...(p.extraAssets ?? [])]) {
       const entry = passthroughIndex.get(path);
       if (entry) refs.add(entry.outputPath);
     }

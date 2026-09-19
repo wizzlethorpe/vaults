@@ -3,7 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { assertDeployable } from "../src/build.js";
+import { assertDeployable } from "../src/foundry-build.js";
 import { PAGES_FILE_BYTES } from "../src/settings.js";
 
 describe("assertDeployable", () => {
