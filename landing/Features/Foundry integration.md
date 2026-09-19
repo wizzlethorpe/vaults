@@ -33,7 +33,6 @@ The box above is the `foundry-install` code block. It links to the reader's own 
 | Audio, PDFs, other passthroughs | Downloaded alongside images |
 | `foundry.source: <UUID>` | A document of the UUID's type, built on that compendium document (see below) |
 | `foundry.source: <Type>[:<subtype>]` | A blank `Actor`, `Item`, `Scene`, `JournalEntry`, `RollTable`, `Macro`, `Cards` or `Playlist` |
-| `foundry.source: [<UUID>, …]` | A list tried in order, so one page serves readers with different content installed |
 | `foundry.sync: false` | The page reaches neither the journal nor a document |
 | `foundry.journal: false` | The page's document is built but the page gets no journal page |
 | `foundry.embed: false` | The page's article is not written into its document's description |
@@ -163,24 +162,13 @@ The folder's `JournalEntry` id is shared by every page in that folder, so it can
 
 ## Moulinette: assets and scenes from the reader's own library
 
-A vault can name content it does not ship. A source that names a scene or a track from [Moulinette](https://assets.moulinette.cloud/) resolves against **the reader's own Moulinette library** on their machine, through [graft-moulinette](https://github.com/wizzlethorpe/graft-moulinette). Nothing is redistributed; a reader without the subscription gets that entry skipped, with the reason in the build report.
+A vault can name content it does not ship. A map, a tile or a track from [Moulinette](https://assets.moulinette.cloud/), named by its path, resolves against **the reader's own Moulinette library** on their machine, through [graft-moulinette](https://github.com/wizzlethorpe/graft-moulinette). Nothing is redistributed; a reader without the subscription gets that entry skipped, with the reason in the build report.
 
 Requires the [Moulinette](https://foundryvtt.com/packages/moulinette) module, signed in, and graft-moulinette, which documents this fully.
 
 ### Documents: whole scenes, journals and playlists
 
-A Moulinette document is named the way its marketplace page reads: the document kind, the pack number from the product's address bar, and the asset's path inside that pack.
-
-```yaml
-foundry:
-  source:
-    - Compendium.mad-taverns.mad-taverns-maps.Scene.F3wyDaiec72h5sFG
-    - "@moulinette/Scene/13648/json/scene/06-junkyard-empty.json"
-  patch:
-    navName: Junkyard
-```
-
-The build reads the document type from the first source, so a Moulinette name goes after a compendium UUID. On the reader's machine graft-moulinette materialises the named document into a pack of its own before graft tries the list, so the list behaves as any other: the compendium copy if the reader has that module, otherwise the Moulinette copy, otherwise a skipped entry with a reason. A compendium copy is the better first choice where a creator offers one: Foundry migrates compendium packs on load, which a raw Moulinette import skips.
+A page cannot name a whole Moulinette document as its `foundry.source` yet. Compose the scene in the vault and name the creator's art by path, as the next two sections describe: that works today, and it is also the only way to stay independent of which Foundry generation a creator exported for.
 
 ### Files: maps, images and audio
 
@@ -196,7 +184,7 @@ with the map named inside that file as `moulinette-v2/cloud/<creator>/<pack>/ima
 
 ### Composing the scene yourself
 
-Creators re-export their catalogue for each Foundry generation as a **new pack with a new number**, often under the same name, so a pack number pins a Foundry version as well as content. A Foundry 13 scene imported into a Foundry 14 world keeps its walls, lights and sounds, but its map does not land where it belongs, because v14 moved a scene's background onto its Level. The build reports the mismatch and does not convert.
+Every Moulinette pack has a number, shown in its marketplace address. Creators re-export their catalogue for each Foundry generation as a **new pack with a new number**, often under the same name, so a pack number pins a Foundry version as well as content. A Foundry 13 scene imported into a Foundry 14 world keeps its walls, lights and sounds, but its map does not land where it belongs, because v14 moved a scene's background onto its Level. The build reports the mismatch and does not convert.
 
 A file has no version. Compose the scene yourself and name only the art: you cannot redistribute a creator's map, and wall geometry and lighting are your own work and ship in the vault. See [[Battlemaps]] for the same pattern applied to layered maps.
 

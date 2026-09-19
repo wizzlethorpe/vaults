@@ -41,9 +41,15 @@ Be honest that it does not touch the barrier that actually stops people. Needing
 
 Not built, and not needed while v14 is the only target, but the decision is made: supporting several means deploying a separate copy of the vault per generation, not branching inside pages.
 
-This separates two things the Moulinette work conflated. A `foundry.source` priority list is for **content availability**, meaning does this reader own that pack. We also used it for **version compatibility**, and those are independent axes, so every rung became a guess about two variables and the combinations multiply past what anyone can test. Declared instead, probably as a setting, it gives one honest answer up front, and the generation-skew warning gets a better question to ask: does this pack match what the vault was built for, rather than does it match this world.
+Content availability (does this reader own that pack) and version compatibility are independent axes. Availability is answered per entry on the reader's machine. The generation is declared once, probably as a setting, and the generation-skew warning gets a better question to ask: does this pack match what the vault was built for, rather than does it match this world.
 
-## 5. Vaults as decentralised distribution
+## 5. A document that differs by role
+
+A page builds one document, from one `foundry.source`, whoever imports it. Some NPCs want two: one the GM runs as a monster, and players know as a commoner. A player who imports the vault should get the commoner. Today the page's source can only name one of them, and when that is a page only the GM's build makes, a player's import skips the actor.
+
+Each role already gets its own `grafts.json`, so the build is where this belongs: a page states a source and patch per role, and each role's file carries the one for that role. A patch is written against one document, so the choice is made at build time, per role. Not needed yet.
+
+## 6. Vaults as decentralised distribution
 
 Vaults already has most of what a content marketplace sells: entitlement checking, per-user access, a per-role grafts.json with scoped asset tokens, and multiple creators in one world. Structurally it is *better* for entitlement than a client-side gate, because a non-subscriber is not filtered by a module they could patch. The premium files are simply not in the variant the server returns.
 

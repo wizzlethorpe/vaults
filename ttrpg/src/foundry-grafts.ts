@@ -16,8 +16,8 @@ export interface GraftEntry {
   id: string;
   type: string;
   folder?: string;
-  /** A UUID, a sibling's bare id, or several to try in order. */
-  source?: string | string[];
+  /** A UUID, or a sibling's bare id. */
+  source?: string;
   patch: Record<string, unknown>;
 }
 
@@ -55,7 +55,7 @@ export interface Page {
   title: string;
   role: string;
   /**
-   * The `foundry:` frontmatter block, if any. `source` may be a priority list.
+   * The `foundry:` frontmatter block, if any.
    * `sync: false` keeps the page out of Foundry entirely; `journal: false`
    * makes its document but no journal page; `embed: false` keeps the page's
    * prose out of the document's description; `folder` overrides where the
@@ -128,17 +128,9 @@ function pinnedId(
   return null;
 }
 
-/** Every usable UUID in a `foundry.source`, which may be a list, in order. */
-export function basesOf(base: unknown): string[] {
-  if (typeof base === "string") return base.trim() ? [base.trim()] : [];
-  if (Array.isArray(base)) {
-    return base.filter((b): b is string => typeof b === "string" && !!b.trim()).map((b) => b.trim());
-  }
-  return [];
-}
-
-/** The first usable UUID, which decides the document type. */
-export const firstBase = (base: unknown): string | null => basesOf(base)[0] ?? null;
+/** The document a `foundry.source` names, or null. */
+export const sourceOf = (source: unknown): string | null =>
+  (typeof source === "string" && source.trim() ? source.trim() : null);
 
 export interface GraftOptions {
   /** Seeds every deterministic id and names the directory the assets land in. */
@@ -334,7 +326,7 @@ function vaultIdTargets(pages: Page[], opts: GraftOptions): VaultIdTargets {
   for (const p of pages) {
     if (p.foundry?.sync === false) continue;
     if (p.foundry?.journal !== false) journals.add(p.path);
-    const base = firstBase(p.foundry?.source);
+    const base = sourceOf(p.foundry?.source);
     const type = base ? documentTypeOf(base) : null;
     if (type) docs.set(p.path, pinnedId(p.foundry?.patch) ?? instanceId(opts.vaultId, p.path));
   }
@@ -420,17 +412,18 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 export function documentEntries(pages: Page[], opts: GraftOptions): { entries: GraftEntry[]; warnings: string[] } {
   const entries: GraftEntry[] = [];
   const warnings: string[] = [];
-  const sourcedBy = new Map<GraftEntry, { path: string; bases: string[] }>();
+  const pathOf = new Map<string, string>();
   const targets = vaultIdTargets(pages, opts);
 
   for (const page of pages) {
     const spec = page.foundry;
     if (!spec?.source || spec.sync === false) continue;
 
-    const bases = basesOf(spec.source);
-    const base = bases[0];
+    const base = sourceOf(spec.source);
     if (!base) {
-      warnings.push(`${page.path}: foundry.source should be a UUID or a list of them`);
+      warnings.push(Array.isArray(spec.source)
+        ? `${page.path}: foundry.source is a list; name one document. No document was built for this page.`
+        : `${page.path}: foundry.source should name one document, as a UUID or a type. No document was built for this page.`);
       continue;
     }
     const type = documentTypeOf(base);
@@ -462,45 +455,29 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
       type,
       ...(graftFolder(folder) ? { folder } : {}),
       patch,
+      ...(isSource(base) ? { source: base } : {}),
     });
-    if (isSource(base)) sourcedBy.set(entries[entries.length - 1]!, { path: page.path, bases });
+    pathOf.set(id, page.path);
   }
-  return { entries: placeSiblings(entries, sourcedBy, warnings), warnings };
+  return { entries: placeSiblings(entries, pathOf, warnings), warnings };
 }
 
 /**
  * Set each sourced entry's `source`. A source naming something this build also
  * makes becomes a bare id, which graft resolves to wherever that entry landed.
  */
-function placeSiblings(
-  entries: GraftEntry[],
-  sourcedBy: Map<GraftEntry, { path: string; bases: string[] }>,
-  warnings: string[],
-): GraftEntry[] {
+function placeSiblings(entries: GraftEntry[], pathOf: Map<string, string>, warnings: string[]): GraftEntry[] {
   const built = new Map(entries.map((e) => [e.id, e]));
-  // Three cases for a world UUID, and only `built` tells them apart: an id
-  // this build assigns at the type it assigns becomes a bare id; the same id
-  // at another type is an author mistake and is dropped, since resolving it
-  // would hand back the wrong kind of document; anything else is content the
-  // reader already has and is left exactly as written.
-  const placeBase = (base: string): string[] => {
-    if (!isWorldUuid(base)) return [base];
-    const [type, id] = base.split(".") as [string, string];
-    if (!built.has(id)) return [base];
-    return built.get(id)!.type === type ? [id] : [];
-  };
   return entries.map((entry) => {
-    const named = sourcedBy.get(entry);
-    if (!named) return entry;
-    const placed = named.bases.flatMap(placeBase);
-    if (placed.length === 0) {
-      warnings.push(
-        `${named.path}: grafts onto ${named.bases.map((b) => `"${b}"`).join(", ")}, which this build makes`
-        + ` as a different document type. Check the type in the UUID matches the page it names.`,
-      );
-    }
-    const source = placed.length > 0 ? placed : named.bases;
-    return { ...entry, source: source.length > 1 ? source : source[0]! };
+    if (!entry.source || !isWorldUuid(entry.source)) return entry;
+    const [type, id] = entry.source.split(".") as [string, string];
+    // A world UUID this build does not make is content the reader already has, and is left as written.
+    const sibling = built.get(id);
+    if (!sibling) return entry;
+    if (sibling.type === type) return { ...entry, source: id };
+    warnings.push(`${pathOf.get(entry.id)}: grafts onto "${entry.source}", which this build makes as a different document type.`
+      + ` Check the type in the UUID matches the page it names.`);
+    return entry;
   });
 }
 
@@ -552,7 +529,7 @@ export function linkIndex(pages: Page[], opts: GraftOptions): LinkIndex {
   for (const page of pages) {
     if (page.foundry?.sync === false) continue;
     const target: LinkTarget = {};
-    const base = firstBase(page.foundry?.source);
+    const base = sourceOf(page.foundry?.source);
     const type = base ? documentTypeOf(base) : null;
     if (type) {
       target.doc = { type, id: pinnedId(page.foundry?.patch) ?? instanceId(opts.vaultId, page.path) };

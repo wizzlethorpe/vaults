@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  buildGrafts, journalEntries, documentEntries, documentTypeOf, observable, secretRoles, basesOf, subtypeOf,
+  buildGrafts, journalEntries, documentEntries, documentTypeOf, observable, secretRoles, sourceOf, subtypeOf,
   entryId, pageId, instanceId, itemId, withItemIds, withEmbeddedIds, folderOf, pagesFrom, linkIndex, withFolderIndexes, type Page, type GraftOptions,
 } from "../src/foundry-grafts.js";
 
@@ -158,63 +158,38 @@ describe("documents from foundry.source", () => {
 
 describe("grafting onto a sibling entry", () => {
   const sibling = (id: string) => `Actor.${id}`;
-  const commoner = "Compendium.some-bestiary.actors.Actor.mmCommoner0000000";
-  const wight = page("Bestiary/Wight.md", {
-    foundry: { source: "Compendium.some-bestiary.actors.Actor.mmWight00000000", patch: { _id: "344a28ac1128a1d5" } },
+  const captain = page("Bestiary/Captain.md", {
+    foundry: { source: "Compendium.some-bestiary.actors.Actor.mmCaptain000000", patch: { _id: "c4pta1n000000001" } },
   });
-  const brynn = (source: string | string[]) => page("NPCs/Brynn.md", { foundry: { source } });
+  const merchant = (source: string) => page("NPCs/Merchant.md", { foundry: { source } });
 
   it("names a sibling in this build by bare id, whichever pack it lands in", () => {
-    const { entries, warnings } = documentEntries([wight, brynn(sibling("344a28ac1128a1d5"))], opts);
+    const { entries, warnings } = documentEntries([captain, merchant(sibling("c4pta1n000000001"))], opts);
     assert.deepEqual(warnings, []);
-    assert.equal(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, "344a28ac1128a1d5");
+    assert.equal(entries.find((e) => e.id !== "c4pta1n000000001")!.source, "c4pta1n000000001");
   });
 
   it("leaves a world UUID this build does not make exactly as written", () => {
     // It names a document the reader already has, which is a source like any
     // other. Dropping it would delete a legitimate graft target.
-    const { entries, warnings } = documentEntries([brynn(sibling("344a28ac1128a1d5"))], opts);
+    const { entries, warnings } = documentEntries([merchant(sibling("c4pta1n000000001"))], opts);
     assert.deepEqual(warnings, []);
-    assert.equal(entries[0]!.source, sibling("344a28ac1128a1d5"));
+    assert.equal(entries[0]!.source, sibling("c4pta1n000000001"));
   });
 
-  it("keeps a fallback list intact when the first names the reader's own content", () => {
-    // graft tries them in order on the reader's machine, so a world UUID that
-    // does not resolve there falls through to the next by itself.
-    const { entries, warnings } = documentEntries([brynn([sibling("344a28ac1128a1d5"), commoner])], opts);
-    assert.deepEqual(warnings, []);
-    assert.deepEqual(entries[0]!.source, [sibling("344a28ac1128a1d5"), commoner]);
-  });
-
-  it("keeps the fallback list when the sibling is present", () => {
-    const { entries } = documentEntries([wight, brynn([sibling("344a28ac1128a1d5"), commoner])], opts);
-    assert.deepEqual(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, ["344a28ac1128a1d5", commoner]);
-  });
-
-  it("warns when every source names this build's own id at the wrong type", () => {
-    // The build makes an Actor under that id. Resolving either of these would
-    // hand back the wrong kind of document, so both are dropped and reported.
-    const sources = ["Item.344a28ac1128a1d5", "Scene.344a28ac1128a1d5"];
-    const { entries, warnings } = documentEntries([wight, brynn(sources)], opts);
+  it("warns when the source names this build's own id at the wrong type, and leaves it as written", () => {
+    // The build makes an Actor under that id. A bare id would quietly resolve to the wrong kind of document.
+    const { entries, warnings } = documentEntries([captain, merchant("Item.c4pta1n000000001")], opts);
     assert.equal(warnings.length, 1);
-    assert.match(warnings[0]!, /344a28ac1128a1d5/);
-    assert.match(warnings[0]!, /different document type/);
-    assert.deepEqual(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, sources);
+    assert.match(warnings[0]!, /c4pta1n000000001.*different document type/);
+    assert.equal(entries.find((e) => e.id !== "c4pta1n000000001")!.source, "Item.c4pta1n000000001");
   });
 
   it("passes an own-vault embedded UUID through unchanged", () => {
-    const embedded = "Compendium.some-bestiary.actors.Actor.mmWight00000000.Item.itemAAAAAAAAAAAA";
-    const { entries, warnings } = documentEntries([wight, brynn(embedded)], opts);
+    const embedded = "Compendium.some-bestiary.actors.Actor.mmCaptain000000.Item.itemAAAAAAAAAAAA";
+    const { entries, warnings } = documentEntries([captain, merchant(embedded)], opts);
     assert.deepEqual(warnings, []);
-    assert.equal(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, embedded);
-  });
-
-  it("does not take a sibling whose type disagrees with the UUID", () => {
-    // The full UUID would fail to resolve on the reader's machine; a bare id
-    // would quietly resolve to the wrong kind of document.
-    const asItem = "Item.344a28ac1128a1d5";
-    const { entries } = documentEntries([wight, brynn([asItem, commoner])], opts);
-    assert.equal(entries.find((e) => e.id !== "344a28ac1128a1d5")!.source, commoner);
+    assert.equal(entries.find((e) => e.id !== "c4pta1n000000001")!.source, embedded);
   });
 
   it("warns when two pages pin one id", () => {
@@ -333,36 +308,21 @@ describe("visibility", () => {
   });
 });
 
-describe("a base priority list", () => {
-  it("travels whole, so the fallback survives", async () => {
-    // graft tries each in order, so a page can prefer better content without
-    // demanding the reader own it.
-    const { entries, warnings } = documentEntries([{
+describe("foundry.source names one document", () => {
+  it("builds no document from a list, and says why", () => {
+    const listed: Page = {
       path: "x.md", title: "X", role: "dm",
       foundry: { source: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa", "Compendium.c.d.Actor.bbbbbbbbbbbbbbbb"] },
-    }], opts);
-
-    assert.deepEqual(entries[0]!.source,
-      ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa", "Compendium.c.d.Actor.bbbbbbbbbbbbbbbb"]);
-    assert.deepEqual(warnings, []);
-    assert.deepEqual(basesOf(["", "Compendium.a.b.Actor.cccccccccccccccc"]),
-      ["Compendium.a.b.Actor.cccccccccccccccc"]);
+    };
+    const { entries, warnings } = documentEntries([listed], opts);
+    assert.deepEqual(entries, []);
+    assert.match(warnings[0]!, /x\.md: foundry\.source is a list; name one document\. No document was built/);
+    assert.equal(linkIndex([listed], opts).targets.get("x.md")!.doc, undefined, "and nothing links to one");
   });
 
-  it("a single base stays a plain string", async () => {
-    const { entries } = documentEntries([{
-      path: "x.md", title: "X", role: "dm",
-      foundry: { source: ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa"] },
-    }], opts);
-    assert.equal(typeof entries[0]!.source, "string");
-  });
-
-  it("refuses anything that is not a UUID or a list of them", async () => {
-    assert.deepEqual(basesOf(42), []);
-    assert.deepEqual(basesOf([]), []);
-    assert.deepEqual(basesOf({ uuid: "x" }), []);
-    const { warnings } = documentEntries([{ path: "y.md", title: "Y", role: "dm", foundry: { source: 42 } }], opts);
-    assert.match(warnings[0]!, /should be a UUID or a list/);
+  it("reads a string, trimmed, and nothing else", () => {
+    assert.equal(sourceOf("  Compendium.a.b.Actor.aaaaaaaaaaaaaaaa "), "Compendium.a.b.Actor.aaaaaaaaaaaaaaaa");
+    for (const not of [42, [], ["Compendium.a.b.Actor.aaaaaaaaaaaaaaaa"], { uuid: "x" }, "  ", undefined]) assert.equal(sourceOf(not), null);
   });
 });
 

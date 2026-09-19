@@ -3,7 +3,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { documentFolder, documentTypeOf, firstBase } from "./foundry-grafts.js";
+import { documentFolder, documentTypeOf, sourceOf } from "./foundry-grafts.js";
 import { type PageMeta } from "@wizzlethorpe/vaults/addon";
 
 export function warnFoundryDocCollisions(pages: PageMeta[]): void {
@@ -12,7 +12,7 @@ export function warnFoundryDocCollisions(pages: PageMeta[]): void {
     const fo = p.frontmatter?.["foundry"];
     if (!fo || typeof fo !== "object" || Array.isArray(fo)) continue;
     if ((fo as Record<string, unknown>)["sync"] === false) continue;
-    const spec = firstBase((fo as Record<string, unknown>)["source"]);
+    const spec = sourceOf((fo as Record<string, unknown>)["source"]);
     if (!spec) continue;
     // The same reading the emitter uses, so a warning never describes a
     // document that will not exist.
