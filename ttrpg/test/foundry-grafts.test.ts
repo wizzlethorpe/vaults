@@ -50,6 +50,23 @@ describe("journal entries", () => {
     assert.equal((entries[0]!.patch["pages"] as unknown[]).length, 2);
   });
 
+  it("puts the index first, then orders by title as the wiki's sidebar does, numbers by value", () => {
+    const [entry] = journalEntries([
+      page("Recaps/Session 10.md"), page("Recaps/Session 2.md"), page("Recaps/index.md", { title: "Zed" }),
+      page("Recaps/zz-first.md", { title: "Session 1" }),
+    ], opts);
+    const pages = entry!.patch["pages"] as Array<{ name: string; sort: number }>;
+    assert.deepEqual(pages.map((p) => p.name), ["Zed", "Session 1", "Session 2", "Session 10"]);
+    assert.deepEqual(pages.map((p) => p.sort), [100, 200, 300, 400]);
+  });
+
+  it("orders pages whose titles compare equal by path, whatever order they arrive in", () => {
+    const pair = [page("NPCs/b.md", { title: "aldric" }), page("NPCs/a.md", { title: "Aldric" })];
+    const ids = (pages: Page[]) => (journalEntries(pages, opts)[0]!.patch["pages"] as Array<{ _id: string }>).map((p) => p._id);
+    assert.deepEqual(ids(pair), ids([...pair].reverse()));
+    assert.deepEqual(ids(pair)[0], ids([pair[1]!])[0], "a.md first");
+  });
+
   it("carries each page's body, rendered for that page", () => {
     const [entry] = journalEntries([page("Characters/Marlo.md")], opts);
     const pages = entry!.patch["pages"] as Array<Record<string, any>>;

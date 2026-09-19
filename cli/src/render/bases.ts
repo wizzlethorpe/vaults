@@ -11,6 +11,7 @@ import yaml from "js-yaml";
 import type { PageMeta, RenderContext, RenderWarning } from "./types.js";
 import { slugify } from "./slug.js";
 import { htmlAttr, htmlEscape } from "../escape.js";
+import { natCompare } from "../util.js";
 
 const BASE_LANG_RE = /^bases?$/i;
 
@@ -487,7 +488,7 @@ function looseEq(a: unknown, b: unknown): boolean {
 function compare(a: unknown, b: unknown): number {
   if (typeof a === "number" && typeof b === "number") return a - b;
   if (a instanceof Date && b instanceof Date) return a.getTime() - b.getTime();
-  return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true, sensitivity: "base" });
+  return natCompare(String(a ?? ""), String(b ?? ""));
 }
 
 // ── Identifier resolution ──────────────────────────────────────────────────

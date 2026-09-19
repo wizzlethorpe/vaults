@@ -40,7 +40,7 @@ import { BUILTIN_HANDLERS } from "./render/handlers/builtin/index.js";
 import { bundleHandlerAssets } from "./render/handlers/assets.js";
 import { runMigrations } from "./migrate/run.js";
 import { cacheDir } from "./paths.js";
-import { formatDuration, pMap, Progress } from "./util.js";
+import { formatDuration, natCompare, pMap, Progress } from "./util.js";
 
 export interface BuildOptions {
   vaultPath: string;
@@ -891,7 +891,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
     const backlinkPaths = backlinkMap.get(p.path) ?? new Set();
     const backlinks = visibleMetas
       .filter((m) => backlinkPaths.has(m.path))
-      .sort((x, y) => x.title.localeCompare(y.title, undefined, { numeric: true, sensitivity: "base" }));
+      .sort((x, y) => natCompare(x.title, y.title));
     const html = renderLayout({
       title: r.title,
       pagePath: p.path,
@@ -1132,7 +1132,7 @@ function generateFolderIndexes(
     const sections: string[] = [];
 
     if (subfolders.size > 0) {
-      const sorted = [...subfolders].sort((x, y) => x.localeCompare(y, undefined, { numeric: true, sensitivity: "base" }));
+      const sorted = [...subfolders].sort(natCompare);
       const bullets = sorted.map((sub) => `- [[${folder ? folder + "/" : ""}${sub}/index|${sub}]]`).join("\n");
       sections.push(`## Subfolders\n\n${bullets}`);
     }

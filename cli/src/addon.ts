@@ -67,4 +67,4 @@ export { PALETTE } from "./render/styles.js";
 export type { PageMeta } from "./render/types.js";
 export { PAGES_FILE_BYTES, describeType, loadSettings, writeSettings } from "./settings.js";
 export type { AnySettingDef, Settings } from "./settings.js";
-export { pMap } from "./util.js";
+export { natCompare, pMap } from "./util.js";

@@ -4,7 +4,7 @@
 
 import { createHash } from "node:crypto";
 
-import { mergeDefaults, type TokenDownload } from "@wizzlethorpe/vaults/addon";
+import { mergeDefaults, natCompare, type TokenDownload } from "@wizzlethorpe/vaults/addon";
 import { canonicalType } from "./foundry-types.js";
 import { rewriteVaultRefs } from "./foundry-html.js";
 import { defaultsFor, resolvePageRefs } from "./foundry-defaults.js";
@@ -375,10 +375,10 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 
   const entries: GraftEntry[] = [];
   for (const [folder, group] of [...byFolder].sort(([a], [b]) => a.localeCompare(b))) {
-    // The folder's index page reads first; the rest alphabetically.
+    // The folder's index page reads first; the rest in the order the wiki's sidebar lists them.
     const isIndex = (p: Page) => /(^|\/)index\.md$/i.test(p.path);
     const sorted = [...group].sort((a, b) =>
-      Number(isIndex(b)) - Number(isIndex(a)) || a.path.localeCompare(b.path));
+      Number(isIndex(b)) - Number(isIndex(a)) || natCompare(a.title, b.title) || a.path.localeCompare(b.path));
     const journalPages = sorted.map((page, i) => {
       const ownership = observable(page, opts) ? OBSERVER : NONE;
       return {

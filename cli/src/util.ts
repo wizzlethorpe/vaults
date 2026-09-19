@@ -1,3 +1,8 @@
+/** The order the wiki lists names in: "Page 2" before "Page 10". */
+export function natCompare(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
 /**
  * Run an async function over an iterable with bounded concurrency.
  * onProgress is called once per completed item.

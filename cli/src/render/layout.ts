@@ -1,3 +1,4 @@
+import { natCompare } from "../util.js";
 import type { PageMeta } from "./types.js";
 import { htmlEscape as esc, htmlAttr as attr } from "../escape.js";
 
@@ -282,7 +283,6 @@ function renderSitemap(pages: PageMeta[], currentPath: string): string {
 function renderNode(node: FolderNode, parentPath: string, currentPath: string): string {
   let html = "";
   // Folders first, then pages; matches Obsidian's file explorer convention.
-  // Natural sort so "Page 2" comes before "Page 10" (instead of alphabetical).
   for (const [name, sub] of [...node.subfolders].sort((a, b) => natCompare(a[0], b[0]))) {
     const folderPath = parentPath ? `${parentPath}/${name}` : name;
     const open = nodeContainsPath(sub, currentPath) ? " open" : "";
@@ -293,10 +293,6 @@ function renderNode(node: FolderNode, parentPath: string, currentPath: string): 
     html += sitemapItem(p, currentPath);
   }
   return html;
-}
-
-function natCompare(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 }
 
 function nodeContainsPath(node: FolderNode, currentPath: string): boolean {
