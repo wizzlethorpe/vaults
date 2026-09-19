@@ -87,3 +87,24 @@ describe("layout: footer setting", () => {
     } finally { await cleanup(v); }
   });
 });
+
+describe("layout: page head and lightbox", () => {
+  it("loads handler styles before user.css, so a snippet can restyle a handler", async () => {
+    const v = await setup({ ".vaultrc.json": VAULTRC_1, "index.md": "# Home\n" });
+    try {
+      await build(v);
+      const html = await readFile(join(v.out, "index.html"), "utf8");
+      const at = (href: string) => html.indexOf(`href="/${href}?`);
+      assert.ok(at("_handlers.css") > at("styles.css"), "handler styles come after the theme");
+      assert.ok(at("user.css") > at("_handlers.css"), "user.css comes after handler styles");
+    } finally { await cleanup(v); }
+  });
+
+  it("opens the images of a .lightbox-layers element together", async () => {
+    const v = await setup({ ".vaultrc.json": VAULTRC_1, "index.md": "# Home\n" });
+    try {
+      await build(v);
+      assert.match(await readFile(join(v.out, "index.html"), "utf8"), /img\.closest\('\.lightbox-layers'\)/);
+    } finally { await cleanup(v); }
+  });
+});

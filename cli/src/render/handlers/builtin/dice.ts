@@ -79,6 +79,18 @@ const DICE_RUNTIME_SCRIPT = `
 })();
 `;
 
+const DICE_STYLES = `button.dice-roll {
+  display: inline-block; padding: 0.05rem 0.5rem; margin: 0;
+  font: inherit; font-variant-numeric: tabular-nums;
+  background: var(--wikilink-bg); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 4px; cursor: pointer; line-height: 1.4;
+}
+button.dice-roll:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+code.dice-roll-invalid { color: var(--muted); text-decoration: line-through; }
+`;
+
 registerBuiltinAssets(diceHandler, {
   scripts: [{ source: "builtin/dice.runtime.js", content: DICE_RUNTIME_SCRIPT }],
+  styles: [{ source: "builtin/dice.css", content: DICE_STYLES }],
 });

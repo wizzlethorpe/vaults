@@ -62,3 +62,64 @@ describe("embedded image staging", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });
+
+describe("images a code-block handler names", () => {
+  const HANDLER = `export const handler = {
+  codeBlock: "layers",
+  imagePaths: (content) => content.split("\\n").filter(Boolean),
+  render: () => ({ html: "<div></div>" }),
+};
+`;
+  const block = (lang: string, image: string) => `\`\`\`${lang}\n${image}\n\`\`\`\n`;
+  const vault = (page: string, extra: Record<string, string> = {}) => ({
+    ".vaults/handlers/layers.mjs": HANDLER,
+    "Map.md": `# Map\n\n${page}`,
+    "art/a.png": "PNG", "art/b.png": "PNG", "art/c.png": "PNG",
+    ...extra,
+  });
+
+  it("ship with the page, by full vault path, though nothing else refers to them", async () => {
+    const { out, dir } = await buildVault(vault(`${block("layers", "art/a.png")}\nart/b.png in prose\n\n${block("layers", "art/c.png")}`));
+    try {
+      assert.equal(await shipped(out, "art/a.png"), true);
+      assert.equal(await shipped(out, "art/c.png"), true, "a second block on the page");
+      assert.equal(await shipped(out, "art/b.png"), false, "named between the blocks, by no handler");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("are read from the blocks the renderer hands the handler, wherever they sit", async () => {
+    const { out, dir } = await buildVault(vault(
+      `- item\n\n  ~~~layers\n  art/a.png\n  ~~~\n\n${block("layers2", "art/b.png")}\n> [!note]\n> \`\`\`layers\n> art/c.png\n> \`\`\`\n`,
+    ));
+    try {
+      assert.equal(await shipped(out, "art/a.png"), true, "a tilde fence inside a list item");
+      assert.equal(await shipped(out, "art/b.png"), false, "another language");
+      assert.equal(await shipped(out, "art/c.png"), true, "inside a callout every reader sees");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("count when the block was emitted by another handler", async () => {
+    const WRAP = `export const handler = {
+  codeBlock: "wrap",
+  render: (content) => ({ markdown: "\\\`\\\`\\\`layers\\n" + content + "\\n\\\`\\\`\\\`\\n" }),
+};
+`;
+    const { out, dir } = await buildVault(vault(block("wrap", "art/a.png"), { ".vaults/handlers/wrap.mjs": WRAP }));
+    try {
+      assert.equal(await shipped(out, "art/a.png"), true);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("stay out of a variant whose reader cannot see the block", async () => {
+    const { out, dir } = await buildVault(vault(
+      `> [!dm]\n> \`\`\`layers\n> art/a.png\n> \`\`\`\n\n> [!note]\n> > [!dm]\n> > \`\`\`layers\n> > art/b.png\n> > \`\`\`\n`,
+      { ".vaultrc.json": JSON.stringify({ roles: ["public", "dm"], rolePasswords: { dm: "100000:0000:0000" } }) },
+    ));
+    try {
+      assert.equal(await shipped(out, "_variants/dm/art/a.png"), true);
+      assert.equal(await shipped(out, "_variants/public/art/a.png"), false);
+      assert.equal(await shipped(out, "_variants/dm/art/b.png"), true);
+      assert.equal(await shipped(out, "_variants/public/art/b.png"), false, "gated inside a callout the public does see");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});

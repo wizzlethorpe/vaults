@@ -165,6 +165,7 @@ The handler API:
 
 - **Inline:** `{ inline: "prefix", render(content, ctx) }`
 - **Code block:** `{ codeBlock: "lang", render(content, ctx) }`
+- **Images a block names:** a code-block handler may add `imagePaths(content)`, returning the vault-relative paths of images its block refers to, such as `attachments/maps/cellar.webp`. They ship with the page even when nothing else embeds them, and only to readers who can see the block. A bare filename does not resolve.
 - Return `{ html: "..." }` to insert raw markup, or `{ markdown: "..." }` to run the result through the rest of the pipeline, so wikilinks resolve, embeds inline, and dice buttons in the output are picked up.
 - `ctx.frontmatter` is the page's parsed frontmatter; `ctx.pagePath` is the page's basename without its extension; `ctx.escape(s)` HTML-escapes a string; `ctx.applyInlineHandlers(s)` runs the other inline handlers over a string, which is how `statblock` supports `dice:` inside a `desc`.
 
@@ -184,5 +185,9 @@ export const handler = {
 ```
 
 Paths resolve relative to the handler file and must stay inside `.vaults/handlers/`; a path outside it fails the build. The assets bundle into `_handlers.js` and `_handlers.css`, served to the wiki only. In Foundry the HTML a handler produced survives, but its styling and behaviour do not.
+
+`_handlers.css` loads after the theme and before your CSS snippets, so a snippet can restyle a handler.
+
+Clicking an image in a page opens it in a lightbox. Give an element the class `lightbox-layers` and the images inside it open together, stacked at the first image's size, which is how a battlemap level opens as one picture.
 
 This vault includes a `` `clicker:` `` inline handler with a script and a stylesheet: `` `clicker: try me` `` renders as `clicker: try me`.

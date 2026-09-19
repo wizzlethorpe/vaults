@@ -6,14 +6,10 @@
 // deploy, where the middleware would serve it happily — the gate is that the
 // bytes were never copied there.
 //
-// References are found four ways, because authors write them four ways:
-// Obsidian embeds and wikilinks, CommonMark links, `gallery` and `battlemap`
-// block bodies, and `@vault/PATH` strings inside foundry frontmatter (a
-// Scene background, a Playlist's sounds) that no prose scanner would see.
+// References are found wherever authors write them: Obsidian embeds and wikilinks, CommonMark links, `gallery` block bodies, the images a code-block handler's `imagePaths` names, and `@vault/PATH` strings inside frontmatter that no prose scanner would see.
 
 import { copyFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { battlemapLayerPaths } from "./render/handlers/builtin/battlemap.js";
 import { downloadFilePaths } from "./render/handlers/builtin/download.js";
 import { IMAGE_EXT_RE } from "./render/extensions.js";
 import { slugify } from "./render/slug.js";
@@ -55,6 +51,7 @@ export async function copyReferencedImages(
   visibleSources: Map<string, string>,
   visibleMetas: PageMeta[],
   imageIndex: Map<string, ImageEntry>,
+  handlerImagePaths: string[],
   stagingDir: string,
   variantDir: string,
 ): Promise<string[]> {
@@ -81,13 +78,10 @@ export async function copyReferencedImages(
       const image = imageIndex.get(slugify(name.split("/").pop()!));
       if (image) refs.add(image.outputPath);
     }
-    // Layers named inside ```battlemap blocks. A web-only layer (e.g. a
-    // composited tile overlay) has no other reference to stage it, so look
-    // it up by its full vault-relative path.
-    for (const path of battlemapLayerPaths(source)) {
-      const image = imageIndex.get(path);
-      if (image) refs.add(image.outputPath);
-    }
+  }
+  for (const path of handlerImagePaths) {
+    const image = imageIndex.get(path);
+    if (image) refs.add(image.outputPath);
   }
   // Pages can name their cover via `image:` frontmatter alone (no body embed);
   // pull those in too. coverImage was resolved to the served URL upstream, so

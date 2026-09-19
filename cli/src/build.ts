@@ -850,7 +850,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   };
 
   // Pass 1: render bodies + collect outlinks + warnings.
-  interface Rendered { title: string; html: string; outlinks: string[]; warnings: RenderWarning[]; hasMath: boolean; }
+  interface Rendered { title: string; html: string; outlinks: string[]; imagePaths: string[]; warnings: RenderWarning[]; hasMath: boolean; }
   const rendered = new Map<string, Rendered>();
 
   const progress = new Progress(`Pages (${a.role})`);
@@ -866,6 +866,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
       title: result.title,
       html: result.html,
       outlinks: result.outlinks,
+      imagePaths: result.imagePaths,
       warnings: result.warnings,
       hasMath: result.hasMath,
     });
@@ -986,7 +987,7 @@ async function buildVariant(a: VariantArgs): Promise<VariantStats> {
   // under the variants that need them so guessing a DM-only image URL on
   // the public wiki structurally 404s. coverImage feeds in here too so
   // images named via `image:` frontmatter (no body embed) still ship.
-  const copiedImages = await copyReferencedImages(visibleSources, visibleMetas, a.imageIndex, a.imageStagingDir, a.variantDir);
+  const copiedImages = await copyReferencedImages(visibleSources, visibleMetas, a.imageIndex, [...rendered.values()].flatMap((r) => r.imagePaths), a.imageStagingDir, a.variantDir);
 
   // Passthrough files (audio/video/pdf/epub) follow the same gating
   // contract as images: ship only into variants whose visible pages

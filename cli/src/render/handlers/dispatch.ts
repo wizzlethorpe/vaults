@@ -20,6 +20,8 @@ interface DispatchOpts {
    */
   context: Omit<HandlerContext, "applyInlineHandlers" | "codeBlockMeta">;
   registry: HandlerRegistry;
+  /** Filled with each dispatched block's `imagePaths`, under the node the block sat in, so the caller can discount a block it later removes. */
+  imagePaths?: Map<object, string[]>;
 }
 
 /** Cap on handler-emits-handler recursion. Realistically nothing legitimate nests this deep. */
@@ -131,7 +133,10 @@ async function walkAndSubstitute(
   parent: { children: any[] },
   registry: HandlerRegistry,
   context: HandlerContext,
+  imagePaths: Map<object, string[]>,
   depth: number,
+  /** The tree node `parent.children` belong to, which a re-walked slice of replacements is not. */
+  owner: object = parent,
 ): Promise<void> {
   if (depth > MAX_DEPTH) {
     console.warn(`  handlers: recursion depth ${depth} exceeded; stopping`);
@@ -140,20 +145,20 @@ async function walkAndSubstitute(
   let i = 0;
   while (i < parent.children.length) {
     const node = parent.children[i];
-    const replacements = await dispatchOne(node, registry, context);
+    const replacements = await dispatchOne(node, registry, context, owner, imagePaths);
     if (replacements !== null) {
       parent.children.splice(i, 1, ...replacements);
       // Wrap the replacement slice and re-walk it at depth+1. The nested
       // walk handles both horizontal and vertical recursion for the new
       // content. Splice back the (possibly further-substituted) result.
       const synth = { children: parent.children.slice(i, i + replacements.length) };
-      await walkAndSubstitute(synth, registry, context, depth + 1);
+      await walkAndSubstitute(synth, registry, context, imagePaths, depth + 1, owner);
       parent.children.splice(i, replacements.length, ...synth.children);
       i += synth.children.length;
       continue;
     }
     if (Array.isArray(node.children)) {
-      await walkAndSubstitute(node, registry, context, depth + 1);
+      await walkAndSubstitute(node, registry, context, imagePaths, depth + 1);
     }
     i += 1;
   }
@@ -168,6 +173,8 @@ async function dispatchOne(
   node: any,
   registry: HandlerRegistry,
   context: HandlerContext,
+  owner: object,
+  imagePaths: Map<object, string[]>,
 ): Promise<RootContent[] | PhrasingContent[] | null> {
   if (node?.type === "inlineCode") {
     const value = (node as InlineCode).value;
@@ -191,13 +198,15 @@ async function dispatchOne(
     // Pass it through so handlers like `fm` can use it as a language hint
     // for the rendered <pre><code class="language-…">.
     const meta = ((node as Code).meta ?? "").trim();
+    const named = handler.imagePaths?.((node as Code).value) ?? [];
+    if (named.length > 0) imagePaths.set(owner, [...(imagePaths.get(owner) ?? []), ...named]);
     return outputToBlock(await handler.render((node as Code).value, { ...context, codeBlockMeta: meta }));
   }
   return null;
 }
 
 export function handlersPlugin(opts: DispatchOpts): Plugin<[], Root> {
-  const { registry, context: baseContext } = opts;
+  const { registry, context: baseContext, imagePaths = new Map() } = opts;
   // Build the full HandlerContext once, with applyInlineHandlers closing
   // over the registry. Self-reference goes through the resulting context
   // so handler authors who chain calls see the same object.
@@ -207,6 +216,6 @@ export function handlersPlugin(opts: DispatchOpts): Plugin<[], Root> {
     codeBlockMeta: "",
   };
   return () => async (tree: Root) => {
-    await walkAndSubstitute(tree as { children: any[] }, registry, context, 0);
+    await walkAndSubstitute(tree as { children: any[] }, registry, context, imagePaths, 0);
   };
 }

@@ -86,6 +86,8 @@ export interface CodeBlockHandler {
   /** Language tag for ``` ```lang ``` ```. */
   codeBlock: string;
   assets?: HandlerAssets;
+  /** Vault-relative images a block's body names, so the build ships them with the page even when nothing else refers to them. */
+  imagePaths?(content: string): string[];
   render(content: string, ctx: HandlerContext): HandlerOutput | Promise<HandlerOutput>;
 }
 

@@ -293,17 +293,6 @@ export const CONTENT_CSS = `/* Obsidian Bases tables */
 .callout-dm { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .callout-dm > .callout-title { color: var(--accent); }
 
-/* Inline dice-roll buttons emitted by the built-in dice handler. */
-button.dice-roll {
-  display: inline-block; padding: 0.05rem 0.5rem; margin: 0;
-  font: inherit; font-variant-numeric: tabular-nums;
-  background: var(--wikilink-bg); color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-  border-radius: 4px; cursor: pointer; line-height: 1.4;
-}
-button.dice-roll:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-code.dice-roll-invalid { color: var(--muted); text-decoration: line-through; }
-
 /* Inline frontmatter values emitted by the built-in fm handler when the
    key is missing, visible so authors notice the typo. */
 code.fm-missing { color: #b94a3a; background: color-mix(in srgb, #b94a3a 10%, transparent); }
@@ -798,7 +787,7 @@ article img { cursor: zoom-in; }
   object-fit: contain; border-radius: 4px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
 }
-/* Composited battlemap level: the first layer sizes the box; the rest overlay it. */
+/* A .lightbox-layers element opened whole: the first image sizes the box; the rest overlay it. */
 .lightbox-overlay .lightbox-stack {
   position: relative; line-height: 0;
   border-radius: 4px; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);

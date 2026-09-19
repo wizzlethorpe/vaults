@@ -77,9 +77,8 @@ export function renderLayout(input: LayoutInput): string {
 <title>${esc(input.title)} | ${esc(input.vaultName)}</title>
 <link rel="icon" href="/favicon.ico">
 <link rel="stylesheet" href="/styles.css?v=${attr(input.assetVersion)}">
-<link rel="stylesheet" href="/user.css?v=${attr(input.assetVersion)}">
-${input.hasMathCss ? `<link rel="stylesheet" href="/katex/katex.min.css?v=${attr(input.assetVersion)}">\n` : ""}${input.hasHandlerCss ? `<link rel="stylesheet" href="/_handlers.css?v=${attr(input.assetVersion)}">` : ""}${input.hasHandlerJs ? `\n<script src="/_handlers.js?v=${attr(input.assetVersion)}" defer></script>` : ""}
-${renderSocialMeta(input)}
+${input.hasHandlerCss ? `<link rel="stylesheet" href="/_handlers.css?v=${attr(input.assetVersion)}">\n` : ""}<link rel="stylesheet" href="/user.css?v=${attr(input.assetVersion)}">
+${input.hasMathCss ? `<link rel="stylesheet" href="/katex/katex.min.css?v=${attr(input.assetVersion)}">\n` : ""}${input.hasHandlerJs ? `<script src="/_handlers.js?v=${attr(input.assetVersion)}" defer></script>\n` : ""}${renderSocialMeta(input)}
 ${THEME_BOOT_SCRIPT}
 </head>
 <body${input.centerImages ? ` class="center-images"` : ""}${input.defaultImageWidth ? ` style="--default-img-width: ${attr(input.defaultImageWidth)}"` : ""}>
@@ -602,13 +601,12 @@ const LIGHTBOX_SCRIPT = `<script>
     e.preventDefault();
     const overlay = document.createElement('div');
     overlay.className = 'lightbox-overlay';
-    // A battlemap layer is one of several stacked images; open the whole
-    // composited level, not just the (top) layer that caught the click.
-    const pane = img.closest('.vaults-bm-pane');
-    if (pane) {
+    // Images in a .lightbox-layers element are layers of one picture: open them all, not just the one that caught the click.
+    const layers = img.closest('.lightbox-layers');
+    if (layers) {
       const stack = document.createElement('div');
       stack.className = 'lightbox-stack';
-      pane.querySelectorAll('img').forEach((layer) => {
+      layers.querySelectorAll('img').forEach((layer) => {
         const c = document.createElement('img');
         c.src = layer.src;
         c.alt = layer.alt;

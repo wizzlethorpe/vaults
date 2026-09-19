@@ -200,6 +200,21 @@ export const handler = {
 
 The deployed page references `/_handlers.js` (deferred) and `/_handlers.css`; the runtime then finds and hydrates the handler's HTML. Wrap your runtime in an IIFE to avoid global pollution.
 
+`/_handlers.css` loads after the theme and before `user.css`, so a CSS snippet can restyle a handler.
+
+A code-block handler whose block refers to images can name them, so they ship with the page even when nothing else embeds them, and only to readers who can see the block:
+
+```js
+export const handler = {
+  codeBlock: "layers",
+  // Vault-relative paths, e.g. "attachments/maps/cellar.webp". A bare filename does not resolve.
+  imagePaths: (content) => content.split("\n").filter(Boolean),
+  render: (content) => ({ html: `<div class="lightbox-layers">…</div>` }),
+};
+```
+
+Clicking an image in a page opens it in a lightbox. Images inside an element with the class `lightbox-layers` open together, stacked at the first image's size.
+
 **File-naming convention.** Handler module files end in `.mjs`. Browser-side runtime / CSS files end in `.js` / `.css`. The loader only treats `.mjs` files as handler modules; `.js` files in the same directory are picked up only if a handler's `assets.scripts` references them.
 
 ### Built-ins

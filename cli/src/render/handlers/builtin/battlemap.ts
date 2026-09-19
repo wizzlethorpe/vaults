@@ -22,10 +22,7 @@
 // The browser runtime (BATTLEMAP_RUNTIME below) ships as a built-in asset
 // concatenated into _handlers.js; styles go into _handlers.css.
 //
-// Layer paths are vault-relative and resolve to the absolute served URL. The
-// build's per-variant asset scanner stages them via battlemapLayerPaths below,
-// so a layer nothing else references (e.g. a web-only composited overlay)
-// still ships with the deploy.
+// Layer paths are vault-relative and resolve to the absolute served URL.
 
 import yaml from "js-yaml";
 import type { CodeBlockHandler } from "../types.js";
@@ -58,49 +55,32 @@ function errorBox(message: string): { html: string } {
   return { html: `<div class="vaults-bm-error">${htmlEscape(message)}</div>` };
 }
 
-// ```battlemap fenced blocks in raw markdown source.
-const FENCE_RE = /^```battlemap[ \t]*\r?\n([\s\S]*?)^```/gm;
-
-/** All layer image paths (vault-relative) named by ```battlemap blocks in a
- *  markdown source. Used by the build's asset scanner to stage layers into
- *  each variant; unparseable blocks contribute nothing. */
-export function battlemapLayerPaths(source: string): string[] {
-  const paths: string[] = [];
-  for (const match of source.matchAll(FENCE_RE)) {
-    let spec: RawSpec;
-    try {
-      spec = (yaml.load(match[1]!) ?? {}) as RawSpec;
-    } catch {
-      continue;
-    }
-    for (const lv of Array.isArray(spec.levels) ? (spec.levels as RawLevel[]) : []) {
-      if (!Array.isArray(lv?.layers)) continue;
-      for (const p of lv.layers as unknown[]) {
-        if (typeof p === "string" && p.length > 0) paths.push(p);
-      }
-    }
+/** A block's YAML and the levels that have layers, or null when the YAML does not parse. */
+function parseBlock(content: string): { spec: RawSpec; levels: Level[] } | null {
+  let spec: RawSpec;
+  try {
+    spec = (yaml.load(content) ?? {}) as RawSpec;
+  } catch {
+    return null;
   }
-  return paths;
+  const levels = (Array.isArray(spec.levels) ? (spec.levels as RawLevel[]) : [])
+    .map((lv) => ({
+      name: typeof lv?.name === "string" ? lv.name : "",
+      layers: Array.isArray(lv?.layers)
+        ? (lv.layers as unknown[]).filter((s): s is string => typeof s === "string" && s.length > 0)
+        : [],
+    }))
+    .filter((lv) => lv.layers.length > 0);
+  return { spec, levels };
 }
 
 export const battlemapHandler: CodeBlockHandler = {
   codeBlock: "battlemap",
+  imagePaths: (content) => (parseBlock(content)?.levels ?? []).flatMap((lv) => lv.layers),
   render(content: string): { html: string } {
-    let spec: RawSpec;
-    try {
-      spec = (yaml.load(content) ?? {}) as RawSpec;
-    } catch {
-      return errorBox("battlemap: could not parse YAML");
-    }
-
-    const levels: Level[] = (Array.isArray(spec.levels) ? (spec.levels as RawLevel[]) : [])
-      .map((lv) => ({
-        name: typeof lv?.name === "string" ? lv.name : "",
-        layers: Array.isArray(lv?.layers)
-          ? (lv.layers as unknown[]).filter((s): s is string => typeof s === "string" && s.length > 0)
-          : [],
-      }))
-      .filter((lv) => lv.layers.length > 0);
+    const parsed = parseBlock(content);
+    if (!parsed) return errorBox("battlemap: could not parse YAML");
+    const { spec, levels } = parsed;
 
     if (levels.length === 0) return errorBox("battlemap: no levels with layers");
 
@@ -129,7 +109,7 @@ export const battlemapHandler: CodeBlockHandler = {
             `<img src="${servedSrc(p)}" alt="${htmlEscape(lv.name)} layer ${j + 1}" loading="lazy">`,
           )
           .join("");
-        return `<div class="vaults-bm-pane${i === active ? " is-active" : ""}" data-level="${i}"`
+        return `<div class="vaults-bm-pane lightbox-layers${i === active ? " is-active" : ""}" data-level="${i}"`
           + ` data-name="${htmlEscape(lv.name)}">${imgs}</div>`;
       })
       .join("");

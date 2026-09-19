@@ -9,6 +9,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import rehypeStringify from "rehype-stringify";
 import matter from "gray-matter";
+import { visit } from "unist-util-visit";
 import type { RenderContext, RenderWarning } from "./types.js";
 import { wikiLinkPlugin } from "./wikilink.js";
 import { embedPlugin } from "./embed.js";
@@ -70,6 +71,8 @@ export interface RenderResult {
   frontmatter: Record<string, unknown>;
   /** Resolved outbound link target paths. */
   outlinks: string[];
+  /** Vault-relative images the page's code-block handlers named. */
+  imagePaths: string[];
   /** Broken wikilinks, missing images, missing transclusions encountered while rendering. */
   warnings: RenderWarning[];
   /** True when the page contains KaTeX-rendered math (needs katex.min.css). */
@@ -99,6 +102,8 @@ export async function renderMarkdown(
   })();
   const fm = parsed.data;
   const outlinks: string[] = [];
+  const imagePaths: string[] = [];
+  const blockImagePaths = new Map<object, string[]>();
   const warnings: RenderWarning[] = [];
 
   // Pre-process the markdown source before parsing.
@@ -129,8 +134,11 @@ export async function renderMarkdown(
         render: context,
         escape: htmlEscape,
       },
+      imagePaths: blockImagePaths,
     }))
     .use(calloutPlugin({ redactRoles: context.redactRoles }))
+    // Counted only now: a block inside a callout this reader may not see has left the tree, and must name nothing.
+    .use(() => (tree) => visit(tree, (node) => { imagePaths.push(...(blockImagePaths.get(node) ?? [])); }))
     // Bases runs before wikilink/embed: it consumes ```base code fences
     // wholesale and emits raw HTML, so downstream plugins won't try to
     // process anything inside the table.
@@ -163,5 +171,5 @@ export async function renderMarkdown(
   // literal 'class="katex' inside a code fence false-positives, which merely
   // loads the stylesheet unnecessarily.
   const hasMath = html.includes('class="katex');
-  return { html, title, frontmatter: fm, outlinks, warnings, hasMath };
+  return { html, title, frontmatter: fm, outlinks, imagePaths, warnings, hasMath };
 }
