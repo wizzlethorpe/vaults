@@ -95,7 +95,7 @@ Single-role builds collapse `_variants/public/...` straight to the deploy root, 
 
 ### Settings schema
 
-The single source of truth is the `SCHEMA` constant in `cli/src/settings.ts`. To add a setting: add an entry there. The schema drives `init`, `vaults set` / `vaults get`, parsing, validation, the canonical-format rewriter, and warnings for unknown keys. Existing vaults pick up a new field with its default on the next `vaults build`.
+The single source of truth for core's settings is the `SCHEMA` constant in `cli/src/settings.ts`; an add-on's join it in `settingsSchema()`. To add a setting: add an entry there. The schema drives `init`, `vaults set` / `vaults get`, parsing, validation, the canonical-format rewriter, and warnings for unknown keys. Existing vaults pick up a new field with its default on the next `vaults build`.
 
 Settings live in `.vaults/settings.yaml`, out of Obsidian's sight (it hides dot-folders), and are meant to be changed with `vaults set`. `.vaults/config.json` beside it is gitignored because it holds password hashes; settings are not, and must stay readable from a fresh clone.
 

@@ -31,9 +31,9 @@ Vaults is increasingly used for things with nothing to do with TTRPGs, and those
 
 Core finds the add-on by importing it by name and treating a missing package as no add-on. Installing it beside the CLI is the whole opt-in: nothing in the vault names it. `foundry.enabled` stays as the add-on's own switch, for a TTRPG wiki that wants dice and statblocks and no `grafts.json`.
 
-The seam is already in core. `cli/src/addon.ts` is the contract: `prepare` runs once per build and may return a per-variant writer and one download the Function serves with a bearer written in. `cli/src/foundry-build.ts` is its only implementer and still lives in core.
+The seam is already in core. `cli/src/addon.ts` is the contract: an add-on supplies handlers, migrations that run after core's, settings schema entries with their checks, and a `prepare` that runs once per build and may return a per-variant writer and one download the Function serves with a bearer written in. `cli/src/addons.ts` is the one place core loads it. A setting core does not know is kept in the file and ignored, and when no add-on is loaded the warning names the package to install. `cli/src/foundry-build.ts` is the contract's only implementer and still lives in core.
 
-What remains is the move. The add-on takes the `foundry-*` modules, the `statblock`, `battlemap`, `dice`, `fvtt-link` and `foundry-install` handlers, the `foundry` and `zip_assets` settings, and the Foundry migrations. That needs the contract to also carry handlers, settings schema entries and migrations, and core to say which package to install when it meets a `foundry:` setting it does not know.
+What remains is the move. The add-on takes the `foundry-*` modules, the `statblock`, `battlemap`, `dice`, `fvtt-link` and `foundry-install` handlers, and the Foundry migrations, and `cli/src/addons.ts` imports the package by name instead of a file beside it.
 
 The add-on lives in this repo as a workspace package and releases with the CLI at the same version, so the contract never has to work across versions.
 

@@ -19,7 +19,7 @@ export const settingsYamlMigration: Migration = {
 
   async apply(vaultPath: string): Promise<void> {
     const raw = await readFile(legacySettingsPath(vaultPath), "utf8");
-    const { values } = normalizeSettings(matter(raw).data);
+    const { values } = await normalizeSettings(matter(raw).data);
     // Written before the old file is removed, so an interrupt leaves both and
     // needs() then correctly reports nothing to do.
     await writeSettings(vaultPath, values);

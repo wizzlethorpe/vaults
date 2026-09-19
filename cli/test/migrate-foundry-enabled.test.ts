@@ -10,6 +10,7 @@ import { loadSettings } from "../src/settings.js";
 import { settingsPath } from "../src/paths.js";
 import { runMigrations } from "../src/migrate/run.js";
 import { writeSettingsFile } from "./settings-helpers.js";
+import type { TtrpgSettings } from "../src/foundry-settings.js";
 
 async function migrated(settings: string) {
   const dir = await mkdtemp(join(tmpdir(), "vaults-foundry-enabled-"));
@@ -23,7 +24,7 @@ describe("migration: foundry.package -> foundry.enabled", () => {
   it("carries 'none' across as off", async () => {
     const { dir, values } = await migrated("foundry:\n  package: none\n");
     try {
-      assert.equal(values.foundry.enabled, false, "a vault with Foundry off started publishing");
+      assert.equal((values as TtrpgSettings).foundry.enabled, false, "a vault with Foundry off started publishing");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
@@ -32,7 +33,7 @@ describe("migration: foundry.package -> foundry.enabled", () => {
     // setting, and getting it wrong silently re-enables the integration.
     const { dir, values } = await migrated("foundry: { package: none }\n");
     try {
-      assert.equal(values.foundry.enabled, false);
+      assert.equal((values as TtrpgSettings).foundry.enabled, false);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
@@ -41,7 +42,7 @@ describe("migration: foundry.package -> foundry.enabled", () => {
     // the file has to show the migration made the choice.
     const { dir, values, raw } = await migrated("foundry:\n  package: adventure\n");
     try {
-      assert.equal(values.foundry.enabled, true);
+      assert.equal((values as TtrpgSettings).foundry.enabled, true);
       assert.match(raw, /enabled: true/);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
@@ -66,7 +67,7 @@ describe("migration: foundry.package -> foundry.enabled", () => {
       const config = JSON.parse(await readFile(join(dir, ".vaults/config.json"), "utf8")) as Record<string, unknown>;
       assert.equal("foundryModule" in config, false);
       assert.deepEqual(config["roles"], ["public"]);
-      assert.equal((await loadSettings(dir)).values.foundry.enabled, false, "the stamp alone rewrote the setting");
+      assert.equal(((await loadSettings(dir)).values as TtrpgSettings).foundry.enabled, false, "the stamp alone rewrote the setting");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
@@ -75,7 +76,7 @@ describe("migration: foundry.package -> foundry.enabled", () => {
     const { dir, values, raw } = await migrated("vault_name: Plain\n");
     try {
       assert.equal(raw, "vault_name: Plain\n");
-      assert.equal(values.foundry.enabled, true, "the default is on");
+      assert.equal((values as TtrpgSettings).foundry.enabled, true, "the default is on");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

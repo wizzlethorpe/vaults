@@ -181,8 +181,8 @@ program
 
 program
   .command("set")
-  .description("Set a vault setting, e.g. `vaults set foundry.system dnd5e`")
-  .argument("<key>", "Setting name; dotted for nested keys (foundry.system)")
+  .description("Set a vault setting, e.g. `vaults set vault_name 'My Wiki'`")
+  .argument("<key>", "Setting name; dotted for a key inside an object setting")
   .argument("<value>", "New value. Strings are taken verbatim; anything else is read as YAML")
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .action(wrap(settingsSet));
@@ -190,7 +190,7 @@ program
 program
   .command("get")
   .description("Show a vault setting, or every setting when given no key")
-  .argument("[key]", "Setting name; dotted for nested keys (foundry.system)")
+  .argument("[key]", "Setting name; dotted for a key inside an object setting")
   .argument("[vault-path]", "Path to the Obsidian vault", VAULT_PATH_DEFAULT)
   .action(wrap(settingsGet));
 
@@ -220,7 +220,7 @@ program
   .action(async (vaultPath: string, opts: { dryRun?: boolean; only?: string; list?: boolean }) => {
     try {
       if (opts.list) {
-        for (const m of listMigrations()) {
+        for (const m of await listMigrations()) {
           console.log(`  ${m.id}\n    ${m.description}`);
         }
         return;

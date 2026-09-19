@@ -35,26 +35,3 @@ export function frontmatter(text: string): { lines: string[]; start: number; end
 export function withFrontmatter(text: string, lines: string[], start: number, end: number): string {
   return text.slice(0, start) + lines.join("\n") + text.slice(end);
 }
-
-/**
- * The direct children of a top-level `foundry:` block, at the block's own
- * child indent. Blank and comment lines are skipped; a deeper-nested line is
- * somebody's actual document field and never yielded. A `foundry: {}` on one
- * line opens no block, and any other top-level key closes it.
- */
-export function* foundryChildren(lines: string[]): Generator<{ i: number; line: string }> {
-  let inBlock = false;
-  let childIndent: number | null = null;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    if (!line.trim() || line.trimStart().startsWith("#")) continue;
-    const indent = line.length - line.trimStart().length;
-    if (!inBlock) {
-      if (indent === 0 && /^foundry:\s*$/.test(line)) inBlock = true;
-      continue;
-    }
-    if (indent === 0) return;
-    if (childIndent === null) childIndent = indent;
-    if (indent === childIndent) yield { i, line };
-  }
-}

@@ -9,6 +9,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Migration, MigrationResult } from "./types.js";
+import { loadAddon } from "../addons.js";
 import { MIGRATIONS } from "./registry.js";
 
 const MARKER = ".vaults/migrations.json";
@@ -40,9 +41,8 @@ export async function runMigrations(
   vaultPath: string,
   opts: RunMigrationsOpts = {},
 ): Promise<MigrationResult> {
-  const candidates = opts.only
-    ? MIGRATIONS.filter((m) => m.id === opts.only)
-    : MIGRATIONS;
+  const all = await listMigrations();
+  const candidates = opts.only ? all.filter((m) => m.id === opts.only) : all;
   if (opts.only && candidates.length === 0) {
     throw new Error(`unknown migration id: ${opts.only}`);
   }
@@ -76,6 +76,6 @@ export async function runMigrations(
   return { applied, skipped };
 }
 
-export function listMigrations(): ReadonlyArray<Migration> {
-  return MIGRATIONS;
+export async function listMigrations(): Promise<ReadonlyArray<Migration>> {
+  return [...MIGRATIONS, ...((await loadAddon())?.migrations ?? [])];
 }

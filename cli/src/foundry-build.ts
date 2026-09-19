@@ -11,7 +11,15 @@ import {
 } from "./foundry-grafts.js";
 import { toFoundryHtml } from "./foundry-html.js";
 import { loadDataJson, warnFoundryDocCollisions } from "./foundry-meta.js";
-import { hasFoundryInstall } from "./render/handlers/builtin/foundry-install.js";
+import { TTRPG_SETTINGS, normalizeTtrpgSettings, type TtrpgSettings } from "./foundry-settings.js";
+import { foundryPatchKeysMigration } from "./migrate/0.15-foundry-patch-keys.js";
+import { foundryPinnedIdMigration } from "./migrate/0.15-foundry-pinned-id.js";
+import { foundryEnabledMigration } from "./migrate/0.23-foundry-enabled.js";
+import { battlemapHandler } from "./render/handlers/builtin/battlemap.js";
+import { diceHandler } from "./render/handlers/builtin/dice.js";
+import { foundryInstallHandler, hasFoundryInstall } from "./render/handlers/builtin/foundry-install.js";
+import { fvttLinkHandler } from "./render/handlers/builtin/fvtt-link.js";
+import { statblockHandler } from "./render/handlers/builtin/statblock.js";
 import { PAGES_FILE_BYTES } from "./settings.js";
 import { pMap } from "./util.js";
 import { chunkAssets, zip } from "./zip.js";
@@ -24,8 +32,13 @@ export function readPatch(loaded: unknown): { patch?: Record<string, unknown>; a
 }
 
 export const foundryAddon: Addon = {
+  handlers: [diceHandler, statblockHandler, battlemapHandler, foundryInstallHandler, fvttLinkHandler],
+  migrations: [foundryPatchKeysMigration, foundryPinnedIdMigration, foundryEnabledMigration],
+  settingDefs: TTRPG_SETTINGS,
+  checkSettings: normalizeTtrpgSettings,
   async prepare(build: BuildInfo): Promise<AddonBuild | undefined> {
-    const { settings, pages } = build;
+    const { pages } = build;
+    const settings = build.settings as TtrpgSettings;
     const enabled = settings.foundry.enabled;
     const siteUrl = settings.site_url;
 
@@ -79,7 +92,8 @@ export const foundryAddon: Addon = {
 async function writeGrafts(
   build: BuildInfo, variant: VariantInfo, patches: Map<string, Record<string, unknown>>,
 ): Promise<void> {
-  const { settings, roles } = build;
+  const { roles } = build;
+  const settings = build.settings as TtrpgSettings;
   const siteUrl = settings.site_url;
   const { variantDir } = variant;
   // Names the directory the reader's assets land in, so changing it strands the copies a reader already has.

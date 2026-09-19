@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildSite } from "../src/build.js";
 import { writeSettingsFile } from "./settings-helpers.js";
+import type { TtrpgSettings } from "../src/foundry-settings.js";
 
 async function build(settings: string, extra: Record<string, string | Buffer> = {}): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "vault-fo-"));
@@ -105,8 +106,8 @@ describe("the foundry block", () => {
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
     await writeSettingsFile(dir, "foundry:\n  player_role: dm\n");
     const { values, warnings } = await loadSettings(dir);
-    assert.equal(values.foundry.player_role, "dm");
-    assert.equal(values.foundry.enabled, true, "unstated keys keep their default");
+    assert.equal((values as TtrpgSettings).foundry.player_role, "dm");
+    assert.equal((values as TtrpgSettings).foundry.enabled, true, "unstated keys keep their default");
     assert.deepEqual(warnings, []);
   });
 
@@ -119,7 +120,7 @@ describe("the foundry block", () => {
     await writeSettingsFile(dir, "foundry:\n  player_roll: dm\n");
     const { values, warnings } = await loadSettings(dir);
     assert.match(warnings.join("\n"), /unknown key 'foundry\.player_roll'/);
-    assert.equal(values.foundry.player_role, "");
+    assert.equal((values as TtrpgSettings).foundry.player_role, "");
   });
 
   it("turns the integration off, which is what stops a grafts.json being written", async () => {
@@ -127,7 +128,7 @@ describe("the foundry block", () => {
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
     await writeSettingsFile(dir, "foundry:\n  enabled: false\n");
     const { values, warnings } = await loadSettings(dir);
-    assert.equal(values.foundry.enabled, false);
+    assert.equal((values as TtrpgSettings).foundry.enabled, false);
     assert.deepEqual(warnings, []);
   });
 });
@@ -166,7 +167,7 @@ describe("zip_assets", () => {
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
     await writeSettingsFile(dir, "zip_assets: 40\n");
     const { values, warnings } = await loadSettings(dir);
-    assert.equal(values.zip_assets, 0);
+    assert.equal((values as TtrpgSettings).zip_assets, 0);
     assert.match(warnings.join("\n"), /between 0 and 25/);
   });
 });

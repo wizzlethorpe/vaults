@@ -11,7 +11,7 @@ import {
   copyReferencedPassthroughs,
 } from "./asset-refs.js";
 import { downloadFilePaths } from "./render/handlers/builtin/download.js";
-import { foundryAddon } from "./foundry-build.js";
+import { loadAddon } from "./addons.js";
 import { compressImage } from "./images.js";
 import {
   IMAGE_EXT_RE,
@@ -214,8 +214,10 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // and can override built-in names (last-registered wins). One registry
   // is built once and shared across every variant render.
   const userHandlers = await loadUserHandlers(opts.vaultPath);
+  const addon = await loadAddon();
+  const builtinHandlers = [...BUILTIN_HANDLERS, ...(addon?.handlers ?? [])];
   const handlerRegistry: HandlerRegistry = buildRegistry(
-    BUILTIN_HANDLERS,
+    builtinHandlers,
     userHandlers.map((h) => h.handler),
   );
   if (userHandlers.length > 0) {
@@ -226,7 +228,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   // Each unique source is included once, regardless of invocation count.
   // Two independent flags so a deploy with only-JS or only-CSS doesn't
   // reference a file that wasn't written.
-  const handlerAssets = await bundleHandlerAssets(userHandlers, BUILTIN_HANDLERS, opts.vaultPath);
+  const handlerAssets = await bundleHandlerAssets(userHandlers, builtinHandlers, opts.vaultPath);
   const hasHandlerJs = handlerAssets.js.length > 0;
   const hasHandlerCss = handlerAssets.css.length > 0;
 
@@ -419,7 +421,7 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
     );
   }
 
-  const addonBuild = await foundryAddon.prepare({
+  const addonBuild = await addon?.prepare({
     vaultPath: opts.vaultPath,
     roles,
     settings: settings.values,

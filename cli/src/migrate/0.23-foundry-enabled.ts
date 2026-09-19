@@ -5,6 +5,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { load as loadYaml } from "js-yaml";
 import type { Migration } from "./types.js";
 import { configPath, exists, settingsPath } from "../paths.js";
+import type { TtrpgSettings } from "../foundry-settings.js";
 import { loadSettings, writeSettings } from "../settings.js";
 
 const RETIRED = ["package", "module"];
@@ -41,7 +42,8 @@ export const foundryEnabledMigration: Migration = {
     const keys = await retired(vaultPath);
     if (Object.keys(keys).length > 0) {
       const { values } = await loadSettings(vaultPath);
-      values.foundry = { ...values.foundry, enabled: keys["package"] !== "none" };
+      const ttrpg = values as TtrpgSettings;
+      ttrpg.foundry = { ...ttrpg.foundry, enabled: keys["package"] !== "none" };
       await writeSettings(vaultPath, values);
     }
     const config = await stamped(vaultPath);

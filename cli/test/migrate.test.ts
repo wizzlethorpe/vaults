@@ -43,9 +43,11 @@ async function exists(path: string): Promise<boolean> {
 // ── Framework wiring ─────────────────────────────────────────────────────
 
 describe("migration framework", () => {
-  it("listMigrations returns a stable, ordered list", () => {
-    const ids = listMigrations().map((m) => m.id);
-    assert.ok(ids.includes("0.7-vaults-dir"));
+  it("lists core's migrations first, then the add-on's", async () => {
+    const ids = (await listMigrations()).map((m) => m.id);
+    assert.deepEqual(ids.slice(0, 2), ["0.7-vaults-dir", "0.22-settings-yaml"]);
+    // 0.23 reads .vaults/settings.yaml, which 0.22 writes. Run first, it finds nothing and settles for good.
+    assert.ok(ids.indexOf("0.23-foundry-enabled") > ids.indexOf("0.22-settings-yaml"));
   });
 
   it("runMigrations on an empty vault does nothing", async () => {

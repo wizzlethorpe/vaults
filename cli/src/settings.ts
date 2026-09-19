@@ -2,9 +2,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { dump as dumpYaml, load as loadYaml } from "js-yaml";
 
-// Single source of truth for user-editable settings: name, type, default,
+// Single source of truth for core's user-editable settings: name, type, default,
 // description. To add a setting, add a line here. The schema drives parsing,
 // normalisation, the init template, and the warning for unknown keys.
+// An add-on's settings join it in settingsSchema().
 //
 // Auth config (roles, role_passwords, oauth providers) lives in
 // .vaults/config.json instead, with secrets mirrored to the vault's .env.
@@ -30,8 +31,6 @@ export interface Settings {
   favicon: string;
   auto_image: boolean;
   include_unknown_files: boolean;
-  zip_assets: number;
-  foundry: FoundrySettings;
   footer: string;
   site_url: string;
 }
@@ -41,39 +40,16 @@ export const PAGES_FILE_BYTES = 25 * 1024 * 1024;
 
 type SettingType = "string" | "number" | "boolean" | "string[]" | "rules" | "object";
 
-/**
- * Everything this vault says about Foundry, under one key.
- *
- * Named the way a page names it: `foundry:` in frontmatter already means "the
- * Foundry facts about this thing".
- */
-export interface FoundrySettings {
-  /** Whether the build writes the grafts.json a reader imports. */
-  enabled: boolean;
-  /** Highest role players may read; "" means none of it is player-visible. */
-  player_role: string;
-  /**
-   * Foundry version the vault's exported document data was authored at, e.g.
-   * "14". Empty means unstated.
-   */
-  core_version: string;
-  /** Game system the vault's Actor and Item content targets, e.g. "dnd5e". */
-  system: string;
-}
-
-export const FOUNDRY_DEFAULTS: FoundrySettings = {
-  enabled: true,
-  player_role: "",
-  core_version: "",
-  system: "dnd5e",
-};
-
-export interface SettingDef<K extends keyof Settings> {
-  default: Settings[K];
+export interface AnySettingDef {
+  default: unknown;
   type: SettingType;
   description: string;
   /** For a string setting with a fixed vocabulary; anything else is rejected. */
   choices?: readonly string[];
+}
+
+export interface SettingDef<K extends keyof Settings> extends AnySettingDef {
+  default: Settings[K];
 }
 
 /**
@@ -195,29 +171,13 @@ export const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
     default: true,
     type: "boolean",
     description:
-      "Fall back to a page's first embedded image when it has no 'image:' frontmatter. Used for social cards, Bases card covers, and Foundry art.",
+      "Fall back to a page's first embedded image when it has no 'image:' frontmatter. Used for social cards and Bases card covers.",
   },
   include_unknown_files: {
     default: false,
     type: "boolean",
     description:
       "Ship files with unrecognized extensions. Default false skips them with a warning, so a stray file cannot bypass role gating. Recognized media (audio, video, pdf, epub) is reference-gated either way.",
-  },
-  zip_assets: {
-    default: 0,
-    type: "number",
-    description:
-      "Also ship each role's Foundry assets as zips of at most this many MiB, so a first import is a few downloads instead of hundreds. 0 turns it off. At most 25, Cloudflare Pages' per-file limit. Smaller zips mean a rebuild that changes one file drags fewer others along.",
-  },
-  foundry: {
-    default: FOUNDRY_DEFAULTS,
-    type: "object",
-    description:
-      "Foundry VTT integration. "
-      + "'enabled': write the grafts.json a reader downloads and imports into their world. "
-      + "'player_role': the highest role players may read. Journal pages at or below it arrive player-visible; empty (the default) means none are. Documents a page builds, such as Actors and Items, are GM-only whatever the role, unless the page's foundry.patch sets their ownership. "
-      + "'system': the game system your Actor and Item content targets, e.g. dnd5e. "
-      + "'core_version': the full quoted Foundry version your exported Scene / Actor JSON came from, e.g. '14.359'. A bare '14' sorts before every release in that generation and costs a Scene its levels."
   },
   site_url: {
     default: "",
@@ -236,6 +196,8 @@ export const SCHEMA: { [K in keyof Settings]: SettingDef<K> } = {
 
 export { SETTINGS_FILE } from "./paths.js";
 import { SETTINGS_FILE, settingsPath } from "./paths.js";
+import type { Addon } from "./addon.js";
+import { installHint, loadAddon } from "./addons.js";
 
 export interface LoadedSettings {
   values: Settings;
@@ -251,29 +213,45 @@ export interface LoadedSettings {
  * schema, fill defaults, and surface warnings for unknown keys.
  */
 export async function loadSettings(vaultPath: string): Promise<LoadedSettings> {
+  const addon = await loadAddon();
+  const schema = mergedSchema(addon);
   let raw: string;
   try {
     raw = await readFile(settingsPath(vaultPath), "utf8");
   } catch {
-    const values = defaults();
-    return { values, exists: false, changed: false, warnings: [] };
+    return { values: defaults(schema) as unknown as Settings, exists: false, changed: false, warnings: [] };
   }
-  const { values, warnings } = normalizeSettings(loadYaml(raw));
-  return { values, warnings, exists: true, changed: renderSettingsFile(values) !== raw };
+  const { values, warnings } = normalize(loadYaml(raw), schema, addon);
+  return { values, warnings, exists: true, changed: renderSettingsFile(values, schema) !== raw };
+}
+
+function mergedSchema(addon: Addon | undefined): Record<string, AnySettingDef> {
+  return { ...SCHEMA, ...addon?.settingDefs };
+}
+
+/** Core's settings and the add-on's, in the order the file is written. */
+export async function settingsSchema(): Promise<Record<string, AnySettingDef>> {
+  return mergedSchema(await loadAddon());
 }
 
 /**
- * The schema pass: fill defaults, drop and report anything the schema does
- * not know, and coerce the `foundry` block. Takes whatever a YAML (or, for
- * the 0.22 migration, a frontmatter) parse produced.
+ * The schema pass: fill defaults and report anything the schema does not know.
+ * Takes whatever a YAML (or, for the 0.22 migration, a frontmatter) parse produced.
  */
-export function normalizeSettings(input: unknown): { values: Settings; warnings: string[] } {
+export async function normalizeSettings(input: unknown): Promise<{ values: Settings; warnings: string[] }> {
+  const addon = await loadAddon();
+  return normalize(input, mergedSchema(addon), addon);
+}
+
+function normalize(
+  input: unknown, schema: Record<string, AnySettingDef>, addon: Addon | undefined,
+): { values: Settings; warnings: string[] } {
   const fm = (isPlainObject(input) ? input : {}) as Record<string, unknown>;
   const warnings: string[] = [];
-  const values = defaults();
+  const values = defaults(schema);
 
-  for (const [key, def] of Object.entries(SCHEMA) as [keyof Settings, SettingDef<keyof Settings>][]) {
-    if (!(key in fm)) continue;
+  for (const [key, def] of Object.entries(schema)) {
+    if (!Object.hasOwn(fm, key)) continue;
     const v = fm[key];
     if (!matchesType(v, def.type)) {
       warnings.push(`${SETTINGS_FILE}: '${key}' should be a ${def.type}, got ${describeType(v)}. Using default.`);
@@ -285,22 +263,20 @@ export function normalizeSettings(input: unknown): { values: Settings; warnings:
       );
       continue;
     }
-    (values as unknown as Record<string, unknown>)[key] = v;
+    values[key] = v;
   }
 
-  normalizeFoundry(values, warnings);
-  if (values.zip_assets < 0 || values.zip_assets * 1024 * 1024 > PAGES_FILE_BYTES) {
-    warnings.push(`${SETTINGS_FILE}: 'zip_assets' must be between 0 and 25 MiB, got ${values.zip_assets}. Using 0.`);
-    values.zip_assets = 0;
-  }
+  addon?.checkSettings(values, warnings);
 
+  // Kept, so a build without the add-on a vault was written for does not cost the vault its settings.
   for (const key of Object.keys(fm)) {
-    if (!(key in SCHEMA)) {
-      warnings.push(`${SETTINGS_FILE}: unknown setting '${key}' will be removed on next sync.`);
-    }
+    if (Object.hasOwn(schema, key)) continue;
+    // Defined, not assigned: assigning to a key named __proto__ would set the prototype and lose the key.
+    Object.defineProperty(values, key, { value: fm[key], enumerable: true, writable: true, configurable: true });
+    warnings.push(`${SETTINGS_FILE}: unknown setting '${key}' is ignored.${installHint(addon)}`);
   }
 
-  return { values, warnings };
+  return { values: values as unknown as Settings, warnings };
 }
 
 /**
@@ -310,77 +286,17 @@ export function normalizeSettings(input: unknown): { values: Settings; warnings:
 export async function writeSettings(vaultPath: string, values: Settings): Promise<void> {
   const path = settingsPath(vaultPath);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, renderSettingsFile(values));
+  await writeFile(path, renderSettingsFile(values, await settingsSchema()));
 }
 
 /** Cloned: the schema's defaults are module-level, and `vaults set` writes
  *  into the object this returns. */
-function defaults(): Settings {
-  return Object.fromEntries(
-    Object.entries(SCHEMA).map(([k, def]) => [k, structuredClone(def.default)]),
-  ) as unknown as Settings;
+function defaults(schema: Record<string, AnySettingDef>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(schema).map(([k, def]) => [k, structuredClone(def.default)]));
 }
 
 function isPlainObject(v: unknown): boolean {
   return v !== null && typeof v === "object" && !Array.isArray(v);
-}
-
-/**
- * Check and fill in the `foundry` block. The generic check only asks whether it
- * is an object; a misspelled subkey would otherwise read as an unset default.
- * Missing keys take their defaults, so a vault only states what it changes.
- */
-function normalizeFoundry(values: Settings, warnings: string[]): void {
-  const raw = (values.foundry ?? {}) as unknown as Record<string, unknown>;
-  for (const key of Object.keys(raw)) {
-    if (!(key in FOUNDRY_DEFAULTS)) {
-      warnings.push(
-        `${SETTINGS_FILE}: unknown key 'foundry.${key}'. Known: ${Object.keys(FOUNDRY_DEFAULTS).join(", ")}.`,
-      );
-    }
-  }
-
-  const enabled = raw["enabled"];
-  if (enabled !== undefined && typeof enabled !== "boolean") {
-    warnings.push(`${SETTINGS_FILE}: 'foundry.enabled' should be true or false, got ${describeType(enabled)}.`);
-  }
-  const role = raw["player_role"];
-  if (role !== undefined && typeof role !== "string") {
-    warnings.push(`${SETTINGS_FILE}: 'foundry.player_role' should be a role name, got ${describeType(role)}.`);
-  }
-  const core = raw["core_version"];
-  if (core !== undefined && typeof core !== "string" && typeof core !== "number") {
-    warnings.push(`${SETTINGS_FILE}: 'foundry.core_version' should be a Foundry version like 14.359, got ${describeType(core)}.`);
-  } else if (typeof core === "number") {
-    // YAML reads an unquoted 14.350 as the number 14.35, which is a different
-    // version, and 14 as a generation. Quoting is the only way to say either
-    // one exactly.
-    warnings.push(
-      `${SETTINGS_FILE}: 'foundry.core_version' is unquoted, so YAML read it as the number ${core}.`
-      + ` Quote it, as '14.359': unquoted, a trailing zero is lost and a bare generation is ambiguous.`);
-  } else if (typeof core === "string" && /^\d+$/.test(core.trim())) {
-    // A bare generation sorts before every patch-level migration inside it, so
-    // Foundry treats the data as older than anything released that generation
-    // and runs migrations written for the generation before. `14` is how a
-    // Scene loses its levels: `migrateLevels` is registered at 14.353 and
-    // rebuilds `levels` from a v13 root background that a v14 export does not
-    // have.
-    warnings.push(
-      `${SETTINGS_FILE}: 'foundry.core_version' is '${String(core)}', a generation rather than a version.`
-      + ` Foundry sorts that before every release in it and runs migrations your data is already past,`
-      + ` which costs a Scene its levels. Use the full version you exported from, e.g. 14.359.`);
-  }
-  const sys = raw["system"];
-  if (sys !== undefined && typeof sys !== "string") {
-    warnings.push(`${SETTINGS_FILE}: 'foundry.system' should be a system id like dnd5e, got ${describeType(sys)}.`);
-  }
-  values.foundry = {
-    enabled: typeof enabled === "boolean" ? enabled : FOUNDRY_DEFAULTS.enabled,
-    player_role: typeof role === "string" ? role : FOUNDRY_DEFAULTS.player_role,
-    system: typeof sys === "string" && sys ? sys : FOUNDRY_DEFAULTS.system,
-    core_version: typeof core === "string" ? core
-      : typeof core === "number" ? String(core) : FOUNDRY_DEFAULTS.core_version,
-  };
 }
 
 function matchesType(v: unknown, t: SettingType): boolean {
@@ -397,19 +313,19 @@ function matchesType(v: unknown, t: SettingType): boolean {
   return typeof v === t;
 }
 
-function describeType(v: unknown): string {
+export function describeType(v: unknown): string {
   if (Array.isArray(v)) return "array";
   return typeof v;
 }
 
-function renderSettingsFile(values: Settings): string {
+function renderSettingsFile(values: Settings, schema: Record<string, AnySettingDef>): string {
   const lines: string[] = [
     "# Vault settings, managed by `vaults set`.",
-    "# Hand edits survive, but unknown keys are removed and the file is",
-    "# reformatted on the next build.",
+    "# Hand edits survive, but the file is reformatted on the next build.",
+    "# A key the CLI does not know is kept and ignored, without its comments.",
     "",
   ];
-  for (const [key, def] of Object.entries(SCHEMA) as [keyof Settings, SettingDef<keyof Settings>][]) {
+  for (const [key, def] of Object.entries(schema)) {
     lines.push(`# ${def.description}`);
     const value = (values as unknown as Record<string, unknown>)[key];
     if (def.type === "object") {
@@ -445,6 +361,8 @@ function renderSettingsFile(values: Settings): string {
     }
     lines.push("");
   }
+  const unknown = Object.entries(values).filter(([key]) => !Object.hasOwn(schema, key));
+  if (unknown.length > 0) lines.push(dumpYaml(Object.fromEntries(unknown)).trimEnd());
   while (lines[lines.length - 1] === "") lines.pop();
   lines.push("");
   return lines.join("\n");

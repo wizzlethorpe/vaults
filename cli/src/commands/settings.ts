@@ -3,11 +3,12 @@ import {
   loadSettings,
   normalizeSettings,
   writeSettings,
-  SCHEMA,
+  settingsSchema,
   SETTINGS_FILE,
   type Settings,
 } from "../settings.js";
 import { requireInitialisedVault } from "../paths.js";
+import { installHint, loadAddon } from "../addons.js";
 import { runMigrations } from "../migrate/run.js";
 
 /** A value as one line where it fits on one, and as a YAML block otherwise. */
@@ -35,10 +36,13 @@ function writePath(values: Settings, path: string[], value: unknown): void {
 }
 
 /** The key path, checked against the schema. */
-function resolveKey(key: string): string[] {
+async function resolveKey(key: string): Promise<string[]> {
   const path = key.split(".");
-  const def = SCHEMA[path[0] as keyof Settings];
-  if (!def) throw new Error(`Unknown setting '${path[0]}'. Run \`vaults get\` to list them.`);
+  const schema = await settingsSchema();
+  if (!Object.hasOwn(schema, path[0]!)) {
+    throw new Error(`Unknown setting '${path[0]}'. Run \`vaults get\` to list them.${installHint(await loadAddon())}`);
+  }
+  const def = schema[path[0]!]!;
   if (path.length > 1 && def.type !== "object") {
     throw new Error(`'${path[0]}' is a ${def.type} and has no nested keys.`);
   }
@@ -48,7 +52,7 @@ function resolveKey(key: string): string[] {
 export async function settingsSet(key: string, value: string, vaultPath: string): Promise<void> {
   await requireInitialisedVault(vaultPath);
   await runMigrations(vaultPath);
-  const path = resolveKey(key);
+  const path = await resolveKey(key);
   const { values } = await loadSettings(vaultPath);
 
   // A string setting takes the argument verbatim: YAML would read `#7a4a8c`
@@ -57,11 +61,8 @@ export async function settingsSet(key: string, value: string, vaultPath: string)
   const parsed = typeof readPath(values, path) === "string" ? value : loadYaml(value);
   writePath(values, path, parsed);
 
-  // Both ways the schema refuses a value have to stop the write, or the file
-  // records something the build ignores: substituting a default, which
-  // `stored` shows, and warning without substituting, which is how
-  // foundry.core_version rejects an unquoted number.
-  const checked = normalizeSettings(values);
+  // A refused value must stop the write: either the schema substituted a default (`stored` differs) or it only warned.
+  const checked = await normalizeSettings(values);
   const stored = readPath(checked.values, path);
   const complaint = checked.warnings.find((w) => w.includes(`'${key}'`));
   if (complaint || JSON.stringify(stored) !== JSON.stringify(parsed)) {
@@ -84,13 +85,13 @@ export async function settingsGet(key: string | undefined, vaultPath: string): P
   if (!exists) console.warn(`  no ${SETTINGS_FILE}; showing defaults.`);
 
   if (key === undefined) {
-    for (const name of Object.keys(SCHEMA) as (keyof Settings)[]) {
-      console.log(`${name}: ${format(values[name])}`);
+    for (const name of Object.keys(await settingsSchema())) {
+      console.log(`${name}: ${format(readPath(values, [name]))}`);
     }
     return;
   }
 
-  const value = readPath(values, resolveKey(key));
+  const value = readPath(values, await resolveKey(key));
   if (value === undefined) throw new Error(`'${key}' is not set.`);
   console.log(format(value));
 }
