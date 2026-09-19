@@ -119,7 +119,7 @@ vaults set folder_notes true
 vaults set ignore '[Templates/**, "*.draft.md"]'
 ```
 
-A string setting takes the value verbatim; anything else is read as YAML, which is how a list or a nested object reaches it. A value the schema rejects is refused rather than quietly replaced by a default, and every write reformats the whole file, so it stays canonical. A key the CLI does not know is kept at the end of the file and ignored, with a warning.
+A string setting takes the value verbatim; anything else is read as YAML, which is how a list or a nested object reaches it. A value the schema rejects is refused rather than quietly replaced by a default, and every write reformats the whole file, so it stays canonical. A key the CLI does not know is ignored with a warning, and kept where it was found: at the end of the file, or at the end of its block.
 
 The file is a normal YAML file with a comment above each key, and hand-editing works. It sits under `.vaults/` because Obsidian hides dot-folders, which keeps it out of the note list, the quick switcher and the graph.
 

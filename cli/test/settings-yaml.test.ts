@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { loadSettings } from "../src/settings.js";
 import { legacySettingsPath, settingsPath } from "../src/paths.js";
 import { runMigrations } from "../src/migrate/run.js";
-import { settingsGet, settingsSet } from "../src/commands/settings.js";
+import { complainsAbout, settingsGet, settingsSet } from "../src/commands/settings.js";
 import { writeSettingsFile } from "./settings-helpers.js";
 import type { TtrpgSettings } from "../src/foundry-settings.js";
 
@@ -134,6 +134,17 @@ describe("vaults set", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
+  it("refuses a key the foundry block does not know, set alone or inside the whole block", async () => {
+    const dir = await initialised();
+    try {
+      await assert.rejects(() => settingsSet("foundry.sytem", "pf2e", dir), /unknown key 'foundry\.sytem'/);
+      await assert.rejects(
+        () => settingsSet("foundry", "{enabled: true, player_role: '', system: dnd5e, core_version: '', package: none}", dir),
+        /unknown key 'foundry\.package'/);
+      assert.doesNotMatch(await readFile(settingsPath(dir), "utf8"), /sytem|package:/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
   it("refuses a value of the wrong type", async () => {
     const dir = await initialised();
     try {
@@ -198,17 +209,34 @@ describe("vaults set", () => {
   });
 
   it("treats a key named like an Object.prototype member as any other unknown key", async () => {
-    const dir = await initialised("constructor: mine\ntoString: also mine\n__proto__:\n  depth: 2\n");
+    const dir = await initialised("constructor: mine\ntoString: also mine\n__proto__:\n  depth: 2\nfoundry:\n  constructor: nested\n");
     try {
       await quiet(() => settingsSet("auto_image", "false", dir));
       const raw = await readFile(settingsPath(dir), "utf8");
       assert.match(raw, /^constructor: mine$/m);
       assert.match(raw, /^toString: also mine$/m);
       assert.match(raw, /^__proto__:\n  depth: 2$/m);
+      assert.match(raw, /^  constructor: nested$/m, "the same rule one level down, inside the foundry block");
       const { warnings } = await loadSettings(dir);
       assert.match(warnings.join("\n"), /unknown setting 'constructor' is ignored/);
       await assert.rejects(quiet(() => settingsSet("constructor", "x", dir)), /Unknown setting 'constructor'/);
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("complainsAbout", () => {
+  const warning = "settings.yaml: unknown key 'foundry.package' is ignored. Known: enabled.";
+
+  it("matches the key named, a key it sits inside, and a key inside it", () => {
+    assert.equal(complainsAbout(warning, "foundry.package"), true);
+    assert.equal(complainsAbout(warning, "foundry"), true);
+    assert.equal(complainsAbout(warning, "foundry.package.id"), true);
+  });
+
+  it("does not match a sibling or a key that only shares a prefix", () => {
+    assert.equal(complainsAbout(warning, "foundry.system"), false);
+    assert.equal(complainsAbout(warning, "foundry.pack"), false);
+    assert.equal(complainsAbout("settings.yaml: 'foundry_x' should be a string", "foundry"), false);
   });
 });
 

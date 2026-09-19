@@ -35,6 +35,12 @@ function writePath(values: Settings, path: string[], value: unknown): void {
   node[path[path.length - 1]!] = value;
 }
 
+/** Whether a warning quotes `key`, a key inside it, or a key it is inside: any of the three means the value being set was not taken as written. */
+export function complainsAbout(warning: string, key: string): boolean {
+  return [...warning.matchAll(/'([^']+)'/g)].some(([, quoted]) =>
+    quoted === key || quoted!.startsWith(`${key}.`) || key.startsWith(`${quoted}.`));
+}
+
 /** The key path, checked against the schema. */
 async function resolveKey(key: string): Promise<string[]> {
   const path = key.split(".");
@@ -64,7 +70,7 @@ export async function settingsSet(key: string, value: string, vaultPath: string)
   // A refused value must stop the write: either the schema substituted a default (`stored` differs) or it only warned.
   const checked = await normalizeSettings(values);
   const stored = readPath(checked.values, path);
-  const complaint = checked.warnings.find((w) => w.includes(`'${key}'`));
+  const complaint = checked.warnings.find((w) => complainsAbout(w, key));
   if (complaint || JSON.stringify(stored) !== JSON.stringify(parsed)) {
     throw new Error(
       `Refusing to set '${key}' to ${JSON.stringify(parsed)}: `

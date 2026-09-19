@@ -21,6 +21,33 @@ async function migrated(settings: string) {
 }
 
 describe("migration: foundry.package -> foundry.enabled", () => {
+  it("carries 'none' across from a vault still on settings.md, in one run", async () => {
+    // 0.22 normalizes the block before 0.23 reads it, so normalization must keep `package`.
+    const dir = await mkdtemp(join(tmpdir(), "vaults-foundry-enabled-"));
+    try {
+      await writeFile(join(dir, "settings.md"), "---\nvault_name: Old\nfoundry:\n  package: none\n  module:\n    id: old\n---\n");
+      await runMigrations(dir, { silent: true });
+      const { values, warnings } = await loadSettings(dir);
+      assert.deepEqual((values as TtrpgSettings).foundry, { enabled: false, player_role: "", system: "dnd5e", core_version: "" });
+      assert.deepEqual(warnings, []);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("leaves a stated `enabled: false` alone when only `module` is left over", async () => {
+    for (const legacy of [true, false]) {
+      const dir = await mkdtemp(join(tmpdir(), "vaults-foundry-enabled-"));
+      try {
+        const block = "foundry:\n  enabled: false\n  module:\n    id: old\n";
+        if (legacy) await writeFile(join(dir, "settings.md"), `---\n${block}---\n`);
+        else await writeSettingsFile(dir, block);
+        await runMigrations(dir, { silent: true });
+        const { values } = await loadSettings(dir);
+        assert.deepEqual((values as TtrpgSettings).foundry, { enabled: false, player_role: "", system: "dnd5e", core_version: "" },
+          legacy ? "from settings.md" : "from settings.yaml");
+      } finally { await rm(dir, { recursive: true, force: true }); }
+    }
+  });
+
   it("carries 'none' across as off", async () => {
     const { dir, values } = await migrated("foundry:\n  package: none\n");
     try {

@@ -5,7 +5,6 @@ import { readFile, writeFile } from "node:fs/promises";
 import { load as loadYaml } from "js-yaml";
 import type { Migration } from "./types.js";
 import { configPath, exists, settingsPath } from "../paths.js";
-import type { TtrpgSettings } from "../foundry-settings.js";
 import { loadSettings, writeSettings } from "../settings.js";
 
 const RETIRED = ["package", "module"];
@@ -42,8 +41,10 @@ export const foundryEnabledMigration: Migration = {
     const keys = await retired(vaultPath);
     if (Object.keys(keys).length > 0) {
       const { values } = await loadSettings(vaultPath);
-      const ttrpg = values as TtrpgSettings;
-      ttrpg.foundry = { ...ttrpg.foundry, enabled: keys["package"] !== "none" };
+      const { foundry } = values as unknown as { foundry: Record<string, unknown> };
+      // Only `none` ever meant off. Anything else leaves the `enabled` the block states, or its default.
+      if (keys["package"] === "none") foundry["enabled"] = false;
+      for (const key of RETIRED) delete foundry[key];
       await writeSettings(vaultPath, values);
     }
     const config = await stamped(vaultPath);

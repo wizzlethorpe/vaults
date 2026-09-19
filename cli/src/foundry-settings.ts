@@ -67,12 +67,11 @@ export function normalizeTtrpgSettings(values: Record<string, unknown>, warnings
  */
 function normalizeFoundry(values: Record<string, unknown>, warnings: string[]): void {
   const raw = (values["foundry"] ?? {}) as Record<string, unknown>;
-  for (const key of Object.keys(raw)) {
-    if (!(key in FOUNDRY_DEFAULTS)) {
-      warnings.push(
-        `${SETTINGS_FILE}: unknown key 'foundry.${key}'. Known: ${Object.keys(FOUNDRY_DEFAULTS).join(", ")}.`,
-      );
-    }
+  const unknown = Object.entries(raw).filter(([key]) => !Object.hasOwn(FOUNDRY_DEFAULTS, key));
+  for (const [key] of unknown) {
+    warnings.push(
+      `${SETTINGS_FILE}: unknown key 'foundry.${key}' is ignored. Known: ${Object.keys(FOUNDRY_DEFAULTS).join(", ")}.`,
+    );
   }
 
   const enabled = raw["enabled"];
@@ -109,11 +108,13 @@ function normalizeFoundry(values: Record<string, unknown>, warnings: string[]): 
   if (sys !== undefined && typeof sys !== "string") {
     warnings.push(`${SETTINGS_FILE}: 'foundry.system' should be a system id like dnd5e, got ${describeType(sys)}.`);
   }
+  // Unknown subkeys are kept, like a top-level key core does not know.
   values["foundry"] = {
     enabled: typeof enabled === "boolean" ? enabled : FOUNDRY_DEFAULTS.enabled,
     player_role: typeof role === "string" ? role : FOUNDRY_DEFAULTS.player_role,
     system: typeof sys === "string" && sys ? sys : FOUNDRY_DEFAULTS.system,
     core_version: typeof core === "string" ? core
       : typeof core === "number" ? String(core) : FOUNDRY_DEFAULTS.core_version,
+    ...Object.fromEntries(unknown),
   };
 }

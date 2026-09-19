@@ -115,12 +115,19 @@ describe("the foundry block", () => {
     // The generic type check only asks whether it is an object. Without this a
     // typo reads as an absent key, which is a default rather than a mistake —
     // `player_roll: dm` would silently share nothing.
-    const { loadSettings } = await import("../src/settings.js");
+    const { loadSettings, writeSettings } = await import("../src/settings.js");
     const dir = await mkdtemp(join(tmpdir(), "vaults-settings-"));
-    await writeSettingsFile(dir, "foundry:\n  player_roll: dm\n");
+    await writeSettingsFile(dir, "foundry:\n  player_roll: dm\n  system: pf2e\n");
     const { values, warnings } = await loadSettings(dir);
     assert.match(warnings.join("\n"), /unknown key 'foundry\.player_roll'/);
     assert.equal((values as TtrpgSettings).foundry.player_role, "");
+
+    // Kept, after the keys the block does know, and stable from then on.
+    await writeSettings(dir, values);
+    const again = await loadSettings(dir);
+    assert.deepEqual(Object.keys((again.values as TtrpgSettings).foundry),
+      ["enabled", "player_role", "system", "core_version", "player_roll"]);
+    assert.equal(again.changed, false);
   });
 
   it("turns the integration off, which is what stops a grafts.json being written", async () => {
