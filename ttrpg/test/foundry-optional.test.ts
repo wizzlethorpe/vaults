@@ -8,7 +8,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildSite } from "../../cli/src/build.js";
@@ -67,7 +67,7 @@ describe("foundry.enabled: false", () => {
     const without = await build("", withArt);
     assert.equal((await read(without)).assets, undefined);
 
-    const withUrl = await build('site_url: "https://v.example.com"\n', withArt);
+    const withUrl = await build('site_url: "https://v.example.com"\nzip_assets: 0\n', withArt);
     const files = (await read(withUrl)).assets?.http.files;
     assert.ok(files?.length, "a vault with a URL still named no media");
     assert.match(files[0]!.source as string, /^https:\/\/v\.example\.com\//);
@@ -159,10 +159,18 @@ describe("zip_assets", () => {
     await rm(out, { recursive: true, force: true });
   });
 
-  it("writes no zip and lists a single URL when off, which is the default", async () => {
+  it("zips by default, since a host that rate-limits refuses the later files of an import that fetches each one", async () => {
     const out = await build('site_url: "https://v.example.com"\n', art);
     const { files } = (await read(out)).assets.http;
+    assert.ok(files.every((f) => Array.isArray(f.source)));
+    await rm(out, { recursive: true, force: true });
+  });
+
+  it("writes no zip and lists a single URL when set to 0", async () => {
+    const out = await build('site_url: "https://v.example.com"\nzip_assets: 0\n', art);
+    const { files } = (await read(out)).assets.http;
     assert.ok(files.every((f) => typeof f.source === "string"));
+    assert.equal((await readdir(join(out, "_foundry"))).some((f) => f.endsWith(".zip")), false);
     await rm(out, { recursive: true, force: true });
   });
 

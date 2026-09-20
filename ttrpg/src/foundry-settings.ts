@@ -34,7 +34,7 @@ export type TtrpgSettings = Settings & { zip_assets: number; foundry: FoundrySet
 
 export const TTRPG_SETTINGS: Record<string, AnySettingDef> = {
   zip_assets: {
-    default: 0,
+    default: 25,
     type: "number",
     description:
       "Also ship each role's Foundry assets as zips of at most this many MiB, so a first import is a few downloads instead of hundreds. 0 turns it off. At most 25, Cloudflare Pages' per-file limit. Smaller zips mean a rebuild that changes one file drags fewer others along.",

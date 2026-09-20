@@ -47,6 +47,6 @@ Each role's variant holds `_foundry/grafts.json`, and a multi-role deploy serves
 The add-on contributes two settings to `.vaults/settings.yaml`, set with `vaults set`:
 
 - `foundry`: `enabled`, `player_role`, `system` and `core_version`. `vaults set foundry.enabled false` keeps the handlers and writes no `grafts.json`.
-- `zip_assets`: batch each role's Foundry media into zips of at most this many MiB.
+- `zip_assets`: batch each role's Foundry media into zips of at most this many MiB, 25 unless set. `0` turns it off.
 
 Documentation and a live demo of every feature: [vaults.wizzlethorpe.com](https://vaults.wizzlethorpe.com).
