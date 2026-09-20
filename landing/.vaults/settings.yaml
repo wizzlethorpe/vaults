@@ -1,6 +1,6 @@
 # Vault settings, managed by `vaults set`.
-# Hand edits survive, but unknown keys are removed and the file is
-# reformatted on the next build.
+# Hand edits survive, but the file is reformatted on the next build.
+# A key the CLI does not know is kept and ignored, without its comments.
 
 # Display name for the wiki. Shown in the header and in page titles.
 vault_name: Wizzlethorpe Vaults
@@ -65,11 +65,17 @@ theme: auto
 # Vault-relative path to a favicon image (png/jpg/svg/webp). Empty generates one from the accent color.
 favicon: ""
 
-# Fall back to a page's first embedded image when it has no 'image:' frontmatter. Used for social cards, Bases card covers, and Foundry art.
+# Fall back to a page's first embedded image when it has no 'image:' frontmatter. Used for social cards and Bases card covers.
 auto_image: true
 
 # Ship files with unrecognized extensions. Default false skips them with a warning, so a stray file cannot bypass role gating. Recognized media (audio, video, pdf, epub) is reference-gated either way.
 include_unknown_files: false
+
+# Public base URL this vault is served from, e.g. 'https://notes.example.com'. Set it and the build writes sitemap.xml and robots.txt; leave it empty and neither is written. Only default-role pages are listed, so a sitemap cannot advertise gated ones.
+site_url: "https://vaults.wizzlethorpe.com"
+
+# Markdown rendered in a <footer> on every page. Inline markdown works. Empty hides the footer.
+footer: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com)."
 
 # Also ship each role's Foundry assets as zips of at most this many MiB, so a first import is a few downloads instead of hundreds. 0 turns it off. At most 25, Cloudflare Pages' per-file limit. Smaller zips mean a rebuild that changes one file drags fewer others along.
 zip_assets: 0
@@ -80,9 +86,3 @@ foundry:
   player_role: ''
   system: dnd5e
   core_version: '14.359'
-
-# Public base URL this vault is served from, e.g. 'https://notes.example.com'. Set it and the build writes sitemap.xml and robots.txt; leave it empty and neither is written. Only default-role pages are listed, so a sitemap cannot advertise gated ones.
-site_url: "https://vaults.wizzlethorpe.com"
-
-# Markdown rendered in a <footer> on every page. Inline markdown works. Empty hides the footer.
-footer: "Generated with [Wizzlethorpe Vaults](https://vaults.wizzlethorpe.com)."

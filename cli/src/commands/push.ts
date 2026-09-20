@@ -1,5 +1,4 @@
 import { basename } from "node:path";
-import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { loadConfig, saveConfig, saveSessionSecret, type VaultConfig } from "../config.js";
@@ -8,6 +7,7 @@ import { generateSessionSecret } from "../auth.js";
 import { runMigrations } from "../migrate/run.js";
 import { defaultOutputDir, requireInitialisedVault } from "../paths.js";
 import { escapeRegex } from "../escape.js";
+import { signedIn, spawnWrangler } from "../wrangler.js";
 
 interface PushOptions {
   projectName?: string;
@@ -96,10 +96,10 @@ async function ensureSetup(vaultPath: string, cfg: VaultConfig): Promise<void> {
     console.log(`  saved projectName='${cfg.projectName}' to .vaults/config.json`);
   }
 
-  // 2. Wrangler authentication; wrangler whoami exits non-zero if logged out.
+  // 2. Wrangler authentication.
   if (!await isWranglerLoggedIn()) {
     if (!stdin.isTTY) {
-      throw new Error("Not authenticated with Cloudflare. Run `npx wrangler login` first.");
+      throw new Error("Not authenticated with Cloudflare. Set CLOUDFLARE_API_TOKEN, or run `vaults push` once in a terminal to sign in.");
     }
     console.log("\nNot signed in to Cloudflare. Running `wrangler login`…");
     await runWranglerInteractive(["login"]);
@@ -131,12 +131,13 @@ function sanitizeProjectName(name: string): string {
   return cleaned || "vault";
 }
 
+/** `whoami --json` exits non-zero when nobody is signed in, and still prints its answer, so the answer is what is read. */
 async function isWranglerLoggedIn(): Promise<boolean> {
+  const { stdout, stderr } = await captureWrangler(["whoami", "--json"]);
   try {
-    await runWranglerCaptured(["whoami"]);
-    return true;
+    return signedIn(stdout);
   } catch {
-    return false;
+    throw new Error(`Could not ask wrangler who is signed in: ${stderr.trim() || stdout.trim() || "it printed nothing"}`);
   }
 }
 
@@ -187,13 +188,12 @@ async function wranglerDeploy(outputDir: string, projectName: string): Promise<v
 async function wranglerSecret(projectName: string, name: string, value: string): Promise<void> {
   console.log(`Setting wrangler secret ${name}…`);
   return new Promise((resolve, reject) => {
-    const proc = spawn(
-      "npx",
-      ["wrangler", "pages", "secret", "put", name, `--project-name=${projectName}`],
-      { stdio: ["pipe", "inherit", "inherit"], shell: process.platform === "win32" },
+    const proc = spawnWrangler(
+      ["pages", "secret", "put", name, `--project-name=${projectName}`],
+      { stdio: ["pipe", "inherit", "inherit"] },
     );
-    proc.stdin.write(value + "\n");
-    proc.stdin.end();
+    proc.stdin!.write(value + "\n");
+    proc.stdin!.end();
     proc.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`wrangler secret put exited ${code}`))));
     proc.on("error", reject);
   });
@@ -201,30 +201,27 @@ async function wranglerSecret(projectName: string, name: string, value: string):
 
 function runWranglerInteractive(args: string[], cwd?: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("npx", ["wrangler", ...args], {
-      stdio: "inherit",
-      shell: process.platform === "win32",
-      ...(cwd ? { cwd } : {}),
-    });
+    const proc = spawnWrangler(args, { stdio: "inherit", ...(cwd ? { cwd } : {}) });
     proc.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`wrangler ${args[0]} exited ${code}`))));
     proc.on("error", reject);
   });
 }
 
-function runWranglerCaptured(args: string[]): Promise<string> {
+/** Wrangler's exit code and output, whatever the code. */
+function captureWrangler(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("npx", ["wrangler", ...args], {
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
-    });
-    let stdoutBuf = "";
-    let stderrBuf = "";
-    proc.stdout.on("data", (d) => { stdoutBuf += d.toString(); });
-    proc.stderr.on("data", (d) => { stderrBuf += d.toString(); });
-    proc.on("exit", (code) => {
-      if (code === 0) resolve(stdoutBuf);
-      else reject(new Error(`wrangler ${args[0]} exited ${code}: ${stderrBuf || stdoutBuf}`));
-    });
+    const proc = spawnWrangler(args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout!.on("data", (d) => { stdout += d.toString(); });
+    proc.stderr!.on("data", (d) => { stderr += d.toString(); });
+    proc.on("exit", (code) => resolve({ code, stdout, stderr }));
     proc.on("error", reject);
   });
+}
+
+async function runWranglerCaptured(args: string[]): Promise<string> {
+  const { code, stdout, stderr } = await captureWrangler(args);
+  if (code !== 0) throw new Error(`wrangler ${args[0]} exited ${code}: ${stderr || stdout}`);
+  return stdout;
 }

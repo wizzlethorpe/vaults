@@ -1,10 +1,10 @@
-import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { buildSite } from "../build.js";
 import { generateSessionSecret } from "../auth.js";
 import { loadConfig, saveSessionSecret } from "../config.js";
 import { runMigrations } from "../migrate/run.js";
 import { defaultOutputDir, requireInitialisedVault } from "../paths.js";
+import { spawnWrangler } from "../wrangler.js";
 
 interface PreviewOptions {
   output?: string;
@@ -42,7 +42,7 @@ export async function preview(vaultPath: string, opts: PreviewOptions): Promise<
   // tokens — otherwise the visitor gets "Patreon login is misconfigured".
   // Wrangler resolves Functions/ relative to cwd, so we must run with the
   // output dir as cwd and pass "." rather than the absolute path.
-  const wranglerArgs = ["wrangler", "pages", "dev", ".", `--port=${port}`, "--compatibility-date=2024-12-01"];
+  const wranglerArgs = ["pages", "dev", ".", `--port=${port}`, "--compatibility-date=2024-12-01"];
   if (result.roles.length > 1) {
     const cfg = await loadConfig(vaultPath, {});
     let secret = cfg.sessionSecret;
@@ -66,11 +66,7 @@ export async function preview(vaultPath: string, opts: PreviewOptions): Promise<
   console.log(`\n  Starting wrangler pages dev on port ${port}...`);
   console.log(`  Press Ctrl-C to stop.\n`);
   await new Promise<void>((resolveProc, reject) => {
-    const proc = spawn("npx", wranglerArgs, {
-      cwd: outputDir,
-      stdio: "inherit",
-      shell: process.platform === "win32",
-    });
+    const proc = spawnWrangler(wranglerArgs, { cwd: outputDir, stdio: "inherit" });
     proc.on("exit", (code) => (code === 0 ? resolveProc() : reject(new Error(`wrangler exited ${code}`))));
     proc.on("error", reject);
   });
