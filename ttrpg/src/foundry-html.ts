@@ -148,17 +148,21 @@ export function rewriteAssets(html: string, assetBase: string, named: Set<string
  * place the asset handler will put the file.
  */
 export function rewriteVaultRefs<T>(value: T, assetBase: string, named: Set<string>): T {
-  if (typeof value === "string") {
-    if (!value.startsWith("@vault/")) return value;
-    const path = value.slice("@vault/".length);
+  return mapStrings(value, (s) => {
+    if (!s.startsWith("@vault/")) return s;
+    const path = s.slice("@vault/".length);
     named.add(path);
-    return `${assetBase}/${path}` as unknown as T;
-  }
-  if (Array.isArray(value)) return value.map((v) => rewriteVaultRefs(v, assetBase, named)) as unknown as T;
+    return `${assetBase}/${path}`;
+  });
+}
+
+/** A copy of `value` with `fn` applied to every string that is a whole value. Keys and the insides of longer strings are left alone. */
+export function mapStrings<T>(value: T, fn: (s: string) => string): T {
+  if (typeof value === "string") return fn(value) as unknown as T;
+  if (Array.isArray(value)) return value.map((v) => mapStrings(v, fn)) as unknown as T;
   if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .map(([k, v]) => [k, rewriteVaultRefs(v, assetBase, named)]),
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, mapStrings(v, fn)]),
     ) as unknown as T;
   }
   return value;

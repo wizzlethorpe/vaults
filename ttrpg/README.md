@@ -36,7 +36,7 @@ foundry:
 ---
 ```
 
-A page with a `foundry.source` builds that document in the reader's world, with the page as its journal entry. `image:` frontmatter, or the page's first image, becomes the document's art.
+A page with a `foundry.source` builds that document in the reader's world, with the page as its journal entry. A source that is a `.json` file on the reader's machine, such as `@moulinette/13648/json/scene/junkyard.json` with [graft-moulinette](https://github.com/wizzlethorpe/graft-moulinette), does not say what kind of document it holds, so `foundry.type: Scene` does. `image:` frontmatter, or the page's first image, becomes the document's art.
 
 ## The reader's download
 

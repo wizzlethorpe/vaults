@@ -5,8 +5,8 @@
 import { createHash } from "node:crypto";
 
 import { mergeDefaults, natCompare, type TokenDownload } from "@wizzlethorpe/vaults/addon";
-import { canonicalType } from "./foundry-types.js";
-import { rewriteVaultRefs } from "./foundry-html.js";
+import { canonicalType, DOC_TYPES } from "./foundry-types.js";
+import { mapStrings, rewriteVaultRefs } from "./foundry-html.js";
 import { defaultsFor, resolvePageRefs } from "./foundry-defaults.js";
 import type { LinkIndex, LinkTarget } from "./foundry-html.js";
 import { GRAFTS_PATH } from "./handlers/foundry-install.js";
@@ -16,7 +16,7 @@ export interface GraftEntry {
   id: string;
   type: string;
   folder?: string;
-  /** A UUID, or a sibling's bare id. */
+  /** A UUID, a sibling's bare id, or the path of a placed `.json` file. */
   source?: string;
   patch: Record<string, unknown>;
 }
@@ -33,11 +33,20 @@ export interface AssetFile {
 export interface GraftsFile {
   format: 4;
   entries: GraftEntry[];
-  /**
-   * Files that have to be on disk before anything builds. Keyed by handler;
-   * a vault only ever uses `http`, since everything it serves is a URL.
-   */
-  assets?: { http: { auth?: Record<string, string>; files: AssetFile[] } };
+  /** Files that have to be on disk before anything builds, keyed by the handler that fetches them. */
+  assets?: {
+    /** What the vault serves itself. */
+    http?: { auth?: Record<string, string>; files: AssetFile[] };
+    /** What each reader's own Moulinette subscription supplies. */
+    moulinette?: { files: MoulinetteFile[] };
+  };
+}
+
+/** One file for graft-moulinette's asset handler to place. */
+export interface MoulinetteFile {
+  /** `<pack number>/<path inside the pack>`, as the asset's marketplace page shows them. */
+  source: string;
+  destination: string;
 }
 
 export const GRAFTS_DOWNLOAD: TokenDownload = {
@@ -60,9 +69,10 @@ export interface Page {
    * makes its document but no journal page; `embed: false` keeps the page's
    * prose out of the document's description; `folder` overrides where the
    * document files, independent of where the page lives.
+   * `type` is the document type of a source that is a file.
    */
   foundry?: {
-    source?: unknown; patch?: Record<string, unknown>;
+    source?: unknown; type?: unknown; patch?: Record<string, unknown>;
     sync?: boolean; journal?: boolean; embed?: boolean; folder?: string;
   } | null;
   /** The page's representative image, as a served URL ("/attachments/x.webp"). */
@@ -326,9 +336,7 @@ function vaultIdTargets(pages: Page[], opts: GraftOptions): VaultIdTargets {
   for (const p of pages) {
     if (p.foundry?.sync === false) continue;
     if (p.foundry?.journal !== false) journals.add(p.path);
-    const base = sourceOf(p.foundry?.source);
-    const type = base ? documentTypeOf(base) : null;
-    if (type) docs.set(p.path, pinnedId(p.foundry?.patch) ?? instanceId(opts.vaultId, p.path));
+    if (pageDocumentType(p.foundry)) docs.set(p.path, pinnedId(p.foundry?.patch) ?? instanceId(opts.vaultId, p.path));
   }
   return { docs, journals };
 }
@@ -404,14 +412,14 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 /**
  * A page's `foundry.source` becomes a graft of that document.
  *
- * Clone a compendium document, apply the page's overrides, keep a
- * deterministic id: all of it expressed as the thing graft already builds. A
- * base that names a UUID is a source; a page with only `foundry.patch` carries
- * its own content and has none.
+ * A base that names a UUID or a file is a source; a bare type carries its own content and has none.
  */
-export function documentEntries(pages: Page[], opts: GraftOptions): { entries: GraftEntry[]; warnings: string[] } {
+export function documentEntries(
+  pages: Page[], opts: GraftOptions,
+): { entries: GraftEntry[]; warnings: string[]; moulinette: MoulinetteFile[] } {
   const entries: GraftEntry[] = [];
   const warnings: string[] = [];
+  const moulinette = new Map<string, MoulinetteFile>();
   const pathOf = new Map<string, string>();
   const targets = vaultIdTargets(pages, opts);
 
@@ -423,20 +431,32 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
     if (!base) {
       warnings.push(Array.isArray(spec.source)
         ? `${page.path}: foundry.source is a list; name one document. No document was built for this page.`
-        : `${page.path}: foundry.source should name one document, as a UUID or a type. No document was built for this page.`);
+        : `${page.path}: foundry.source should name one document, as a UUID, a type or a .json file. No document was built for this page.`);
       continue;
     }
-    const type = documentTypeOf(base);
+    if (base.startsWith("@") && !(moulinetteRef(base) && isFile(base))) {
+      warnings.push(`${page.path}: foundry.source "${base}" names no document. The one source written with @ is @moulinette/<pack number>/<path in the pack>, ending .json. No document was built for this page.`);
+      continue;
+    }
+    const written = writtenType(spec);
+    const stated = canonicalType(written);
+    const type = typeOf(base, stated);
     if (!type) {
-      warnings.push(`${page.path}: cannot tell what kind of document "${base}" is`);
+      warnings.push(`${page.path}: ${untypedReason(base, written)} No document was built for this page.`);
       continue;
     }
+    if (written !== undefined && stated !== type) {
+      warnings.push(`${page.path}: foundry.type "${written}" is ignored, because "${base}" says its type is ${type}.`);
+    }
+    const placed = <T>(value: T): T => placeMoulinetteRefs(value, moulinette, (ref) =>
+      warnings.push(`${page.path}: "${ref}" is not a Moulinette reference, and was left as written. Write @moulinette/<pack number>/<path in the pack>.`));
+    const source = isSource(base) ? placed(base) : undefined;
     const subtype = subtypeOf(base);
     const resolved = {
       ...page,
       sidecar: resolveVaultIds(page.sidecar, opts, targets, warnings, page.path),
     };
-    const patch: Record<string, unknown> = withEmbeddedIds(rewriteVaultRefs({
+    const patch: Record<string, unknown> = withEmbeddedIds(placed(rewriteVaultRefs({
       name: page.title,
       ...(subtype ? { type: subtype } : {}),
       // GM-only unless the page's patch says otherwise. A page's role decides
@@ -446,7 +466,7 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
         withItemIds(resolveVaultIds(spec.patch ?? {}, opts, targets, warnings, page.path),
           opts.vaultId, page.path),
         type, resolved, opts),
-    }, opts.assetBase, opts.namedAssets), type, opts.vaultId, page.path);
+    }, opts.assetBase, opts.namedAssets)), type, opts.vaultId, page.path);
     const folder = documentFolder(page);
     const id = pinnedId(spec.patch, { warnings, path: page.path }) ?? instanceId(opts.vaultId, page.path);
     if (entries.some((e) => e.id === id)) warnings.push(`${page.path}: foundry.patch._id "${id}" is also pinned by another page; graft refuses both`);
@@ -455,11 +475,22 @@ export function documentEntries(pages: Page[], opts: GraftOptions): { entries: G
       type,
       ...(graftFolder(folder) ? { folder } : {}),
       patch,
-      ...(isSource(base) ? { source: base } : {}),
+      ...(source ? { source } : {}),
     });
     pathOf.set(id, page.path);
   }
-  return { entries: placeSiblings(entries, pathOf, warnings), warnings };
+  return {
+    entries: placeSiblings(entries, pathOf, warnings),
+    warnings,
+    moulinette: [...moulinette.values()].sort((a, b) => natCompare(a.source, b.source)),
+  };
+}
+
+/** Why a source that names one document still builds none. */
+function untypedReason(base: string, written: string | undefined): string {
+  if (!isFile(base)) return `cannot tell what kind of document "${base}" is.`;
+  if (written === undefined) return `"${base}" is a file, which does not say what it holds. State it as foundry.type.`;
+  return `foundry.type "${written}" is not a document type a vault builds. It is one of ${DOC_TYPES.join(", ")}.`;
 }
 
 /**
@@ -504,11 +535,45 @@ function isWorldUuid(base: string): boolean {
   return parts.length === 2 && DOCUMENT_ID.test(parts[1] ?? "");
 }
 
+const isUuid = (base: string) => base.startsWith("Compendium.") || isWorldUuid(base);
+
+/** A document an asset handler places on the reader's machine. graft reads a source ending `.json` as a file. */
+const isFile = (base: string) => /\.json$/i.test(base);
+
+/** Whether a base names an existing document rather than a type to invent, as `Actor:npc` does. */
+const isSource = (base: string) => isUuid(base) || isFile(base);
+
+/** The document type a page builds, or null. A UUID or a bare type says it; a file does not, so the page states it as `foundry.type`. */
+export function pageDocumentType(spec: Page["foundry"]): string | null {
+  const base = sourceOf(spec?.source);
+  return base ? typeOf(base, canonicalType(writtenType(spec))) : null;
+}
+
+const typeOf = (base: string, stated: string | null) => (isFile(base) ? stated : documentTypeOf(base));
+
+const writtenType = (spec: Page["foundry"]) => (typeof spec?.type === "string" ? spec.type : undefined);
+
+/** The pack and path of a well-formed `@moulinette/<pack>/<path>`, or null. A `..` segment would climb out of the folder its file is placed in. */
+function moulinetteRef(value: string): { pack: string; path: string } | null {
+  const m = /^@moulinette\/(\d+)\/(.+)$/.exec(value);
+  return m && !m[2]!.split("/").includes("..") ? { pack: m[1]!, path: m[2]! } : null;
+}
+
 /**
- * Whether a base names an existing document rather than a type to invent.
- * `Actor:npc` invents one; either UUID form grafts onto one.
+ * Replace each `@moulinette/<pack>/<path>` that is a whole value with the path its file is placed at, recording the file.
+ * `malformed` is called with a value that starts like a reference and does not match; the value is left as written.
  */
-const isSource = (base: string) => base.startsWith("Compendium.") || isWorldUuid(base);
+function placeMoulinetteRefs<T>(value: T, files: Map<string, MoulinetteFile>, malformed: (ref: string) => void): T {
+  return mapStrings(value, (s) => {
+    if (!s.startsWith("@moulinette/")) return s;
+    const ref = moulinetteRef(s);
+    if (!ref) { malformed(s); return s; }
+    const source = `${ref.pack}/${ref.path}`;
+    const destination = `graft/moulinette/${source}`;
+    files.set(source, { source, destination });
+    return destination;
+  });
+}
 
 /**
  * The system subtype in a bare base, if it names one.
@@ -518,7 +583,7 @@ const isSource = (base: string) => base.startsWith("Compendium.") || isWorldUuid
  * Foundry needs the second as a `type` field on the document itself.
  */
 export function subtypeOf(base: string): string | null {
-  if (base.startsWith("Compendium.")) return null;
+  if (isSource(base)) return null;
   const [, subtype] = base.split(":");
   return subtype?.trim() || null;
 }
@@ -529,8 +594,7 @@ export function linkIndex(pages: Page[], opts: GraftOptions): LinkIndex {
   for (const page of pages) {
     if (page.foundry?.sync === false) continue;
     const target: LinkTarget = {};
-    const base = sourceOf(page.foundry?.source);
-    const type = base ? documentTypeOf(base) : null;
+    const type = pageDocumentType(page.foundry);
     if (type) {
       target.doc = { type, id: pinnedId(page.foundry?.patch) ?? instanceId(opts.vaultId, page.path) };
     }
@@ -547,7 +611,7 @@ export function linkIndex(pages: Page[], opts: GraftOptions): LinkIndex {
  * Stamp `_stats.coreVersion`: Foundry's import refuses a document without one
  * and graft then builds a degraded copy (a Scene loses its levels, silently).
  * A sidecar's own value survives; sourced entries are left alone, since the
- * reader's compendium copy records its own generation.
+ * source records its own generation.
  */
 function stampCoreVersion(entries: GraftEntry[], coreVersion: string): GraftEntry[] {
   if (!coreVersion) return entries;
@@ -568,8 +632,9 @@ export function buildGrafts(
   const docs = documentEntries(pages, opts);
   const entries = stampCoreVersion(
     [...journalEntries(pages, opts), ...docs.entries], opts.coreVersion ?? "");
-  // `assets` is added by the caller, which is what knows each file's size.
-  return { file: { format: 4, entries }, warnings: docs.warnings };
+  // `assets.http` is added by the caller, which is what knows each file's size.
+  const assets = docs.moulinette.length > 0 ? { assets: { moulinette: { files: docs.moulinette } } } : {};
+  return { file: { format: 4, entries, ...assets }, warnings: docs.warnings };
 }
 
 /**

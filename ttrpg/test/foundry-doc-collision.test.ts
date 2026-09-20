@@ -74,6 +74,13 @@ describe("duplicate Foundry documents", () => {
     }), []);
   });
 
+  it("catches two documents built on a file colliding", async () => {
+    const scene = "---\ntitle: Junkyard\nfoundry:\n  source: graft/my-pack/junkyard.json\n  type: Scene\n---\nA.\n";
+    const warnings = await build({ "Scenes/A.md": scene, "Scenes/B.md": scene });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /Junkyard/);
+  });
+
   it("catches two Scene UUID bases colliding", async () => {
     // Cloning from a UUID used to be Actor/Item only, so this pair created
     // nothing and was deliberately not reported. Scenes are cloneable now —

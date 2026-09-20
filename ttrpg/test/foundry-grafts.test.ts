@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  buildGrafts, journalEntries, documentEntries, documentTypeOf, observable, secretRoles, sourceOf, subtypeOf,
+  buildGrafts, journalEntries, documentEntries, documentTypeOf, observable, secretRoles, sourceOf, pageDocumentType, subtypeOf,
   entryId, pageId, instanceId, itemId, withItemIds, withEmbeddedIds, folderOf, pagesFrom, linkIndex, withFolderIndexes, type Page, type GraftOptions,
 } from "../src/foundry-grafts.js";
 
@@ -882,5 +882,130 @@ describe("withEmbeddedIds", () => {
     const elsewhere = withEmbeddedIds({ notes: [{ x: 1 }] }, "Scene", "southaven", "Scenes/Docks.md");
     assert.equal(members(one, "notes")[0]!["_id"], members(again, "notes")[0]!["_id"]);
     assert.notEqual(members(one, "notes")[0]!["_id"], members(elsewhere, "notes")[0]!["_id"]);
+  });
+});
+
+const SCENE = "@moulinette/13648/json/scene/junkyard.json";
+const MAP = "@moulinette/13648/images/maps/junkyard.webp";
+const junkyard = (foundry: Record<string, unknown>, over: Partial<Page> = {}): Page =>
+  ({ path: "Scenes/Junkyard.md", title: "Junkyard", role: "dm", foundry, ...over });
+
+describe("a source that is a file on the reader's machine", () => {
+  it("takes its document type from foundry.type", () => {
+    const page = junkyard({ source: "graft/my-pack/junkyard.json", type: "scene", patch: { navName: "Junkyard" } });
+    const { entries, warnings } = documentEntries([page], opts);
+    assert.deepEqual(warnings, []);
+    assert.equal(entries[0]!.type, "Scene");
+    assert.equal(entries[0]!.source, "graft/my-pack/junkyard.json");
+    assert.equal(linkIndex([page], opts).targets.get(page.path)!.doc!.type, "Scene", "and is linked to as the document it builds");
+  });
+
+  it("builds nothing without one, and says what to add", () => {
+    const { entries, warnings } = documentEntries([junkyard({ source: SCENE })], opts);
+    assert.deepEqual(entries, []);
+    assert.match(warnings[0]!, /does not say what it holds\. State it as foundry\.type/);
+  });
+
+  it("names the types it builds when foundry.type is not one", () => {
+    const { entries, warnings } = documentEntries([junkyard({ source: SCENE, type: "Combat" })], opts);
+    assert.deepEqual(entries, []);
+    assert.match(warnings[0]!, /foundry\.type "Combat" is not a document type.*Scene/);
+  });
+
+  it("reads foundry.type for a file only, so it cannot rescue a UUID the build refuses", () => {
+    assert.equal(pageDocumentType({ source: "Compendium.a.b.Actor.aaaaaaaaaaaaaaaa", type: "Scene" }), "Actor");
+    assert.equal(pageDocumentType({ source: "Compendium.a.b.Combat.aaaaaaaaaaaaaaaa", type: "Scene" }), null);
+    assert.equal(pageDocumentType({ source: "Compendium.a.b", type: "Scene" }), null);
+    assert.equal(pageDocumentType({ source: "Combat.aaaaaaaaaaaaaaaa", type: "Scene" }), null);
+    assert.equal(pageDocumentType({ source: "Scen", type: "Scene" }), null, "a typo of a type is not a file");
+    assert.equal(pageDocumentType({ type: "Scene" }), null, "a type alone names no document");
+  });
+
+  it("says so when foundry.type disagrees with a source that says what it is", () => {
+    for (const [source, type] of [["Actor.aaaaaaaaaaaaaaaa", "Item"], ["Actor:npc", "Scene"], ["Actor.aaaaaaaaaaaaaaaa", "Combat"]] as const) {
+      const { entries, warnings } = documentEntries([junkyard({ source, type })], opts);
+      assert.equal(entries[0]!.type, "Actor");
+      assert.match(warnings[0]!, new RegExp(`foundry\\.type "${type}" is ignored`), `${source} with ${type}`);
+    }
+    assert.deepEqual(documentEntries([junkyard({ source: "Actor:npc", type: "actor" })], opts).warnings, [], "agreeing is not worth a warning");
+  });
+
+  it("reads a file source whatever the case of its extension, as graft does", () => {
+    assert.equal(pageDocumentType({ source: "graft/my-pack/YARD.JSON", type: "Scene" }), "Scene");
+  });
+
+  it("reads no subtype out of a file path", () => {
+    assert.equal(subtypeOf("maps/scene:big.json"), null);
+  });
+
+  it("refuses a source written with @ that is not a Moulinette document, before asking for a type", () => {
+    for (const source of ["@vault/Scenes/a.json", "@moulinette/abc/a.json", "@moulinette/1/a.webp", "@moulinette/1/../../worlds/w/a.json"]) {
+      const { entries, warnings } = documentEntries([junkyard({ source })], opts);
+      assert.deepEqual(entries, [], source);
+      assert.equal(warnings.length, 1, source);
+      assert.match(warnings[0]!, /names no document\..*No document was built for this page/, source);
+    }
+  });
+
+  it("lets a token name an actor page built on a file", () => {
+    const actor: Page = { path: "Actors/Rat.md", title: "Rat", role: "dm", foundry: { source: "graft/my-pack/rat.json", type: "Actor" } };
+    const scene = junkyard({ source: "Scene", patch: { tokens: [{ name: "Rat", actorId: "@vault/Actors/Rat" }] } });
+    const { entries, warnings } = documentEntries([actor, scene], opts);
+    const tokens = entries.find((e) => e.type === "Scene")!.patch["tokens"] as Array<Record<string, unknown>>;
+    assert.equal(tokens[0]!["actorId"], instanceId("marlo", "Actors/Rat.md"));
+    assert.deepEqual(warnings, [], "the actor page was not counted as making a document");
+  });
+});
+
+describe("a Moulinette reference", () => {
+  it("becomes the path its file is placed at, and a file for graft-moulinette to place there", () => {
+    const page = junkyard({ source: SCENE, type: "Scene", patch: {
+      background: { src: MAP },
+      tiles: [{ texture: { src: MAP } }, { texture: { src: "@moulinette/9021/images/tiles/crate.webp" } }],
+      navName: `see ${MAP}`,
+    } }, { sidecar: { sounds: [{ path: "@moulinette/9021/audio/drip.ogg" }] } });
+    const { file, warnings } = buildGrafts([page], opts);
+    assert.deepEqual(warnings, []);
+    assert.deepEqual(file.assets, { moulinette: { files: [
+      { source: "9021/audio/drip.ogg", destination: "graft/moulinette/9021/audio/drip.ogg" },
+      { source: "9021/images/tiles/crate.webp", destination: "graft/moulinette/9021/images/tiles/crate.webp" },
+      { source: "13648/images/maps/junkyard.webp", destination: "graft/moulinette/13648/images/maps/junkyard.webp" },
+      { source: "13648/json/scene/junkyard.json", destination: "graft/moulinette/13648/json/scene/junkyard.json" },
+    ] } });
+    const scene = file.entries.find((e) => e.type === "Scene")!;
+    assert.equal(scene.source, "graft/moulinette/13648/json/scene/junkyard.json");
+    assert.deepEqual(scene.patch["background"], { src: "graft/moulinette/13648/images/maps/junkyard.webp" });
+    assert.equal(scene.patch["navName"], `see ${MAP}`, "a reference inside longer text is not one");
+    assert.doesNotMatch(JSON.stringify({ ...scene, patch: { ...scene.patch, navName: "" } }), /@moulinette/);
+  });
+
+  it("keeps the pack as written, so the source and the destination agree", () => {
+    const { file } = buildGrafts([junkyard({ source: "Scene", patch: { background: { src: "@moulinette/00123/a.webp" } } })], opts);
+    assert.deepEqual(file.assets!.moulinette!.files, [{ source: "00123/a.webp", destination: "graft/moulinette/00123/a.webp" }]);
+  });
+
+  it("warns about one that is malformed, and leaves it as written", () => {
+    const { file, warnings } = buildGrafts([junkyard({ source: "Scene", patch: { background: { src: "@moulinette/abc/a.webp" } } })], opts);
+    assert.match(warnings[0]!, /"@moulinette\/abc\/a\.webp" is not a Moulinette reference/);
+    assert.equal("assets" in file, false);
+  });
+
+  it("treats a path that climbs out of its folder, or is empty, as malformed", () => {
+    for (const src of ["@moulinette/1/../../worlds/w/a.webp", "@moulinette/1/"]) {
+      const { file, warnings } = buildGrafts([junkyard({ source: "Scene", patch: { background: { src } } })], opts);
+      assert.equal("assets" in file, false, src);
+      assert.match(warnings[0]!, /is not a Moulinette reference/, src);
+    }
+  });
+
+  it("keeps a page's files out of the grafts of a role that cannot see the page", () => {
+    const metas = [{ path: "Scenes/Junkyard.md", title: "Junkyard", role: "dm", frontmatter: { foundry: { source: SCENE, type: "Scene" } } }];
+    const visible = (roles: string[]) => buildGrafts(pagesFrom(metas, new Set(roles)), opts).file;
+    assert.equal("assets" in visible(["public", "player"]), false);
+    assert.equal(visible(["public", "player", "dm"]).assets!.moulinette!.files.length, 1);
+  });
+
+  it("adds no assets block to a vault that names none", () => {
+    assert.equal("assets" in buildGrafts([page("Characters/Marlo.md")], opts).file, false);
   });
 });

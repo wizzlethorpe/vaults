@@ -139,7 +139,7 @@ async function writeGrafts(
   await mkdir(dirname(graftsPath), { recursive: true });
   const files = await assetFiles(wanted, variantDir, siteUrl, assetBase, settings.zip_assets);
   // The middleware fills in a token for each origin when a reader downloads the file.
-  if (files.length > 0) grafts.file.assets = { http: { auth: { [new URL(siteUrl).origin]: "" }, files } };
+  if (files.length > 0) grafts.file.assets = { ...grafts.file.assets, http: { auth: { [new URL(siteUrl).origin]: "" }, files } };
 
   const json = JSON.stringify(grafts.file, null, 2);
   assertDeployable(`${variant.role}'s grafts.json`, Buffer.byteLength(json));

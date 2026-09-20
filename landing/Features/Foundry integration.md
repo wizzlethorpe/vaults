@@ -33,6 +33,7 @@ The box above is the `foundry-install` code block. It links to the reader's own 
 | Audio, PDFs, other passthroughs | Downloaded alongside images |
 | `foundry.source: <UUID>` | A document of the UUID's type, built on that compendium document (see below) |
 | `foundry.source: <Type>[:<subtype>]` | A blank `Actor`, `Item`, `Scene`, `JournalEntry`, `RollTable`, `Macro`, `Cards` or `Playlist` |
+| `foundry.source: <file>.json` with `foundry.type: <Type>` | A document of that type, built on a file fetched to the reader's machine (see [Moulinette](#moulinette-assets-and-scenes-from-the-readers-own-library)) |
 | `foundry.sync: false` | The page reaches neither the journal nor a document |
 | `foundry.journal: false` | The page's document is built but the page gets no journal page |
 | `foundry.embed: false` | The page's article is not written into its document's description |
@@ -162,25 +163,43 @@ The folder's `JournalEntry` id is shared by every page in that folder, so it can
 
 ## Moulinette: assets and scenes from the reader's own library
 
-A vault can name content it does not ship. A map, a tile or a track from [Moulinette](https://assets.moulinette.cloud/), named by its path, resolves against **the reader's own Moulinette library** on their machine, through [graft-moulinette](https://github.com/wizzlethorpe/graft-moulinette). Nothing is redistributed; a reader without the subscription gets that entry skipped, with the reason in the build report.
+A vault can name content it does not ship. A scene, a map, a tile or a track from [Moulinette](https://assets.moulinette.cloud/) is fetched from **the reader's own Moulinette library** on their machine, through [graft-moulinette](https://github.com/wizzlethorpe/graft-moulinette). Nothing is redistributed; a reader without the subscription gets that entry skipped, or that one file missing, with the reason in the build report.
 
-Requires the [Moulinette](https://foundryvtt.com/packages/moulinette) module, signed in, and graft-moulinette, which documents this fully.
+Requires the [Moulinette](https://foundryvtt.com/packages/moulinette) module, signed in, and graft-moulinette.
+
+Anything of Moulinette's is named one way, by the pack number from the product's address bar and the asset's path inside that pack:
+
+```
+@moulinette/13648/json/scene/06-junkyard-empty.json
+@moulinette/13648/images/maps/06-junkyard.webp
+```
+
+Write one as `foundry.source`, or as a whole value in `foundry.patch` or in the file `patch_json` names. A reference inside longer text, such as a description, is left as written, and one that is not a pack number and a path is reported by the build. The build replaces each one with a path under `graft/moulinette/` and lists the file for graft-moulinette to fetch to that path.
 
 ### Documents: whole scenes, journals and playlists
 
-A page cannot name a whole Moulinette document as its `foundry.source` yet. Compose the scene in the vault and name the creator's art by path, as the next two sections describe: that works today, and it is also the only way to stay independent of which Foundry generation a creator exported for.
+A `.json` asset is a document, and can be a page's source. Any source that is a path to a `.json` file works this way, whichever graft asset handler places it. A file in the vault cannot be a source, so an `@vault/` source is refused. A file does not say what kind of document it holds, so `foundry.type` does:
+
+```yaml
+foundry:
+  source: "@moulinette/13648/json/scene/06-junkyard-empty.json"
+  type: Scene
+  patch:
+    navName: Junkyard
+```
 
 ### Files: maps, images and audio
 
-A file is named by the path Moulinette downloads it to, and graft-moulinette fetches whatever the reader is missing after the build:
+Any other reference is a file, and goes wherever a path would:
 
 ```yaml
 foundry:
   source: Scene
   patch_json: Scenes/tavern.json     # your dimensions, grid, walls, lights, levels
+  patch:
+    background:
+      src: "@moulinette/13648/images/maps/06-junkyard.webp"
 ```
-
-with the map named inside that file as `moulinette-v2/cloud/<creator>/<pack>/images/maps/06-junkyard.webp`. Import the asset once in Foundry and copy the path off the document; the folder is the creator's own and the marketplace URL only shows a slug of it.
 
 ### Composing the scene yourself
 

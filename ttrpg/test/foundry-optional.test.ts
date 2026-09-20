@@ -35,6 +35,11 @@ async function build(settings: string, extra: Record<string, string | Buffer> = 
   return out;
 }
 
+/** A one-pixel PNG, so a page has media for the entry list to name. */
+const png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64");
+
 const exists = (p: string) => stat(p).then(() => true, () => false);
 
 describe("foundry.enabled: false", () => {
@@ -54,10 +59,6 @@ describe("foundry.enabled: false", () => {
   it("names media only once the vault knows its own URL", async () => {
     // An asset source is absolute, so a deploy that cannot say where it lives
     // would name files pointing at nothing.
-    // A one-pixel PNG, so the page has media for the entry list to name.
-    const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-      "base64");
     const withArt = { "a.png": png, "index.md": "---\ntitle: Home\n---\n![[a.png]]\n" };
     const read = async (out: string) =>
       JSON.parse(await readFile(join(out, "_foundry/grafts.json"), "utf8")) as
@@ -78,7 +79,6 @@ describe("foundry.enabled: false", () => {
     await rm(without, { recursive: true, force: true });
     await rm(withUrl, { recursive: true, force: true });
   });
-
 
   it("leaves the rest of the deploy untouched", async () => {
     const out = await build("foundry:\n  package: none\n");
@@ -141,9 +141,6 @@ describe("the foundry block", () => {
 });
 
 describe("zip_assets", () => {
-  const png = Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-    "base64");
   const art = { "a.png": png, "b.png": png, "index.md": "---\ntitle: Home\n---\n![[a.png]]\n![[b.png]]\n" };
   const read = async (out: string) =>
     JSON.parse(await readFile(join(out, "_foundry/grafts.json"), "utf8")) as
@@ -234,5 +231,21 @@ describe("foundry.core_version", () => {
     assert.doesNotMatch(journalOnly.warnings.join("\n"), /core_version is not set/);
     await rm(set.out, { recursive: true, force: true });
     await rm(journalOnly.out, { recursive: true, force: true });
+  });
+});
+
+describe("the assets block", () => {
+  it("lists what the vault serves beside what Moulinette supplies", async () => {
+    const out = await build('site_url: "https://v.example.com"\n', {
+      "a.png": png,
+      "index.md": "---\ntitle: Home\n---\n![[a.png]]\n",
+      "Scenes/Yard.md": '---\nfoundry:\n  source: "@moulinette/13648/json/scene/yard.json"\n  type: Scene\n---\nYard.\n',
+    });
+    const { assets } = JSON.parse(await readFile(join(out, "_foundry/grafts.json"), "utf8")) as
+      { assets: { http?: { files: unknown[] }; moulinette?: { files: unknown[] } } };
+    assert.ok(assets.http?.files.length, "the vault's own media was dropped");
+    assert.deepEqual(assets.moulinette?.files,
+      [{ source: "13648/json/scene/yard.json", destination: "graft/moulinette/13648/json/scene/yard.json" }]);
+    await rm(out, { recursive: true, force: true });
   });
 });
