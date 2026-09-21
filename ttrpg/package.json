@@ -1,6 +1,6 @@
 {
   "name": "@wizzlethorpe/vaults-ttrpg",
-  "version": "0.22.1",
+  "version": "0.22.2",
   "description": "TTRPG add-on for the vaults CLI: statblocks, dice, battlemaps, and a grafts.json a reader imports into Foundry VTT.",
   "keywords": [
     "obsidian",
