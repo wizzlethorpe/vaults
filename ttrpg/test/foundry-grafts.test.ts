@@ -67,6 +67,54 @@ describe("journal entries", () => {
     assert.deepEqual(ids(pair)[0], ids([pair[1]!])[0], "a.md first");
   });
 
+  it("lets a note be a system's own page type, keeping its body and the id links reach it by", () => {
+    const market = page("Scenes/Bank/Market.md", { foundry: { page: { type: "map", system: { code: "1.0" }, title: { show: true }, _id: "somethingElse000", sort: 5 } } });
+    const [entry] = journalEntries([market], opts);
+    const [made] = entry!.patch["pages"] as Array<Record<string, any>>;
+    assert.equal(made!.type, "map");
+    assert.deepEqual(made!.system, { code: "1.0" });
+    assert.deepEqual(made!.title, { show: true, level: 1 }, "what the note states wins, and the rest is filled in");
+    assert.equal(made!.text.content, "<p>Market</p>");
+    assert.equal(made!._id, pageId("marlo", "Scenes/Bank/Market.md"));
+    assert.equal(made!.sort, 100);
+    assert.deepEqual(market.foundry!.page, { type: "map", system: { code: "1.0" }, title: { show: true }, _id: "somethingElse000", sort: 5 }, "the page's own frontmatter is not written into");
+  });
+
+  it("orders coded pages by their code, after the index and before the rest", () => {
+    const coded = (path: string, code: string | number) => page(path, { foundry: { page: { type: "map", system: { code } } } });
+    const [entry] = journalEntries([
+      page("Bank/Appendix.md"), coded("Bank/Bank Entrance.md", "2.0"), coded("Bank/Vault.md", "10.0"), coded("Bank/Market.md", "1.0"),
+      page("Bank/index.md", { title: "Gnome Bank" }),
+    ], opts);
+    assert.deepEqual((entry!.patch["pages"] as Array<{ name: string }>).map((p) => p.name),
+      ["Gnome Bank", "Market", "Bank Entrance", "Vault", "Appendix"]);
+  });
+
+  it("leaves an unquoted code among the titled pages, since YAML has already changed its value", () => {
+    const coded = (path: string, code: string | number) => page(path, { foundry: { page: { type: "map", system: { code } } } });
+    const [entry] = journalEntries([coded("Bank/Alpha.md", 1.1), coded("Bank/Zed.md", "1.9")], opts);
+    assert.deepEqual((entry!.patch["pages"] as Array<{ name: string }>).map((p) => p.name), ["Zed", "Alpha"]);
+  });
+
+  it("builds an ordinary page for a foundry.page that is not an object", () => {
+    for (const bad of ["map", ["map"], 5, null]) {
+      const [entry] = journalEntries([page("Bank/Market.md", { foundry: { page: bad } })], opts);
+      const [made] = entry!.patch["pages"] as Array<Record<string, unknown>>;
+      assert.equal(made!["type"], "text", JSON.stringify(bad));
+      assert.deepEqual(Object.keys(made!).sort(), ["_id", "name", "ownership", "sort", "text", "title", "type"], JSON.stringify(bad));
+    }
+  });
+
+  it("lets a page's role alone decide who reads it, keeping any per-user ownership a note states", () => {
+    const hidden = page("Mixed/Rot.md", { role: "dm", foundry: { page: { ownership: { default: 2, someUserId000000: 3 } } } });
+    const shown = page("Mixed/Inn.md", { role: "public", foundry: { page: { ownership: { default: 0 } } } });
+    const [entry] = journalEntries([hidden, shown], opts);
+    const made = Object.fromEntries((entry!.patch["pages"] as Array<Record<string, any>>).map((p) => [p.name, p.ownership]));
+    assert.deepEqual(made["Rot"], { default: 0, someUserId000000: 3 });
+    assert.deepEqual(made["Inn"], { default: 2 });
+    assert.deepEqual(entry!.patch["ownership"], { default: 2 }, "an entry holding a readable page is observable");
+  });
+
   it("carries each page's body, rendered for that page", () => {
     const [entry] = journalEntries([page("Characters/Marlo.md")], opts);
     const pages = entry!.patch["pages"] as Array<Record<string, any>>;

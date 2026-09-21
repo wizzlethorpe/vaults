@@ -36,11 +36,31 @@ The box above is the `foundry-install` code block. It links to the reader's own 
 | `foundry.source: <file>.json` with `foundry.type: <Type>` | A document of that type, built on a file fetched to the reader's machine (see [Moulinette](#moulinette-assets-and-scenes-from-the-readers-own-library)) |
 | `foundry.sync: false` | The page reaches neither the journal nor a document |
 | `foundry.journal: false` | The page's document is built but the page gets no journal page |
+| `foundry.page` | A deep-merge overlay on the page's journal page, such as `type: map` with `system: { code: "1.0" }` for a dnd5e Map Location. Pages with a `system.code` follow the folder's index in code order. `@vault/` and `@moulinette/` references are not rewritten here |
 | `foundry.embed: false` | The page's article is not written into its document's description |
 | `foundry.folder` | A `/`-separated folder path the document files under, independent of where the page lives |
 | `foundry.patch` | A deep-merge overlay on the document. `"@vault/PATH"` strings become the path the file lands at |
 | `foundry.patch_json` | A vault-relative JSON file deep-merged into the document before `foundry.patch` |
 | `foundry.patch._id` | A 16-character `[A-Za-z0-9]` id pinned for the document, instead of the derived one |
+
+## Map locations and other page types
+
+Every page becomes a text journal page. `foundry.page` is merged over that page, so a note can be a page type your game system adds. A scene's locations read well as a folder per scene: the scene's own page as `index.md`, and one note per location.
+
+```yaml
+# Scenes/Gnome Bank/Market.md
+foundry:
+  page:
+    type: map
+    system:
+      code: "1.0"
+    title:
+      show: true
+```
+
+The folder builds one JournalEntry named for it. Its index reads first, then the pages that carry a `system.code` in code order, then the rest by title. Quote the code: YAML reads an unquoted `1.10` as the number 1.1, and a code that is not a string is ordered by title. A map note in the scene's `patch_json` names a location as `entryId: "@vault/Scenes/Gnome Bank/Market"`, and the build fills in both the entry and the page.
+
+The build keeps three things its own whatever `foundry.page` says: the page's id, its sort order, and its default ownership, which the page's role and `foundry.player_role` decide. Per-user ownership a note states is kept. The note's body is the page's text. A `text` stated in `foundry.page` replaces it without the link rewriting and secret handling the body gets, so leave it out.
 
 ## Documents from `foundry.source`
 

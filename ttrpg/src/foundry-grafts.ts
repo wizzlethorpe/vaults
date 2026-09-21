@@ -70,9 +70,10 @@ export interface Page {
    * prose out of the document's description; `folder` overrides where the
    * document files, independent of where the page lives.
    * `type` is the document type of a source that is a file.
+   * `page` is merged over the journal page the note becomes, so a note can be a system's own page type.
    */
   foundry?: {
-    source?: unknown; type?: unknown; patch?: Record<string, unknown>;
+    source?: unknown; type?: unknown; patch?: Record<string, unknown>; page?: unknown;
     sync?: boolean; journal?: boolean; embed?: boolean; folder?: string;
   } | null;
   /** The page's representative image, as a served URL ("/attachments/x.webp"). */
@@ -375,26 +376,30 @@ export function journalEntries(pages: Page[], opts: GraftOptions): GraftEntry[] 
 
   const entries: GraftEntry[] = [];
   for (const [folder, group] of [...byFolder].sort(([a], [b]) => a.localeCompare(b))) {
-    // The folder's index page reads first; the rest in the order the wiki's sidebar lists them.
+    // Index first, then coded pages by code, then by title as the wiki's sidebar does.
     const isIndex = (p: Page) => /(^|\/)index\.md$/i.test(p.path);
     const sorted = [...group].sort((a, b) =>
-      Number(isIndex(b)) - Number(isIndex(a)) || natCompare(a.title, b.title) || a.path.localeCompare(b.path));
+      Number(isIndex(b)) - Number(isIndex(a))
+      || Number(pageCode(b) !== null) - Number(pageCode(a) !== null)
+      || natCompare(pageCode(a) ?? "", pageCode(b) ?? "")
+      || natCompare(a.title, b.title) || a.path.localeCompare(b.path));
     const journalPages = sorted.map((page, i) => {
-      const ownership = observable(page, opts) ? OBSERVER : NONE;
-      return {
-        _id: pageId(opts.vaultId, page.path),
+      const out = structuredClone(pagePatch(page));
+      mergeDefaults(out, {
         name: page.title,
         type: "text",
-        sort: (i + 1) * 100,
         title: { show: false, level: 1 },
         text: { format: 1, content: opts.body(page) },
-        ownership: { default: ownership },
-      };
+      });
+      // The page's role decides who reads it, so a note states per-user ownership at most, never the default.
+      const ownership = { ...(out["ownership"] as Record<string, unknown> | undefined), default: observable(page, opts) ? OBSERVER : NONE };
+      // Wikilinks and map notes resolve to this _id; sort is the folder order above.
+      return { ...out, ownership, _id: pageId(opts.vaultId, page.path), sort: (i + 1) * 100 };
     });
 
     // A player needs to see the entry before per-page ownership can matter, so
     // an entry holding anything visible is observable and hides the rest.
-    const anyVisible = journalPages.some((p) => p.ownership.default === OBSERVER);
+    const anyVisible = sorted.some((page) => observable(page, opts));
     entries.push({
       id: entryId(opts.vaultId, folder),
       type: "JournalEntry",
@@ -491,6 +496,18 @@ function untypedReason(base: string, written: string | undefined): string {
   if (!isFile(base)) return `cannot tell what kind of document "${base}" is.`;
   if (written === undefined) return `"${base}" is a file, which does not say what it holds. State it as foundry.type.`;
   return `foundry.type "${written}" is not a document type a vault builds. It is one of ${DOC_TYPES.join(", ")}.`;
+}
+
+/** A note's `foundry.page`: a merge over the journal page it becomes. */
+function pagePatch(page: Page): Record<string, unknown> {
+  const patch = page.foundry?.page;
+  return patch && typeof patch === "object" && !Array.isArray(patch) ? patch as Record<string, unknown> : {};
+}
+
+/** A page's location code, as dnd5e's Map Location pages carry one in `system.code`. Only a string: YAML reads an unquoted `1.10` as 1.1. */
+function pageCode(page: Page): string | null {
+  const code = (pagePatch(page)["system"] as Record<string, unknown> | undefined)?.["code"];
+  return typeof code === "string" ? code : null;
 }
 
 /**
