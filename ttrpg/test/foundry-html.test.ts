@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  pathFromHref, uuidFor, rewriteLinks, rewriteAssets, toFoundryHtml, rewriteVaultRefs, journalBody,
+  pathFromHref, uuidFor, rewriteLinks, rewriteAssets, toFoundryHtml, rewriteVaultRefs, journalBody, shippedAssets,
   type LinkIndex,
 } from "../src/foundry-html.js";
 
@@ -382,5 +382,30 @@ describe("fvtt-link doc preference", () => {
     const a = '<a class="internal internal-link fvtt-doc-link" href="/Characters/Marlo">M</a>';
     assert.equal(rewriteLinks(a, index()),
       "@UUID[JournalEntry.ent0.JournalEntryPage.pg0]{M}");
+  });
+});
+
+describe("shippedAssets", () => {
+  const paths = [
+    "attachments/map.webp",
+    "attachments/tokens/student-1.webp",
+    "attachments/tokens/student-2.webp",
+    "attachments/tokens/teacher-1.webp",
+    "attachments/tokens/deep/student-3.webp",
+  ];
+
+  it("ships exactly the files the entries named", () => {
+    assert.deepEqual(shippedAssets(paths, new Set(["attachments/map.webp"])), ["attachments/map.webp"]);
+  });
+
+  it("ships every file a wildcard token texture matches, within its directory", () => {
+    assert.deepEqual(shippedAssets(paths, new Set(["attachments/tokens/student-*.webp"])),
+      ["attachments/tokens/student-1.webp", "attachments/tokens/student-2.webp"]);
+  });
+
+  it("reads Foundry's {a,b} alternatives and treats a dot as a dot", () => {
+    assert.deepEqual(shippedAssets(paths, new Set(["attachments/tokens/{student,teacher}-1.webp"])),
+      ["attachments/tokens/student-1.webp", "attachments/tokens/teacher-1.webp"]);
+    assert.deepEqual(shippedAssets(paths, new Set(["attachments/map.webp".replace(".", "x")])), []);
   });
 });

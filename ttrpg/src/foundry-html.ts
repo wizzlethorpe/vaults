@@ -156,6 +156,25 @@ export function rewriteVaultRefs<T>(value: T, assetBase: string, named: Set<stri
   });
 }
 
+/**
+ * The variant's files that the entries named, so only those ship to the reader.
+ *
+ * A token texture may be a Foundry wildcard (`tokens/student-*.webp`), which
+ * names every file it matches rather than one path.
+ */
+export function shippedAssets(paths: string[], named: Set<string>): string[] {
+  const globs = [...named].filter((n) => /[*{]/.test(n)).map(wildcardRegex);
+  return paths.filter((p) => named.has(p) || globs.some((re) => re.test(p)));
+}
+
+/** Foundry's wildcard syntax: `*` within one path segment, `{a,b}` for alternatives. */
+function wildcardRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+?^$()|[\]\\]/g, "\\$&")
+    .replace(/\{([^}]*)\}/g, (_, alts: string) => `(${alts.split(",").join("|")})`)
+    .replace(/\*/g, "[^/]*");
+  return new RegExp(`^${escaped}$`);
+}
+
 /** A copy of `value` with `fn` applied to every string that is a whole value. Keys and the insides of longer strings are left alone. */
 export function mapStrings<T>(value: T, fn: (s: string) => string): T {
   if (typeof value === "string") return fn(value) as unknown as T;

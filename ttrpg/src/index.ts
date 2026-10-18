@@ -9,7 +9,7 @@ import {
   GRAFTS_DOWNLOAD, buildGrafts, linkIndex, observable, pagesFrom, secretRoles, withFolderIndexes,
   type AssetFile, type GraftOptions,
 } from "./foundry-grafts.js";
-import { toFoundryHtml } from "./foundry-html.js";
+import { toFoundryHtml, shippedAssets } from "./foundry-html.js";
 import { loadDataJson, warnFoundryDocCollisions } from "./foundry-meta.js";
 import { TTRPG_SETTINGS, normalizeTtrpgSettings, type TtrpgSettings } from "./foundry-settings.js";
 import { foundryPatchKeysMigration } from "./migrate/0.15-foundry-patch-keys.js";
@@ -134,7 +134,7 @@ async function writeGrafts(
   const grafts = buildGrafts(graftPages, graftOpts);
   for (const warning of grafts.warnings) console.warn(`  warning: ${warning}`);
   // Only what the entries name: media that appears only on the wiki must not land in the reader's data directory.
-  const wanted = variant.assetPaths.filter((p) => namedAssets.has(p));
+  const wanted = shippedAssets(variant.assetPaths, namedAssets);
   const graftsPath = join(variantDir, GRAFTS_DOWNLOAD.path);
   await mkdir(dirname(graftsPath), { recursive: true });
   const files = await assetFiles(wanted, variantDir, siteUrl, assetBase, settings.zip_assets);
