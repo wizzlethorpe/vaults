@@ -40,7 +40,7 @@ A page with a `foundry.source` builds that document in the reader's world, with 
 
 ## The reader's download
 
-Each role's variant holds `_foundry/grafts.json`, and a multi-role deploy serves it at `/_foundry/grafts.json` as the caller's own role's copy, with a two-hour bearer written into its `assets` block so graft can fetch the media it names.
+Each role's variant holds `_foundry/grafts.json`, and a multi-role deploy serves it at `/_foundry/grafts.json` as the caller's own role's copy, saved as `grafts-<vault name>-<date>-<time>.json`, with a two-hour bearer written into its `assets` block so graft can fetch the media it names.
 
 ## Settings
 

@@ -179,7 +179,7 @@ describe("generated auth middleware", () => {
 describe("a declared download", () => {
   let mw: Middleware;
   let dmCookie: string;
-  const DOWNLOAD = { path: "/_export/data.json", tokens: ["auth", "keys"], maxAge: 60 };
+  const DOWNLOAD = { path: "/_export/data.json", filename: "data-demo", tokens: ["auth", "keys"], maxAge: 60 };
 
   let fetched: string[];
   let body: (variantPath: string) => unknown;
@@ -220,9 +220,9 @@ describe("a declared download", () => {
     assert.equal(res.headers.get("cache-control"), "no-store");
   });
 
-  it("is named after the declared path", async () => {
+  it("is named after the declared stem and the time of download", async () => {
     const res = await download();
-    assert.equal(res.headers.get("content-disposition"), 'attachment; filename="data.json"');
+    assert.match(res.headers.get("content-disposition") ?? "", /^attachment; filename="data-demo-\d{8}-\d{6}\.json"$/);
   });
 
   it("writes a typed bearer for the caller's role under every key", async () => {

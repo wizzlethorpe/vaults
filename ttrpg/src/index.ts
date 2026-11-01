@@ -6,7 +6,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type Addon, type AddonBuild, type BuildInfo, PAGES_FILE_BYTES, pMap, type VariantInfo, vaultRefs } from "@wizzlethorpe/vaults/addon";
 import {
-  GRAFTS_DOWNLOAD, buildGrafts, linkIndex, observable, pagesFrom, secretRoles, withFolderIndexes,
+  buildGrafts, graftsDownload, linkIndex, observable, pagesFrom, secretRoles, withFolderIndexes,
   type AssetFile, type GraftOptions,
 } from "./foundry-grafts.js";
 import { toFoundryHtml, shippedAssets } from "./foundry-html.js";
@@ -17,7 +17,7 @@ import { foundryPinnedIdMigration } from "./migrate/0.15-foundry-pinned-id.js";
 import { foundryEnabledMigration } from "./migrate/0.23-foundry-enabled.js";
 import { battlemapHandler } from "./handlers/battlemap.js";
 import { diceHandler } from "./handlers/dice.js";
-import { foundryInstallHandler, hasFoundryInstall } from "./handlers/foundry-install.js";
+import { GRAFTS_PATH, foundryInstallHandler, hasFoundryInstall } from "./handlers/foundry-install.js";
 import { fvttLinkHandler } from "./handlers/fvtt-link.js";
 import { statblockHandler } from "./handlers/statblock.js";
 import { chunkAssets, zip } from "./zip.js";
@@ -83,7 +83,7 @@ const addon: Addon = {
     }));
 
     if (!enabled) return undefined;
-    return { writeVariant: (variant) => writeGrafts(build, variant, patches), download: GRAFTS_DOWNLOAD };
+    return { writeVariant: (variant) => writeGrafts(build, variant, patches), download: graftsDownload(settings.vault_name) };
   },
 };
 
@@ -135,7 +135,7 @@ async function writeGrafts(
   for (const warning of grafts.warnings) console.warn(`  warning: ${warning}`);
   // Only what the entries name: media that appears only on the wiki must not land in the reader's data directory.
   const wanted = shippedAssets(variant.assetPaths, namedAssets);
-  const graftsPath = join(variantDir, GRAFTS_DOWNLOAD.path);
+  const graftsPath = join(variantDir, GRAFTS_PATH);
   await mkdir(dirname(graftsPath), { recursive: true });
   const files = await assetFiles(wanted, variantDir, siteUrl, assetBase, settings.zip_assets);
   // The middleware fills in a token for each origin when a reader downloads the file.

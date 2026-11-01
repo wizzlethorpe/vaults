@@ -4,7 +4,7 @@
 
 import { createHash } from "node:crypto";
 
-import { mergeDefaults, natCompare, type TokenDownload } from "@wizzlethorpe/vaults/addon";
+import { mergeDefaults, natCompare, slugify, type TokenDownload } from "@wizzlethorpe/vaults/addon";
 import { canonicalType, DOC_TYPES } from "./foundry-types.js";
 import { mapStrings, rewriteVaultRefs } from "./foundry-html.js";
 import { defaultsFor, resolvePageRefs } from "./foundry-defaults.js";
@@ -49,12 +49,15 @@ export interface MoulinetteFile {
   destination: string;
 }
 
-export const GRAFTS_DOWNLOAD: TokenDownload = {
-  path: GRAFTS_PATH,
-  tokens: ["assets", "http", "auth"],
-  // Long enough to survive downloading at a desk and building at the table.
-  maxAge: 60 * 60 * 2,
-};
+export function graftsDownload(vaultName: string): TokenDownload {
+  return {
+    path: GRAFTS_PATH,
+    filename: `grafts-${slugify(vaultName) || "vault"}`,
+    tokens: ["assets", "http", "auth"],
+    // Long enough to survive downloading at a desk and building at the table.
+    maxAge: 60 * 60 * 2,
+  };
+}
 
 const DOCUMENT_ID = /^[a-zA-Z0-9]{16}$/;
 

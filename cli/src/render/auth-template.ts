@@ -9,6 +9,8 @@ import { htmlAttr, htmlEscape } from "../escape.js";
 export interface TokenDownload {
   /** URL path, and the file's path inside each role's variant. */
   path: string;
+  /** Stem of the saved file's name; the Function appends the download's UTC time and `.json`. */
+  filename: string;
   /** Keys leading to an object in the file; every value of that object becomes the bearer. */
   tokens: string[];
   /** Bearer lifetime in seconds. */
@@ -303,10 +305,15 @@ async function handleDownload(request, env) {
   return new Response(JSON.stringify(file, null, 2), {
     headers: {
       "content-type": "application/json",
-      "content-disposition": 'attachment; filename="' + DOWNLOAD.path.split("/").pop() + '"',
+      "content-disposition": 'attachment; filename="' + DOWNLOAD.filename + "-" + stamp() + '.json"',
       "cache-control": "no-store",
     },
   });
+}
+
+/** The current UTC time as YYYYMMDD-HHMMSS. */
+function stamp() {
+  return new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
 }
 
 // These two helpers are intentionally inline and not imported: this file

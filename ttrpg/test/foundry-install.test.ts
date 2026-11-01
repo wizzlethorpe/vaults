@@ -98,7 +98,7 @@ describe("a foundry-install block the build cannot honour", () => {
     // The page sanitizer strips attributes it does not allow, so pin the
     // download link on the built page rather than on the handler's output.
     assert.match(html, new RegExp(`href="${GRAFTS_PATH}"`));
-    assert.match(html, /download="grafts\.json"/);
+    assert.match(html, /vaults-install-download" href="[^"]*" download(=""|>)/);
     await rm(out, { recursive: true, force: true });
   });
 });

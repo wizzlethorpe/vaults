@@ -46,7 +46,7 @@ export const foundryInstallHandler: CodeBlockHandler = {
         `<div class="vaults-foundry-install">`,
         `<span class="vaults-install-label">${esc(spec.label)}</span>`,
         spec.note ? `<span class="vaults-install-note">${esc(spec.note)}</span>` : "",
-        `<a class="vaults-install-download" href="${GRAFTS_PATH}" download="grafts.json">Download grafts.json</a>`,
+        `<a class="vaults-install-download" href="${GRAFTS_PATH}" download>Download grafts.json</a>`,
         `<p class="vaults-install-hint">Import it with <em>Import grafts</em> on Graft's settings tab. The link inside it expires in two hours; download it again for newer content.</p>`,
         `</div>`,
       ].join(""),
