@@ -146,6 +146,14 @@ describe("rewriteAssets", () => {
     assert.equal(out, '<img src="vaults/marlo/attachments/Cloak &amp; Dagger.webp">');
   });
 
+  it("decodes the serializer's entities before escaping again", () => {
+    // The serializer writes an apostrophe as &#x27;; escaping that a second time named a file that does not exist.
+    const named = new Set<string>();
+    const out = rewriteAssets('<img src="/attachments/Thief&#x27;s%20Eyes.webp">', "vaults/marlo", named);
+    assert.deepEqual([...named], ["attachments/Thief's Eyes.webp"]);
+    assert.equal(out, `<img src="vaults/marlo/attachments/Thief's Eyes.webp">`);
+  });
+
   it("keeps the tag's other attributes", () => {
     assert.equal(
       rewriteAssetsV(`<img alt="Map" src="/a/map.webp" width="400">`),

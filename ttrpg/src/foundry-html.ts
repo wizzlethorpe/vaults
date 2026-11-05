@@ -123,7 +123,7 @@ export function rewriteAssets(html: string, assetBase: string, named: Set<string
   // from is a URL. The `assets` block names the same file, and only the raw
   // form matches what the handler writes to disk.
   const mark = (p: string) => {
-    const path = decodePath(p.replace(/^\/+/, ""));
+    const path = decodePath(htmlUnescape(p).replace(/^\/+/, ""));
     named.add(path);
     return `${assetBase}/${path}`;
   };
