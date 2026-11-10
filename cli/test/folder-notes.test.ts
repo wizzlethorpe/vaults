@@ -1,13 +1,12 @@
-// `folder_notes: true` adopts Obsidian's convention that a note named after
-// its folder is that folder's page: 'Places/Places.md' is built as
-// 'Places/index.md' and replaces the index the build would generate there.
+// Folder pages: with `folder_notes`, 'Places/Places.md' builds as 'Places/index.md'; an index.md in any letter case always does.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildSite } from "../src/build.js";
+import { asFolderIndexes, buildSite } from "../src/build.js";
+import type { ScannedFile } from "../src/scan.js";
 import { writeSettingsFile } from "./settings-helpers.js";
 
 interface Vault { dir: string; out: string; }
@@ -159,7 +158,7 @@ describe("folder notes", () => {
     // The vault's own directory name is not part of a vault-relative path, so
     // the root note has no parent folder to be compared against.
     const dir = await mkdtemp(join(tmpdir(), "Harbortown-"));
-    const vaultName = dir.split("/").pop()!;
+    const vaultName = basename(dir);
     const v: Vault = { dir, out: join(dir, "_out") };
     await writeSettingsFile(dir, ON);
     await writeFile(join(dir, ".vaults/config.json"), VAULTRC);
@@ -178,7 +177,7 @@ describe("folder notes", () => {
     }
   });
 
-  it("does not treat two index pages as one when the case differs", async () => {
+  it("gives the folder to a differently-cased index.md over the folder note", async () => {
     const v = await setup({
       ".vaults/config.json": VAULTRC,
       "Places/INDEX.md": "# Places\nThe index that was already here.",
@@ -186,12 +185,31 @@ describe("folder notes", () => {
     }, ON);
     try {
       await build(v);
+      const index = await readFile(join(v.out, "Places/index.html"), "utf8");
+      assert.match(index, /The index that was already here/, "INDEX.md was not built as the folder's index");
       assert.equal(await exists(join(v.out, "Places/Places.html")), true,
         "the folder note was renamed on top of a differently-cased index");
     } finally {
       await rm(v.dir, { recursive: true, force: true });
     }
   });
+
+  for (const [label, settings] of [["off", ""], ["on", ON]] as const) {
+    it(`builds a capitalised Index.md as its folder's index with folder_notes ${label}`, async () => {
+      const v = await setup({
+        ".vaults/config.json": VAULTRC,
+        "Places/Index.md": "# Places\nPorts, roads and the places between.",
+      }, settings);
+      try {
+        await build(v);
+        const html = await readFile(join(v.out, "Places/index.html"), "utf8");
+        assert.match(html, /Ports, roads and the places between/,
+          "a generated folder listing took the folder's page from Index.md");
+      } finally {
+        await rm(v.dir, { recursive: true, force: true });
+      }
+    });
+  }
 
   it("matches default_frontmatter globs against the name on disk", async () => {
     const v = await setup({
@@ -223,5 +241,23 @@ describe("folder notes", () => {
     } finally {
       await rm(v.dir, { recursive: true, force: true });
     }
+  });
+});
+
+// Windows and macOS cannot hold these pairs, so only a pure call reaches the branch that keeps them apart.
+describe("asFolderIndexes on a case-sensitive filesystem", () => {
+  const renamedPaths = (paths: string[]): string[] => {
+    const files = paths.map((path): ScannedFile => ({ path, absolute: path, size: 0, hash: "", mtime: 0, birthtime: 0 }));
+    return asFolderIndexes(files, true, "Vault").files.map((f) => f.path);
+  };
+
+  it("leaves Index.md a normal page beside an exact index.md", (t) => {
+    t.mock.method(console, "warn", () => {});
+    assert.deepEqual(renamedPaths(["Places/index.md", "Places/Index.md"]), ["Places/index.md", "Places/Index.md"]);
+  });
+
+  it("renames only the first of two differently-cased index pages", (t) => {
+    t.mock.method(console, "warn", () => {});
+    assert.deepEqual(renamedPaths(["Places/Index.md", "Places/INDEX.md"]), ["Places/index.md", "Places/INDEX.md"]);
   });
 });

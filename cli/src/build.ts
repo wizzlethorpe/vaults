@@ -282,9 +282,9 @@ export async function buildSite(input: BuildOptions): Promise<BuildResult> {
   opts = { ...opts, outputDir: workOutputDir };
 
   const mdFiles = withinLimit.filter((f) => /\.md$/i.test(f.path));
-  const folderNotes = settings.values.folder_notes
-    ? asFolderIndexes(mdFiles, basename(resolve(opts.vaultPath)))
-    : { files: mdFiles, renamed: new Map<string, string>() };
+  const folderNotes = asFolderIndexes(
+    mdFiles, Boolean(settings.values.folder_notes), basename(resolve(opts.vaultPath)),
+  );
   const markdownFiles = folderNotes.files;
   /** The path a page was authored at, which is the one globs and links use. */
   const authoredPath = (path: string) => folderNotes.renamed.get(path) ?? path;
@@ -1358,30 +1358,31 @@ function fallbackTitle(path: string): string {
   return parts.pop() ?? "Home";
 }
 
-/**
- * Obsidian's folder-note convention: a note named after the folder it sits in
- * is that folder's page, and a note named after the vault is its homepage.
- * The rename is the whole feature, since every pass downstream already treats
- * an index.md as the folder's page. `renamed` maps the new path back to the
- * authored one, which is the name globs match and readers write.
- */
-function asFolderIndexes(
-  files: ScannedFile[], vaultDirName: string,
+/** Renames an index.md in any letter case, and with `folderNotes` a note named after its folder (or the vault at the root), to index.md. `renamed` maps new path to authored path. */
+export function asFolderIndexes(
+  files: ScannedFile[], folderNotes: boolean, vaultDirName: string,
 ): { files: ScannedFile[]; renamed: Map<string, string> } {
-  const taken = new Set(files.map((f) => f.path.toLowerCase()));
+  const paths = new Set(files.map((f) => f.path));
+  const byLowerPath = new Map(files.map((f) => [f.path.toLowerCase(), f.path]));
   const renamed = new Map<string, string>();
   const out = files.map((f) => {
     const parts = f.path.split("/");
-    // The vault's own directory name is not part of a vault-relative path, so
-    // the root note is compared against it rather than against a parent.
-    const folder = parts.length > 1 ? parts[parts.length - 2]! : vaultDirName;
-    if (basenameNoExt(parts[parts.length - 1]!).toLowerCase() !== folder.toLowerCase()) return f;
+    const name = basenameNoExt(parts[parts.length - 1]!).toLowerCase();
     const indexPath = [...parts.slice(0, -1), "index.md"].join("/");
-    if (taken.has(indexPath.toLowerCase())) {
-      console.warn(`  folder note '${f.path}' left as a normal page: '${indexPath}' already exists.`);
+    if (f.path === indexPath) return f;
+    // The vault's own directory name is not part of a vault-relative path, so the root note is compared against it.
+    const folder = parts.length > 1 ? parts[parts.length - 2]! : vaultDirName;
+    const isIndex = name === "index";
+    if (!isIndex && !(folderNotes && name === folder.toLowerCase())) return f;
+    // An index.md yields only to an exact index.md or an earlier variant, pairs only a case-sensitive filesystem can hold.
+    const holder = isIndex
+      ? renamed.get(indexPath) ?? (paths.has(indexPath) ? indexPath : undefined)
+      : byLowerPath.get(indexPath.toLowerCase());
+    if (holder) {
+      console.warn(`  '${f.path}' left as a normal page: '${holder}' is already its folder's page.`);
       return f;
     }
-    taken.add(indexPath.toLowerCase());
+    byLowerPath.set(indexPath.toLowerCase(), f.path);
     renamed.set(indexPath, f.path);
     return { ...f, path: indexPath };
   });

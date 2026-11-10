@@ -233,7 +233,7 @@ describe("bases: file.hasLink() actually checks outlinks", () => {
     });
     try {
       await build(v);
-      const html = await readFile(join(v.out, "Index.html"), "utf8");
+      const html = await readFile(join(v.out, "index.html"), "utf8");
       // Scope the assertion to the bases table; the sidebar navigation
       // mentions every page regardless of filter and would otherwise mask
       // a regression.
